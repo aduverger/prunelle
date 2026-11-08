@@ -1,8 +1,9 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { loadPreferences, defaults } from './model';
 import { serverURL } from './api/client';
 
 describe('local preferences and server targets', () => {
+  afterEach(() => vi.unstubAllGlobals());
   it('restores only valid presentation settings and tolerates unavailable storage', () => {
     vi.stubGlobal('localStorage', {
       getItem: () =>
@@ -20,7 +21,6 @@ describe('local preferences and server targets', () => {
       },
     });
     expect(loadPreferences()).toEqual(defaults);
-    vi.unstubAllGlobals();
   });
   it('accepts Tailscale HTTPS or loopback, never credentials or an arbitrary remote target', () => {
     expect(serverURL('https://dev.tail123.ts.net/')).toBe('https://dev.tail123.ts.net');

@@ -124,6 +124,60 @@ test('exact code discussion is shared across views, replies and resolution persi
   await expect(page.getByTestId('file-diff')).toContainText('HEAD lines 9–9');
 });
 
+test('evidence-loaded and reopened ranges keep their original revision when discussed', async ({
+  page,
+}) => {
+  const evidence = await fixture.get<Model['Evidence']>(
+    '/v1/evidence/' + fixture.ids.evidence['E-upload'],
+  );
+  await page.goto('/');
+  await page
+    .getByRole('button', {
+      name: 'src/routes/upload.ts · Upload enqueues instead of processing',
+      exact: true,
+    })
+    .click();
+
+  for (const origin of ['linked evidence', 'existing discussion']) {
+    if (origin === 'existing discussion') {
+      writeFileSync(fixture.dir + '/repos/api/src/routes/upload.ts', 'DIFFERENT_REVISION\n');
+      await page.getByRole('button', { name: 'Capture', exact: true }).click();
+      await expect(page.getByLabel('Revision', { exact: true })).not.toHaveValue(
+        evidence.revision_id,
+      );
+      await page
+        .locator('.thread')
+        .getByRole('button', { name: /src\/routes\/upload.ts:/ })
+        .click();
+    }
+    await page.getByRole('button', { name: 'Discuss selected lines', exact: true }).click();
+    await page
+      .getByRole('textbox', { name: 'New discussion', exact: true })
+      .fill('Comment from ' + origin);
+    const posted = page.waitForResponse(
+      (r) => r.request().method() === 'POST' && r.url().endsWith('/discussions'),
+    );
+    await page.getByRole('button', { name: 'Post discussion', exact: true }).click();
+    expect((await posted).status()).toBe(201);
+    await expect(
+      page
+        .getByRole('region', { name: 'Discussions', exact: true })
+        .getByText('Comment from ' + origin, { exact: true }),
+    ).toBeVisible();
+  }
+
+  const discussions = await fixture.get<Model['Discussion'][]>(
+    '/v1/reviews/' + fixture.review.id + '/discussions',
+  );
+  expect(discussions).toHaveLength(2);
+  for (const discussion of discussions) {
+    expect(discussion).toMatchObject({
+      revision_id: evidence.revision_id,
+      anchor: { type: 'CODE_RANGE', code_range: evidence.code_range },
+    });
+  }
+});
+
 test('decisions name a revision and source history survives working-tree edits', async ({
   page,
 }) => {
@@ -201,17 +255,44 @@ test('lost response retries safely and reconnect refetches after a real server r
   const retry = page.waitForRequest(
     (r) => r.method() === 'POST' && r.url().endsWith('/discussions'),
   );
+  const replayed = page.waitForResponse(
+    (r) => r.request().method() === 'POST' && r.url().endsWith('/discussions'),
+  );
   await page.getByRole('button', { name: 'Post discussion', exact: true }).click();
   expect((await retry).headers()['idempotency-key']).toBe(firstKey);
-  await expect(page.getByRole('textbox', { name: 'New discussion', exact: true })).toHaveCount(0);
+  expect((await replayed).status()).toBe(201);
+  await expect
+    .poll(() =>
+      page
+        .getByRole('textbox', { name: 'New discussion', exact: true })
+        .evaluateAll((fields) =>
+          fields.every((field) => (field as HTMLTextAreaElement).value === ''),
+        ),
+    )
+    .toBe(true);
   expect(
     await fixture.get<Model['Discussion'][]>('/v1/reviews/' + fixture.review.id + '/discussions'),
   ).toHaveLength(1);
+  await page.context().setOffline(true);
   await fixture.stop();
   await expect(page.getByRole('status')).toContainText('Disconnected');
   await expect(page.locator('.thread')).toContainText('Keep this thread through a restart.');
   await fixture.start();
+  const missed = await fetch(server + '/v1/reviews/' + fixture.review.id + '/discussions', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      revision_id: fixture.revision.id,
+      anchor: { type: 'TOPIC', id: fixture.ids.topics['T-async'] },
+      body: 'Written while this client was disconnected.',
+    }),
+  });
+  expect(missed.status).toBe(201);
+  await page.context().setOffline(false);
   await expect(page.getByRole('status')).toContainText('Connected');
+  await expect(
+    page.locator('.thread').filter({ hasText: 'Written while this client was disconnected.' }),
+  ).toBeVisible();
   const response = await fetch(server + '/v1/reviews/' + fixture.review.id + '/discussions', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },

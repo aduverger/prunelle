@@ -345,13 +345,17 @@ export function FileDiff({
                 {file.range.side} lines {file.range.start_line}–{file.range.end_line}
               </span>
               <button
-                onClick={() =>
+                onClick={() => {
+                  const { repository_id, path, side, start_line, end_line } = file.range!;
                   discuss({
                     revisionID: file.revisionID,
-                    anchor: { type: 'CODE_RANGE', code_range: file.range! },
-                    label: `${file.path}:${file.range!.start_line}–${file.range!.end_line} (${file.range!.side})`,
-                  })
-                }
+                    anchor: {
+                      type: 'CODE_RANGE',
+                      code_range: { repository_id, path, side, start_line, end_line },
+                    },
+                    label: `${file.path}:${start_line}–${end_line} (${side})`,
+                  });
+                }}
               >
                 Discuss selected lines
               </button>
