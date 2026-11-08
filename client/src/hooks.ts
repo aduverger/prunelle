@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { APIError, desktop, result, type API } from './api/client';
+import { APIError, result, type API } from './api/client';
 import { readEvents } from './api/events';
 
 export function useReview(api: API, reviewID: string) {
@@ -48,7 +48,7 @@ export function useReview(api: API, reviewID: string) {
 }
 export type ReviewData = NonNullable<ReturnType<typeof useReview>['data']>;
 
-export function useConnection(server: string) {
+export function useConnection(api: API) {
   const cache = useQueryClient();
   const [status, setStatus] = useState('Connecting');
   useEffect(() => {
@@ -57,16 +57,11 @@ export function useConnection(server: string) {
     let timer: ReturnType<typeof setTimeout>;
     async function connect() {
       try {
-        const base = desktop ? server : '/api';
-        await readEvents(
-          base + '/v1/events' + (sequence === undefined ? '' : '?after=' + sequence),
-          controller.signal,
-          (_type, next) => {
-            sequence = next;
-            setStatus('Connected');
-            void cache.invalidateQueries();
-          },
-        );
+        await readEvents(api, controller.signal, sequence, (next) => {
+          sequence = next;
+          setStatus('Connected');
+          void cache.invalidateQueries();
+        });
       } catch {
         if (!controller.signal.aborted) {
           setStatus('Disconnected · reconnecting');
@@ -81,7 +76,7 @@ export function useConnection(server: string) {
       controller.abort();
       clearTimeout(timer);
     };
-  }, [cache, server]);
+  }, [cache, api]);
   return status;
 }
 
@@ -104,14 +99,16 @@ export function useSubmit() {
       await cache.invalidateQueries();
       return true;
     } catch (e) {
-      if (e instanceof APIError && e.status === 412) await cache.invalidateQueries();
-      setError(
-        e instanceof APIError && e.status === 412
-          ? 'This record changed. Latest state is reloading; review it before retrying. Your draft is kept.'
-          : e instanceof Error
-            ? e.message
-            : String(e),
-      );
+      if (e instanceof APIError && e.status === 412) {
+        await cache.invalidateQueries();
+        setError(
+          'This record changed. Latest state is reloading; review it before retrying. Your draft is kept.',
+        );
+      } else if (e instanceof Error) {
+        setError(e.message);
+      } else {
+        setError(String(e));
+      }
       return false;
     } finally {
       setBusy(false);

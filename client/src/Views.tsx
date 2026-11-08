@@ -66,6 +66,22 @@ export function EvidenceCard({
   open: (e: Model['Evidence']) => void;
   discuss: (t: DiscussionTarget) => void;
 }) {
+  let artifact: React.ReactNode;
+  if (e.code_range) {
+    artifact = (
+      <>
+        <button className="link" onClick={() => open(e)}>
+          {e.code_range.path}:{e.code_range.start_line}–{e.code_range.end_line} ·{' '}
+          {e.code_range.side}
+        </button>
+        <pre>{e.code_range.selected_text}</pre>
+      </>
+    );
+  } else if (e.content) {
+    artifact = <pre>{e.content}</pre>;
+  } else {
+    artifact = <Notice>No artifact was provided. This is not verification.</Notice>;
+  }
   return (
     <article className="card" data-testid="evidence-card">
       <div className="eyebrow">
@@ -74,19 +90,7 @@ export function EvidenceCard({
       <h3>{e.title}</h3>
       <Attribution author={e.author} provenance={e.provenance} />
       <p className="muted">Source: {e.source || 'Not provided'}</p>
-      {e.code_range ? (
-        <>
-          <button className="link" onClick={() => open(e)}>
-            {e.code_range.path}:{e.code_range.start_line}–{e.code_range.end_line} ·{' '}
-            {e.code_range.side}
-          </button>
-          <pre>{e.code_range.selected_text}</pre>
-        </>
-      ) : e.content ? (
-        <pre>{e.content}</pre>
-      ) : (
-        <Notice>No artifact was provided. This is not verification.</Notice>
-      )}
+      {artifact}
       <button
         onClick={() =>
           discuss({
@@ -394,6 +398,71 @@ export function RepresentationView({
   const items = ids
     .map((id) => evidence.find((e) => e.id === id))
     .filter((e): e is Model['Evidence'] => !!e);
+  let content: React.ReactNode;
+  if (type === 'CODE_DIFF' && file) {
+    content = (
+      <>
+        {items.length > 0 && (
+          <details>
+            <summary>Linked code ranges</summary>
+            <EvidenceLinks ids={ids} evidence={evidence} select={openEvidence} />
+          </details>
+        )}
+        <FileDiff
+          api={api}
+          file={file}
+          repositoryLabel={repositoryLabel}
+          choose={chooseFile}
+          discuss={discuss}
+        />
+      </>
+    );
+  } else if (!rep || !rep.available) {
+    content = (
+      <Notice>
+        {rep?.unavailable_reason || 'No representation is available for this selection.'}
+      </Notice>
+    );
+  } else {
+    content = (
+      <>
+        <div className="representation-heading">
+          <h3>{rep.title}</h3>
+          <span className="badge">{rep.origin}</span>
+        </div>
+        {rep.author && <Attribution author={rep.author} />}
+        {type === 'TEXT' &&
+          rep.text?.sections.map((section, i) => (
+            <section className="text-section" key={i}>
+              <h3>{section.heading}</h3>
+              <Markdown>{section.body}</Markdown>
+              <EvidenceLinks ids={section.evidence_ids} evidence={evidence} select={openEvidence} />
+            </section>
+          ))}
+        {type === 'DIAGRAM' && (
+          <Diagram
+            representation={rep}
+            elementID={elementID}
+            select={selectNode}
+            discuss={discuss}
+          />
+        )}
+        {type === 'CODE_DIFF' && (
+          <div className="file-choices">
+            {items.map((e) => (
+              <button key={e.id} onClick={() => openEvidence(e)}>
+                {e.code_range?.path} · {e.title}
+              </button>
+            ))}
+          </div>
+        )}
+        {type === 'EVIDENCE_LIST' &&
+          items.map((e) => (
+            <EvidenceCard key={e.id} evidence={e} open={openEvidence} discuss={discuss} />
+          ))}
+      </>
+    );
+  }
   return (
     <div className="representation">
       {matches.length > 1 && (
@@ -409,68 +478,7 @@ export function RepresentationView({
           ))}
         </select>
       )}
-      {type === 'CODE_DIFF' && file ? (
-        <>
-          {items.length > 0 && (
-            <details>
-              <summary>Linked code ranges</summary>
-              <EvidenceLinks ids={ids} evidence={evidence} select={openEvidence} />
-            </details>
-          )}
-          <FileDiff
-            api={api}
-            file={file}
-            repositoryLabel={repositoryLabel}
-            choose={chooseFile}
-            discuss={discuss}
-          />
-        </>
-      ) : !rep || !rep.available ? (
-        <Notice>
-          {rep?.unavailable_reason || 'No representation is available for this selection.'}
-        </Notice>
-      ) : (
-        <>
-          <div className="representation-heading">
-            <h3>{rep.title}</h3>
-            <span className="badge">{rep.origin}</span>
-          </div>
-          {rep.author && <Attribution author={rep.author} />}
-          {type === 'TEXT' &&
-            rep.text?.sections.map((section, i) => (
-              <section className="text-section" key={i}>
-                <h3>{section.heading}</h3>
-                <Markdown>{section.body}</Markdown>
-                <EvidenceLinks
-                  ids={section.evidence_ids}
-                  evidence={evidence}
-                  select={openEvidence}
-                />
-              </section>
-            ))}
-          {type === 'DIAGRAM' && (
-            <Diagram
-              representation={rep}
-              elementID={elementID}
-              select={selectNode}
-              discuss={discuss}
-            />
-          )}
-          {type === 'CODE_DIFF' && (
-            <div className="file-choices">
-              {items.map((e) => (
-                <button key={e.id} onClick={() => openEvidence(e)}>
-                  {e.code_range?.path} · {e.title}
-                </button>
-              ))}
-            </div>
-          )}
-          {type === 'EVIDENCE_LIST' &&
-            items.map((e) => (
-              <EvidenceCard key={e.id} evidence={e} open={openEvidence} discuss={discuss} />
-            ))}
-        </>
-      )}
+      {content}
     </div>
   );
 }

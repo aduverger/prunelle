@@ -1,5 +1,6 @@
 import { serverURL, type AnchorInput, type CodeRangeInput, type Model } from './api/client';
-export type View = 'TEXT' | 'DIAGRAM' | 'CODE_DIFF' | 'EVIDENCE_LIST';
+export type View = Model['Representation']['type'];
+export type TopicOrder = 'manual' | 'attention' | 'intent';
 export type Perspective = 'Engineering' | 'Design' | 'Source';
 export type Navigation = 'Topics' | 'Findings' | 'All Source Changes';
 export type FileSelection = {
@@ -18,7 +19,7 @@ export const viewNames: Record<View, string> = {
 };
 export const presets: Record<
   Perspective,
-  { views: [View, View]; tab: Navigation; order: 'manual' | 'attention' | 'intent' }
+  { views: [View, View]; tab: Navigation; order: TopicOrder }
 > = {
   Engineering: { views: ['DIAGRAM', 'CODE_DIFF'], tab: 'Topics', order: 'attention' },
   Design: { views: ['TEXT', 'DIAGRAM'], tab: 'Topics', order: 'intent' },
@@ -32,7 +33,7 @@ export type Preferences = {
 };
 export const defaults: Preferences = {
   perspective: 'Engineering',
-  views: ['DIAGRAM', 'CODE_DIFF'],
+  views: presets.Engineering.views,
   split: true,
   server: 'http://127.0.0.1:7390',
 };
@@ -67,16 +68,20 @@ export function attentionFor(topic: Model['Topic'], attention: Model['AttentionS
 export function orderedTopics(
   topics: Model['Topic'][],
   attention: Model['AttentionSignal'][],
-  order: 'manual' | 'attention' | 'intent',
+  order: TopicOrder,
   parent: string | null = null,
 ): Model['Topic'][] {
   const priority: Record<string, number> = { HIGH: 3, MEDIUM: 2, LOW: 1, UNKNOWN: 0 };
-  const score = (t: Model['Topic']) =>
-    order === 'intent'
-      ? t.intent_ids.length
-      : order === 'attention'
-        ? Math.max(0, ...attentionFor(t, attention).map((a) => priority[a.priority]))
-        : 0;
+  function score(topic: Model['Topic']) {
+    switch (order) {
+      case 'intent':
+        return topic.intent_ids.length;
+      case 'attention':
+        return Math.max(0, ...attentionFor(topic, attention).map((a) => priority[a.priority]));
+      default:
+        return 0;
+    }
+  }
   return topics
     .filter((t) => t.parent_id === parent)
     .sort((a, b) => score(b) - score(a) || a.position - b.position);

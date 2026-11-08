@@ -1,12 +1,18 @@
 import { EventSourceParserStream } from 'eventsource-parser/stream';
-import { transport } from './client';
+import type { API } from './client';
 
 export async function readEvents(
-  url: string,
+  api: API,
   signal: AbortSignal,
-  onEvent: (type: string, sequence: number) => void,
+  after: number | undefined,
+  onSequence: (sequence: number) => void,
 ) {
-  const response = await transport(url, { signal, headers: { Accept: 'text/event-stream' } });
+  const { response } = await api.GET('/v1/events', {
+    params: { query: { after } },
+    signal,
+    headers: { Accept: 'text/event-stream' },
+    parseAs: 'stream',
+  });
   if (!response.ok || !response.body)
     throw new Error('Event stream unavailable: ' + response.status);
   const reader = response.body
@@ -20,7 +26,7 @@ export async function readEvents(
       const sequence = Number(value.id || JSON.parse(value.data).sequence);
       if (!Number.isSafeInteger(sequence) || sequence < 0)
         throw new Error('Invalid event sequence');
-      onEvent(value.event || 'message', sequence);
+      onSequence(sequence);
     }
   } finally {
     await reader.cancel().catch(() => {});

@@ -40,7 +40,6 @@ export type API = ReturnType<typeof apiFor>;
 export class APIError extends Error {
   constructor(
     public status: number,
-    public code: string,
     message: string,
   ) {
     super(message);
@@ -54,7 +53,6 @@ export async function result<T>(
   if (!response.ok)
     throw new APIError(
       response.status,
-      error?.error?.code ?? 'HTTP_ERROR',
       [error?.error?.message ?? response.statusText, ...(error?.error?.details ?? [])].join('\n'),
     );
   return data as T;

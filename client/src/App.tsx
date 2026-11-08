@@ -21,6 +21,7 @@ import {
   type Navigation,
   type Perspective,
   type Preferences,
+  type TopicOrder,
   type View,
 } from './model';
 import {
@@ -35,9 +36,14 @@ import { Decisions, DiscussionPanel } from './Discussions';
 import { Sessions } from './Sessions';
 import { IntentCard, ChangeCard } from './Records';
 
+function hasTextDrafts() {
+  return Array.from(document.querySelectorAll('textarea')).some((t) => t.value.trim());
+}
+
 function leaveDrafts() {
-  const hasText = Array.from(document.querySelectorAll('textarea')).some((t) => t.value.trim());
-  return !hasText || window.confirm('Leave this review? Unposted drafts will be discarded.');
+  return (
+    !hasTextDrafts() || window.confirm('Leave this review? Unposted drafts will be discarded.')
+  );
 }
 
 export function App() {
@@ -47,7 +53,7 @@ export function App() {
   const [reviewID, setReviewID] = useState('');
   const cache = useQueryClient();
   const api = useMemo(() => apiFor(preferences.server), [preferences.server]);
-  const status = useConnection(preferences.server);
+  const status = useConnection(api);
   const reviews = useQuery({
     queryKey: ['reviews'],
     queryFn: ({ signal }) => result(api.GET('/v1/reviews', { signal })),
@@ -65,8 +71,7 @@ export function App() {
   }, [preferences]);
   useEffect(() => {
     const warn = (e: BeforeUnloadEvent) => {
-      if (Array.from(document.querySelectorAll('textarea')).some((t) => t.value.trim()))
-        e.preventDefault();
+      if (hasTextDrafts()) e.preventDefault();
     };
     window.addEventListener('beforeunload', warn);
     return () => window.removeEventListener('beforeunload', warn);
@@ -245,15 +250,12 @@ function ReviewPage({
     setInspector(null);
     setElementID(null);
   }
-  function selectFile(f: FileSelection) {
-    setFile(f);
-  }
   function showCode() {
-    setPreferences((p) =>
-      p.views.slice(0, p.split ? 2 : 1).includes('CODE_DIFF')
-        ? p
-        : { ...p, views: p.split ? [p.views[0], 'CODE_DIFF'] : ['CODE_DIFF', p.views[1]] },
-    );
+    setPreferences((p) => {
+      if (p.views.slice(0, p.split ? 2 : 1).includes('CODE_DIFF')) return p;
+      if (p.split) return { ...p, views: [p.views[0], 'CODE_DIFF'] };
+      return { ...p, views: ['CODE_DIFF', p.views[1]] };
+    });
   }
   function openEvidence(e: Model['Evidence']) {
     setInspector({ type: 'evidence', id: e.id });
@@ -644,7 +646,7 @@ function ReviewPage({
                   file={file}
                   repositoryLabel={repositoryLabel}
                   api={api}
-                  chooseFile={selectFile}
+                  chooseFile={setFile}
                   openEvidence={openEvidence}
                   selectNode={inspectNode}
                   discuss={discuss}
@@ -787,7 +789,7 @@ function TopicTree({
   attention: Model['AttentionSignal'][];
   selected: string | null;
   select: (id: string) => void;
-  order: 'manual' | 'attention' | 'intent';
+  order: TopicOrder;
   parent?: string | null;
 }) {
   return (

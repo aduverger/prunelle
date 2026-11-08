@@ -16,6 +16,21 @@ export function Sessions({ api, workspaceID }: { api: API; workspaceID: string }
     refetchInterval: 5000,
   });
   const action = useSubmit();
+  function toggleAssociation(runtimeID: string, linked: boolean) {
+    const params = { path: { workspaceId: workspaceID, runtimeSessionId: runtimeID } };
+    return action.submit([runtimeID, linked], () => {
+      if (linked) {
+        return result(
+          api.DELETE('/v1/workspaces/{workspaceId}/runtime-sessions/{runtimeSessionId}', {
+            params,
+          }),
+        );
+      }
+      return result(
+        api.PUT('/v1/workspaces/{workspaceId}/runtime-sessions/{runtimeSessionId}', { params }),
+      );
+    });
+  }
   return (
     <section className="sessions" aria-label="Runtime sessions">
       <h2>Runtime sessions</h2>
@@ -41,6 +56,11 @@ export function Sessions({ api, workspaceID }: { api: API; workspaceID: string }
       ))}
       {query.data?.runtimes.map((r) => {
         const linked = r.workspace_ids.includes(workspaceID);
+        let associationLabel = 'Not associated with this workspace';
+        if (linked) associationLabel = 'Explicitly associated with this workspace';
+        else if (r.suggested_workspace_ids.includes(workspaceID)) {
+          associationLabel = 'Suggested by working directory — not associated';
+        }
         return (
           <article className="card" key={r.id}>
             <strong>{r.label}</strong>
@@ -65,35 +85,11 @@ export function Sessions({ api, workspaceID }: { api: API; workspaceID: string }
                 Last seen: {new Date(r.last_seen_at).toLocaleString()}
               </p>
             </details>
-            <p>
-              {linked
-                ? 'Explicitly associated with this workspace'
-                : r.suggested_workspace_ids.includes(workspaceID)
-                  ? 'Suggested by working directory — not associated'
-                  : 'Not associated with this workspace'}
-            </p>
+            <p>{associationLabel}</p>
             <button
               disabled={action.busy}
               onClick={() => {
-                void action.submit([r.id, linked], () =>
-                  linked
-                    ? result(
-                        api.DELETE(
-                          '/v1/workspaces/{workspaceId}/runtime-sessions/{runtimeSessionId}',
-                          {
-                            params: { path: { workspaceId: workspaceID, runtimeSessionId: r.id } },
-                          },
-                        ),
-                      )
-                    : result(
-                        api.PUT(
-                          '/v1/workspaces/{workspaceId}/runtime-sessions/{runtimeSessionId}',
-                          {
-                            params: { path: { workspaceId: workspaceID, runtimeSessionId: r.id } },
-                          },
-                        ),
-                      ),
-                );
+                void toggleAssociation(r.id, linked);
               }}
             >
               {linked ? 'Remove association' : 'Associate with workspace'}
