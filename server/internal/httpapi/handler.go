@@ -5,8 +5,11 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
+	"strconv"
+	"strings"
 
 	"github.com/getkin/kin-openapi/openapi3filter"
 	middleware "github.com/oapi-codegen/nethttp-middleware"
@@ -14,29 +17,34 @@ import (
 	"github.com/aduverger/prunelle/server/api"
 	"github.com/aduverger/prunelle/server/internal/review"
 	"github.com/aduverger/prunelle/server/internal/sessions"
+	"github.com/aduverger/prunelle/server/internal/store"
 )
 
 var statusByCode = map[string]int{
-	review.CodeNotFound:        http.StatusNotFound,
-	review.CodeInvalidArgument: http.StatusBadRequest,
-	review.CodeConflict:        http.StatusConflict,
-	review.CodeCaptureFailed:   http.StatusUnprocessableEntity,
-	"UNAUTHENTICATED":          http.StatusUnauthorized,
-	"PERMISSION_DENIED":        http.StatusForbidden,
-	"INTERNAL":                 http.StatusInternalServerError,
+	review.CodeNotFound:           http.StatusNotFound,
+	review.CodeInvalidArgument:    http.StatusBadRequest,
+	review.CodeConflict:           http.StatusConflict,
+	review.CodeCaptureFailed:      http.StatusUnprocessableEntity,
+	review.CodePreconditionFailed: http.StatusPreconditionFailed,
+	codePreconditionRequired:      http.StatusPreconditionRequired,
+	"UNAUTHENTICATED":             http.StatusUnauthorized,
+	"PERMISSION_DENIED":           http.StatusForbidden,
+	"INTERNAL":                    http.StatusInternalServerError,
 }
 
 const healthPath = "/v1/health"
 
+const codePreconditionRequired = "PRECONDITION_REQUIRED"
+
 // NewHandler returns the API handler: access check, request validation against the OpenAPI
-// document, then the generated router.
-func NewHandler(reviews *review.Service, sessionSvc *sessions.Service, auth *Authorizer, version string) (http.Handler, error) {
+// document, idempotent replay, then the generated router.
+func NewHandler(db *store.DB, reviews *review.Service, sessionSvc *sessions.Service, auth *Authorizer, version string) (http.Handler, error) {
 	spec, err := api.GetSwagger()
 	if err != nil {
 		return nil, err
 	}
 	spec.Servers = nil // validate paths regardless of the host the server is reached through
-	strict := api.NewStrictHandlerWithOptions(&handlers{svc: reviews, sessions: sessionSvc, version: version}, nil, api.StrictHTTPServerOptions{
+	strict := api.NewStrictHandlerWithOptions(&handlers{db: db, svc: reviews, sessions: sessionSvc, version: version}, nil, api.StrictHTTPServerOptions{
 		RequestErrorHandlerFunc:  writeRequestError,
 		ResponseErrorHandlerFunc: writeResponseError,
 	})
@@ -51,7 +59,7 @@ func NewHandler(reviews *review.Service, sessionSvc *sessions.Service, auth *Aut
 			writeError(w, opts.StatusCode, code, err.Error(), nil)
 		},
 	})
-	return auth.Middleware(validate(router), healthPath), nil
+	return auth.Middleware(validate(newIdempotency(db).middleware(router)), healthPath), nil
 }
 
 type errorBody struct {
@@ -88,6 +96,7 @@ func writeResponseError(w http.ResponseWriter, r *http.Request, err error) {
 }
 
 type handlers struct {
+	db       *store.DB
 	svc      *review.Service
 	sessions *sessions.Service
 	version  string
@@ -105,7 +114,7 @@ func (h *handlers) ListWorkspaces(ctx context.Context, _ api.ListWorkspacesReque
 }
 
 func (h *handlers) CreateWorkspace(ctx context.Context, req api.CreateWorkspaceRequestObject) (api.CreateWorkspaceResponseObject, error) {
-	ws, err := h.svc.CreateWorkspace(ctx, *req.Body)
+	ws, err := h.svc.CreateWorkspace(ctx, *req.Body, callerFrom(ctx))
 	return api.CreateWorkspace201JSONResponse(ws), err
 }
 
@@ -120,7 +129,7 @@ func (h *handlers) ListReviews(ctx context.Context, req api.ListReviewsRequestOb
 }
 
 func (h *handlers) CreateReview(ctx context.Context, req api.CreateReviewRequestObject) (api.CreateReviewResponseObject, error) {
-	rv, err := h.svc.CreateReview(ctx, *req.Body)
+	rv, err := h.svc.CreateReview(ctx, *req.Body, callerFrom(ctx))
 	return api.CreateReview201JSONResponse(rv), err
 }
 
@@ -135,7 +144,7 @@ func (h *handlers) ListRevisions(ctx context.Context, req api.ListRevisionsReque
 }
 
 func (h *handlers) CaptureRevision(ctx context.Context, req api.CaptureRevisionRequestObject) (api.CaptureRevisionResponseObject, error) {
-	revision, err := h.svc.CaptureRevision(ctx, req.ReviewId)
+	revision, err := h.svc.CaptureRevision(ctx, req.ReviewId, callerFrom(ctx))
 	return api.CaptureRevision201JSONResponse(revision), err
 }
 
@@ -160,7 +169,7 @@ func (h *handlers) ListImports(ctx context.Context, req api.ListImportsRequestOb
 }
 
 func (h *handlers) ImportManifest(ctx context.Context, req api.ImportManifestRequestObject) (api.ImportManifestResponseObject, error) {
-	result, err := h.svc.Import(ctx, req.ReviewId, *req.Body)
+	result, err := h.svc.Import(ctx, req.ReviewId, *req.Body, callerFrom(ctx))
 	return api.ImportManifest201JSONResponse(result), err
 }
 
@@ -171,7 +180,101 @@ func (h *handlers) ListTopics(ctx context.Context, req api.ListTopicsRequestObje
 
 func (h *handlers) GetTopic(ctx context.Context, req api.GetTopicRequestObject) (api.GetTopicResponseObject, error) {
 	topic, err := h.svc.GetTopic(ctx, req.TopicId)
-	return api.GetTopic200JSONResponse(topic), err
+	return api.GetTopic200JSONResponse{Body: topic, Headers: api.GetTopic200ResponseHeaders{ETag: etag(topic.Version)}}, err
+}
+
+func (h *handlers) CreateTopic(ctx context.Context, req api.CreateTopicRequestObject) (api.CreateTopicResponseObject, error) {
+	topic, err := h.svc.CreateTopic(ctx, req.ReviewId, *req.Body, callerFrom(ctx))
+	return api.CreateTopic201JSONResponse(topic), err
+}
+
+func (h *handlers) UpdateTopic(ctx context.Context, req api.UpdateTopicRequestObject) (api.UpdateTopicResponseObject, error) {
+	version, err := expectedVersion(req.Params.IfMatch)
+	if err != nil {
+		return nil, err
+	}
+	topic, err := h.svc.UpdateTopic(ctx, req.TopicId, version, *req.Body, callerFrom(ctx))
+	return api.UpdateTopic200JSONResponse{Body: topic, Headers: api.UpdateTopic200ResponseHeaders{ETag: etag(topic.Version)}}, err
+}
+
+func (h *handlers) MoveTopic(ctx context.Context, req api.MoveTopicRequestObject) (api.MoveTopicResponseObject, error) {
+	version, err := expectedVersion(req.Params.IfMatch)
+	if err != nil {
+		return nil, err
+	}
+	topic, err := h.svc.MoveTopic(ctx, req.TopicId, version, *req.Body, callerFrom(ctx))
+	return api.MoveTopic200JSONResponse{Body: topic, Headers: api.MoveTopic200ResponseHeaders{ETag: etag(topic.Version)}}, err
+}
+
+func (h *handlers) CreateRepresentation(ctx context.Context, req api.CreateRepresentationRequestObject) (api.CreateRepresentationResponseObject, error) {
+	rep, err := h.svc.CreateRepresentation(ctx, req.TopicId, *req.Body, callerFrom(ctx))
+	return api.CreateRepresentation201JSONResponse(rep), err
+}
+
+func (h *handlers) UpdateRepresentation(ctx context.Context, req api.UpdateRepresentationRequestObject) (api.UpdateRepresentationResponseObject, error) {
+	version, err := expectedVersion(req.Params.IfMatch)
+	if err != nil {
+		return nil, err
+	}
+	rep, err := h.svc.UpdateRepresentation(ctx, req.RepresentationId, version, *req.Body, callerFrom(ctx))
+	if err != nil {
+		return nil, err
+	}
+	return api.UpdateRepresentation200JSONResponse{Body: rep, Headers: api.UpdateRepresentation200ResponseHeaders{ETag: etag(*rep.Version)}}, nil
+}
+
+func (h *handlers) ListDiscussions(ctx context.Context, req api.ListDiscussionsRequestObject) (api.ListDiscussionsResponseObject, error) {
+	discussions, err := h.svc.ListDiscussions(ctx, req.ReviewId)
+	return api.ListDiscussions200JSONResponse(discussions), err
+}
+
+func (h *handlers) CreateDiscussion(ctx context.Context, req api.CreateDiscussionRequestObject) (api.CreateDiscussionResponseObject, error) {
+	discussion, err := h.svc.CreateDiscussion(ctx, req.ReviewId, *req.Body, callerFrom(ctx))
+	return api.CreateDiscussion201JSONResponse(discussion), err
+}
+
+func (h *handlers) GetDiscussion(ctx context.Context, req api.GetDiscussionRequestObject) (api.GetDiscussionResponseObject, error) {
+	discussion, err := h.svc.GetDiscussion(ctx, req.DiscussionId)
+	return api.GetDiscussion200JSONResponse{Body: discussion, Headers: api.GetDiscussion200ResponseHeaders{ETag: etag(discussion.Version)}}, err
+}
+
+func (h *handlers) UpdateDiscussion(ctx context.Context, req api.UpdateDiscussionRequestObject) (api.UpdateDiscussionResponseObject, error) {
+	version, err := expectedVersion(req.Params.IfMatch)
+	if err != nil {
+		return nil, err
+	}
+	discussion, err := h.svc.UpdateDiscussion(ctx, req.DiscussionId, version, *req.Body, callerFrom(ctx))
+	return api.UpdateDiscussion200JSONResponse{Body: discussion, Headers: api.UpdateDiscussion200ResponseHeaders{ETag: etag(discussion.Version)}}, err
+}
+
+func (h *handlers) CreateMessage(ctx context.Context, req api.CreateMessageRequestObject) (api.CreateMessageResponseObject, error) {
+	message, err := h.svc.Reply(ctx, req.DiscussionId, *req.Body, callerFrom(ctx))
+	return api.CreateMessage201JSONResponse(message), err
+}
+
+func (h *handlers) ListDecisions(ctx context.Context, req api.ListDecisionsRequestObject) (api.ListDecisionsResponseObject, error) {
+	decisions, err := h.svc.ListDecisions(ctx, req.ReviewId)
+	return api.ListDecisions200JSONResponse(decisions), err
+}
+
+func (h *handlers) CreateDecision(ctx context.Context, req api.CreateDecisionRequestObject) (api.CreateDecisionResponseObject, error) {
+	decision, err := h.svc.CreateDecision(ctx, req.ReviewId, *req.Body, callerFrom(ctx))
+	return api.CreateDecision201JSONResponse(decision), err
+}
+
+func etag(version int) string { return `"` + strconv.Itoa(version) + `"` }
+
+// expectedVersion reads the version a change is based on from If-Match.
+func expectedVersion(ifMatch *string) (int, error) {
+	if ifMatch == nil {
+		return 0, &review.Error{Code: codePreconditionRequired, Message: "If-Match with the ETag of the version you edited is required"}
+	}
+	quoted := strings.TrimSpace(*ifMatch)
+	version, err := strconv.Atoi(strings.TrimSuffix(strings.TrimPrefix(quoted, `"`), `"`))
+	if err != nil || !strings.HasPrefix(quoted, `"`) || !strings.HasSuffix(quoted, `"`) || len(quoted) < 3 {
+		return 0, &review.Error{Code: review.CodePreconditionFailed, Message: fmt.Sprintf("If-Match %s is not an ETag of this server", *ifMatch)}
+	}
+	return version, nil
 }
 
 func (h *handlers) ListTopicRepresentations(ctx context.Context, req api.ListTopicRepresentationsRequestObject) (api.ListTopicRepresentationsResponseObject, error) {

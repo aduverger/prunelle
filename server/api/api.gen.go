@@ -25,6 +25,42 @@ import (
 	"github.com/oapi-codegen/runtime"
 )
 
+// Defines values for AnchorType.
+const (
+	CHANGE         AnchorType = "CHANGE"
+	CODERANGE      AnchorType = "CODE_RANGE"
+	DIAGRAMELEMENT AnchorType = "DIAGRAM_ELEMENT"
+	EVIDENCE       AnchorType = "EVIDENCE"
+	FINDING        AnchorType = "FINDING"
+	INTENT         AnchorType = "INTENT"
+	REVIEW         AnchorType = "REVIEW"
+	TOPIC          AnchorType = "TOPIC"
+)
+
+// Valid indicates whether the value is a known member of the AnchorType enum.
+func (e AnchorType) Valid() bool {
+	switch e {
+	case CHANGE:
+		return true
+	case CODERANGE:
+		return true
+	case DIAGRAMELEMENT:
+		return true
+	case EVIDENCE:
+		return true
+	case FINDING:
+		return true
+	case INTENT:
+		return true
+	case REVIEW:
+		return true
+	case TOPIC:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ContentOmitted.
 const (
 	BINARY          ContentOmitted = "BINARY"
@@ -52,15 +88,74 @@ func (e ContentOmitted) Valid() bool {
 	}
 }
 
+// Defines values for DecisionKind.
+const (
+	APPROVE        DecisionKind = "APPROVE"
+	COMMENT        DecisionKind = "COMMENT"
+	REQUESTCHANGES DecisionKind = "REQUEST_CHANGES"
+)
+
+// Valid indicates whether the value is a known member of the DecisionKind enum.
+func (e DecisionKind) Valid() bool {
+	switch e {
+	case APPROVE:
+		return true
+	case COMMENT:
+		return true
+	case REQUESTCHANGES:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for DiagramConfigInputNodesKind.
+const (
+	ACTOR     DiagramConfigInputNodesKind = "ACTOR"
+	COMPONENT DiagramConfigInputNodesKind = "COMPONENT"
+	DATASTORE DiagramConfigInputNodesKind = "DATASTORE"
+	OTHER     DiagramConfigInputNodesKind = "OTHER"
+	QUEUE     DiagramConfigInputNodesKind = "QUEUE"
+	SERVICE   DiagramConfigInputNodesKind = "SERVICE"
+	STATE     DiagramConfigInputNodesKind = "STATE"
+	STEP      DiagramConfigInputNodesKind = "STEP"
+)
+
+// Valid indicates whether the value is a known member of the DiagramConfigInputNodesKind enum.
+func (e DiagramConfigInputNodesKind) Valid() bool {
+	switch e {
+	case ACTOR:
+		return true
+	case COMPONENT:
+		return true
+	case DATASTORE:
+		return true
+	case OTHER:
+		return true
+	case QUEUE:
+		return true
+	case SERVICE:
+		return true
+	case STATE:
+		return true
+	case STEP:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ErrorErrorCode.
 const (
-	CAPTUREFAILED    ErrorErrorCode = "CAPTURE_FAILED"
-	CONFLICT         ErrorErrorCode = "CONFLICT"
-	INTERNAL         ErrorErrorCode = "INTERNAL"
-	INVALIDARGUMENT  ErrorErrorCode = "INVALID_ARGUMENT"
-	NOTFOUND         ErrorErrorCode = "NOT_FOUND"
-	PERMISSIONDENIED ErrorErrorCode = "PERMISSION_DENIED"
-	UNAUTHENTICATED  ErrorErrorCode = "UNAUTHENTICATED"
+	CAPTUREFAILED        ErrorErrorCode = "CAPTURE_FAILED"
+	CONFLICT             ErrorErrorCode = "CONFLICT"
+	INTERNAL             ErrorErrorCode = "INTERNAL"
+	INVALIDARGUMENT      ErrorErrorCode = "INVALID_ARGUMENT"
+	NOTFOUND             ErrorErrorCode = "NOT_FOUND"
+	PERMISSIONDENIED     ErrorErrorCode = "PERMISSION_DENIED"
+	PRECONDITIONFAILED   ErrorErrorCode = "PRECONDITION_FAILED"
+	PRECONDITIONREQUIRED ErrorErrorCode = "PRECONDITION_REQUIRED"
+	UNAUTHENTICATED      ErrorErrorCode = "UNAUTHENTICATED"
 )
 
 // Valid indicates whether the value is a known member of the ErrorErrorCode enum.
@@ -77,6 +172,10 @@ func (e ErrorErrorCode) Valid() bool {
 	case NOTFOUND:
 		return true
 	case PERMISSIONDENIED:
+		return true
+	case PRECONDITIONFAILED:
+		return true
+	case PRECONDITIONREQUIRED:
 		return true
 	case UNAUTHENTICATED:
 		return true
@@ -175,6 +274,21 @@ func (e SessionCapability) Valid() bool {
 	}
 }
 
+// Anchor defines model for Anchor.
+type Anchor struct {
+	CodeRange *CodeRange `json:"code_range"`
+
+	// ElementId Diagram node ID for DIAGRAM_ELEMENT.
+	ElementId *string `json:"element_id"`
+
+	// Id The anchored record; the diagram representation for DIAGRAM_ELEMENT; null for REVIEW and CODE_RANGE.
+	Id   *string    `json:"id"`
+	Type AnchorType `json:"type"`
+}
+
+// AnchorType defines model for AnchorType.
+type AnchorType string
+
 // AttentionSignal defines model for AttentionSignal.
 type AttentionSignal = review.AttentionSignal
 
@@ -190,14 +304,53 @@ type CodeRange = review.CodeRange
 // ContentOmitted Why the file is listed without contents.
 type ContentOmitted string
 
+// CreateDecisionRequest defines model for CreateDecisionRequest.
+type CreateDecisionRequest = review.CreateDecisionRequest
+
+// CreateDiscussionRequest defines model for CreateDiscussionRequest.
+type CreateDiscussionRequest = review.CreateDiscussionRequest
+
+// CreateMessageRequest defines model for CreateMessageRequest.
+type CreateMessageRequest = review.CreateMessageRequest
+
+// CreateRepresentationRequest defines model for CreateRepresentationRequest.
+type CreateRepresentationRequest = review.CreateRepresentationRequest
+
 // CreateReviewRequest defines model for CreateReviewRequest.
 type CreateReviewRequest = review.CreateReviewRequest
+
+// CreateTopicRequest defines model for CreateTopicRequest.
+type CreateTopicRequest = review.CreateTopicRequest
 
 // CreateWorkspaceRequest defines model for CreateWorkspaceRequest.
 type CreateWorkspaceRequest = review.CreateWorkspaceRequest
 
+// Decision defines model for Decision.
+type Decision = review.Decision
+
+// DecisionKind defines model for DecisionKind.
+type DecisionKind string
+
+// DiagramConfigInput defines model for DiagramConfigInput.
+type DiagramConfigInput struct {
+	Edges *[]DiagramEdge `json:"edges,omitempty"`
+	Nodes []struct {
+		EvidenceIds *IDList                     `json:"evidence_ids,omitempty"`
+		Id          string                      `json:"id"`
+		Kind        DiagramConfigInputNodesKind `json:"kind"`
+		Label       string                      `json:"label"`
+		Ref         *EntityRef                  `json:"ref,omitempty"`
+	} `json:"nodes"`
+}
+
+// DiagramConfigInputNodesKind defines model for DiagramConfigInput.Nodes.Kind.
+type DiagramConfigInputNodesKind string
+
 // DiagramEdge defines model for DiagramEdge.
 type DiagramEdge = review.DiagramEdge
+
+// Discussion defines model for Discussion.
+type Discussion = review.Discussion
 
 // EntityRef defines model for EntityRef.
 type EntityRef = review.EntityRef
@@ -220,6 +373,11 @@ type Evidence = review.Evidence
 // EvidenceListConfig defines model for EvidenceListConfig.
 type EvidenceListConfig = review.EvidenceListConfig
 
+// EvidenceListConfigInput defines model for EvidenceListConfigInput.
+type EvidenceListConfigInput struct {
+	EvidenceIds *IDList `json:"evidence_ids,omitempty"`
+}
+
 // FileContent defines model for FileContent.
 type FileContent = review.FileContent
 
@@ -237,6 +395,9 @@ type Health struct {
 
 // HealthStatus defines model for Health.Status.
 type HealthStatus string
+
+// IDList defines model for IDList.
+type IDList = []string
 
 // Import defines model for Import.
 type Import = review.Import
@@ -262,6 +423,12 @@ type Manifest = review.Manifest
 
 // ManifestRef defines model for ManifestRef.
 type ManifestRef = review.ManifestRef
+
+// Message defines model for Message.
+type Message = review.Message
+
+// MoveTopicRequest defines model for MoveTopicRequest.
+type MoveTopicRequest = review.MoveTopicRequest
 
 // ObservedChange defines model for ObservedChange.
 type ObservedChange = review.ObservedChange
@@ -298,11 +465,39 @@ type SessionCapability string
 // SourceChanges defines model for SourceChanges.
 type SourceChanges = review.SourceChanges
 
+// TextConfigInput defines model for TextConfigInput.
+type TextConfigInput struct {
+	Sections []struct {
+		// Body Markdown; rendered without raw HTML.
+		Body        string  `json:"body"`
+		EvidenceIds *IDList `json:"evidence_ids,omitempty"`
+		Heading     string  `json:"heading"`
+	} `json:"sections"`
+}
+
 // Topic defines model for Topic.
 type Topic = review.Topic
 
+// UpdateDiscussionRequest defines model for UpdateDiscussionRequest.
+type UpdateDiscussionRequest = review.UpdateDiscussionRequest
+
+// UpdateRepresentationRequest defines model for UpdateRepresentationRequest.
+type UpdateRepresentationRequest = review.UpdateRepresentationRequest
+
+// UpdateTopicRequest defines model for UpdateTopicRequest.
+type UpdateTopicRequest = review.UpdateTopicRequest
+
 // Workspace defines model for Workspace.
 type Workspace = review.Workspace
+
+// DiscussionId defines model for DiscussionId.
+type DiscussionId = string
+
+// IdempotencyKey defines model for IdempotencyKey.
+type IdempotencyKey = string
+
+// IfMatch defines model for IfMatch.
+type IfMatch = string
 
 // ReviewId defines model for ReviewId.
 type ReviewId = string
@@ -319,14 +514,74 @@ type TopicId = string
 // WorkspaceId defines model for WorkspaceId.
 type WorkspaceId = string
 
+// UpdateDiscussionParams defines parameters for UpdateDiscussion.
+type UpdateDiscussionParams struct {
+	// IfMatch ETag of the version the change is based on. Required; omitting it returns 428.
+	IfMatch *IfMatch `json:"If-Match,omitempty"`
+}
+
+// CreateMessageParams defines parameters for CreateMessage.
+type CreateMessageParams struct {
+	// IdempotencyKey Client-chosen unique key that makes a retried request safe.
+	IdempotencyKey *IdempotencyKey `json:"Idempotency-Key,omitempty"`
+}
+
+// StreamEventsParams defines parameters for StreamEvents.
+type StreamEventsParams struct {
+	After       *int64  `form:"after,omitempty" json:"after,omitempty"`
+	LastEventID *string `json:"Last-Event-ID,omitempty"`
+}
+
+// UpdateRepresentationParams defines parameters for UpdateRepresentation.
+type UpdateRepresentationParams struct {
+	// IfMatch ETag of the version the change is based on. Required; omitting it returns 428.
+	IfMatch *IfMatch `json:"If-Match,omitempty"`
+}
+
 // ListReviewsParams defines parameters for ListReviews.
 type ListReviewsParams struct {
 	WorkspaceId *string `form:"workspace_id,omitempty" json:"workspace_id,omitempty"`
 }
 
+// CreateReviewParams defines parameters for CreateReview.
+type CreateReviewParams struct {
+	// IdempotencyKey Client-chosen unique key that makes a retried request safe.
+	IdempotencyKey *IdempotencyKey `json:"Idempotency-Key,omitempty"`
+}
+
 // ListChangesParams defines parameters for ListChanges.
 type ListChangesParams struct {
 	RevisionId *string `form:"revision_id,omitempty" json:"revision_id,omitempty"`
+}
+
+// CreateDecisionParams defines parameters for CreateDecision.
+type CreateDecisionParams struct {
+	// IdempotencyKey Client-chosen unique key that makes a retried request safe.
+	IdempotencyKey *IdempotencyKey `json:"Idempotency-Key,omitempty"`
+}
+
+// CreateDiscussionParams defines parameters for CreateDiscussion.
+type CreateDiscussionParams struct {
+	// IdempotencyKey Client-chosen unique key that makes a retried request safe.
+	IdempotencyKey *IdempotencyKey `json:"Idempotency-Key,omitempty"`
+}
+
+// ImportManifestParams defines parameters for ImportManifest.
+type ImportManifestParams struct {
+	// IdempotencyKey Client-chosen unique key that makes a retried request safe.
+	IdempotencyKey *IdempotencyKey `json:"Idempotency-Key,omitempty"`
+}
+
+// CaptureRevisionParams defines parameters for CaptureRevision.
+type CaptureRevisionParams struct {
+	// IdempotencyKey Client-chosen unique key that makes a retried request safe.
+	IdempotencyKey *IdempotencyKey `json:"Idempotency-Key,omitempty"`
+}
+
+// CreateTopicParams defines parameters for CreateTopic.
+type CreateTopicParams struct {
+	// IdempotencyKey Client-chosen unique key that makes a retried request safe.
+	IdempotencyKey *IdempotencyKey `json:"Idempotency-Key,omitempty"`
 }
 
 // GetFileParams defines parameters for GetFile.
@@ -341,11 +596,62 @@ type ListRuntimeSessionsParams struct {
 	WorkspaceId *string `form:"workspace_id,omitempty" json:"workspace_id,omitempty"`
 }
 
+// UpdateTopicParams defines parameters for UpdateTopic.
+type UpdateTopicParams struct {
+	// IfMatch ETag of the version the change is based on. Required; omitting it returns 428.
+	IfMatch *IfMatch `json:"If-Match,omitempty"`
+}
+
+// MoveTopicParams defines parameters for MoveTopic.
+type MoveTopicParams struct {
+	// IfMatch ETag of the version the change is based on. Required; omitting it returns 428.
+	IfMatch *IfMatch `json:"If-Match,omitempty"`
+}
+
+// CreateRepresentationParams defines parameters for CreateRepresentation.
+type CreateRepresentationParams struct {
+	// IdempotencyKey Client-chosen unique key that makes a retried request safe.
+	IdempotencyKey *IdempotencyKey `json:"Idempotency-Key,omitempty"`
+}
+
+// CreateWorkspaceParams defines parameters for CreateWorkspace.
+type CreateWorkspaceParams struct {
+	// IdempotencyKey Client-chosen unique key that makes a retried request safe.
+	IdempotencyKey *IdempotencyKey `json:"Idempotency-Key,omitempty"`
+}
+
+// UpdateDiscussionJSONRequestBody defines body for UpdateDiscussion for application/json ContentType.
+type UpdateDiscussionJSONRequestBody = UpdateDiscussionRequest
+
+// CreateMessageJSONRequestBody defines body for CreateMessage for application/json ContentType.
+type CreateMessageJSONRequestBody = CreateMessageRequest
+
+// UpdateRepresentationJSONRequestBody defines body for UpdateRepresentation for application/json ContentType.
+type UpdateRepresentationJSONRequestBody = UpdateRepresentationRequest
+
 // CreateReviewJSONRequestBody defines body for CreateReview for application/json ContentType.
 type CreateReviewJSONRequestBody = CreateReviewRequest
 
+// CreateDecisionJSONRequestBody defines body for CreateDecision for application/json ContentType.
+type CreateDecisionJSONRequestBody = CreateDecisionRequest
+
+// CreateDiscussionJSONRequestBody defines body for CreateDiscussion for application/json ContentType.
+type CreateDiscussionJSONRequestBody = CreateDiscussionRequest
+
 // ImportManifestJSONRequestBody defines body for ImportManifest for application/json ContentType.
 type ImportManifestJSONRequestBody = ImportRequest
+
+// CreateTopicJSONRequestBody defines body for CreateTopic for application/json ContentType.
+type CreateTopicJSONRequestBody = CreateTopicRequest
+
+// UpdateTopicJSONRequestBody defines body for UpdateTopic for application/json ContentType.
+type UpdateTopicJSONRequestBody = UpdateTopicRequest
+
+// MoveTopicJSONRequestBody defines body for MoveTopic for application/json ContentType.
+type MoveTopicJSONRequestBody = MoveTopicRequest
+
+// CreateRepresentationJSONRequestBody defines body for CreateRepresentation for application/json ContentType.
+type CreateRepresentationJSONRequestBody = CreateRepresentationRequest
 
 // CreateWorkspaceJSONRequestBody defines body for CreateWorkspace for application/json ContentType.
 type CreateWorkspaceJSONRequestBody = CreateWorkspaceRequest
@@ -424,22 +730,69 @@ func WithRequestEditorFn(fn RequestEditorFn) ClientOption {
 // The interface specification for the client above.
 type ClientInterface interface {
 
+	// GetDiscussion performs a GET /v1/discussions/{discussionId} (the `GetDiscussion` operationId) request.
+	GetDiscussion(ctx context.Context, discussionId DiscussionId, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// UpdateDiscussionWithBody performs a PATCH /v1/discussions/{discussionId} (the `UpdateDiscussion` operationId) request,
+	// with any type of body and a specified content type.
+	//
+	// Resolve or reopen.
+	UpdateDiscussionWithBody(ctx context.Context, discussionId DiscussionId, params *UpdateDiscussionParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// UpdateDiscussion performs a PATCH /v1/discussions/{discussionId} (the `UpdateDiscussion` operationId) request.
+	// Takes a body of the `application/json` content type.
+	//
+	// Resolve or reopen.
+	UpdateDiscussion(ctx context.Context, discussionId DiscussionId, params *UpdateDiscussionParams, body UpdateDiscussionJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateMessageWithBody performs a POST /v1/discussions/{discussionId}/messages (the `CreateMessage` operationId) request,
+	// with any type of body and a specified content type.
+	//
+	// Reply. The discussion gets a new version.
+	CreateMessageWithBody(ctx context.Context, discussionId DiscussionId, params *CreateMessageParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateMessage performs a POST /v1/discussions/{discussionId}/messages (the `CreateMessage` operationId) request.
+	// Takes a body of the `application/json` content type.
+	//
+	// Reply. The discussion gets a new version.
+	CreateMessage(ctx context.Context, discussionId DiscussionId, params *CreateMessageParams, body CreateMessageJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// StreamEvents performs a GET /v1/events (the `StreamEvents` operationId) request.
+	//
+	// Server-sent events, one per change, in sequence order. Each SSE message has `id` = sequence,
+	// `event` = event type, and `data` = an `Event`. The stream resumes after `Last-Event-ID`, else
+	// after `after`, else from now. It opens with a `ready` event whose data is `{"sequence": N}`
+	// (the sequence it resumes from): fetch or refetch state then. Comments keep the connection alive.
+	StreamEvents(ctx context.Context, params *StreamEventsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// GetEvidence performs a GET /v1/evidence/{evidenceId} (the `GetEvidence` operationId) request.
 	GetEvidence(ctx context.Context, evidenceId string, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetHealth performs a GET /v1/health (the `GetHealth` operationId) request.
 	GetHealth(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// UpdateRepresentationWithBody performs a PATCH /v1/representations/{representationId} (the `UpdateRepresentation` operationId) request,
+	// with any type of body and a specified content type.
+	//
+	// Change the title, and replace the config when one is given. The type cannot change.
+	UpdateRepresentationWithBody(ctx context.Context, representationId string, params *UpdateRepresentationParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// UpdateRepresentation performs a PATCH /v1/representations/{representationId} (the `UpdateRepresentation` operationId) request.
+	// Takes a body of the `application/json` content type.
+	//
+	// Change the title, and replace the config when one is given. The type cannot change.
+	UpdateRepresentation(ctx context.Context, representationId string, params *UpdateRepresentationParams, body UpdateRepresentationJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// ListReviews performs a GET /v1/reviews (the `ListReviews` operationId) request.
 	ListReviews(ctx context.Context, params *ListReviewsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// CreateReviewWithBody performs a POST /v1/reviews (the `CreateReview` operationId) request,
 	// with any type of body and a specified content type.
-	CreateReviewWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+	CreateReviewWithBody(ctx context.Context, params *CreateReviewParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// CreateReview performs a POST /v1/reviews (the `CreateReview` operationId) request.
 	// Takes a body of the `application/json` content type.
-	CreateReview(ctx context.Context, body CreateReviewJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+	CreateReview(ctx context.Context, params *CreateReviewParams, body CreateReviewJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetReview performs a GET /v1/reviews/{reviewId} (the `GetReview` operationId) request.
 	GetReview(ctx context.Context, reviewId ReviewId, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -449,6 +802,40 @@ type ClientInterface interface {
 
 	// ListChanges performs a GET /v1/reviews/{reviewId}/changes (the `ListChanges` operationId) request.
 	ListChanges(ctx context.Context, reviewId ReviewId, params *ListChangesParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListDecisions performs a GET /v1/reviews/{reviewId}/decisions (the `ListDecisions` operationId) request.
+	ListDecisions(ctx context.Context, reviewId ReviewId, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateDecisionWithBody performs a POST /v1/reviews/{reviewId}/decisions (the `CreateDecision` operationId) request,
+	// with any type of body and a specified content type.
+	//
+	// Record a verdict on a revision (default the current one). COMMENT needs a body.
+	// REQUEST_CHANGES selects at least one finding or discussion of the review; other verdicts select none.
+	// Decisions are never modified.
+	CreateDecisionWithBody(ctx context.Context, reviewId ReviewId, params *CreateDecisionParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateDecision performs a POST /v1/reviews/{reviewId}/decisions (the `CreateDecision` operationId) request.
+	// Takes a body of the `application/json` content type.
+	//
+	// Record a verdict on a revision (default the current one). COMMENT needs a body.
+	// REQUEST_CHANGES selects at least one finding or discussion of the review; other verdicts select none.
+	// Decisions are never modified.
+	CreateDecision(ctx context.Context, reviewId ReviewId, params *CreateDecisionParams, body CreateDecisionJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListDiscussions performs a GET /v1/reviews/{reviewId}/discussions (the `ListDiscussions` operationId) request.
+	ListDiscussions(ctx context.Context, reviewId ReviewId, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateDiscussionWithBody performs a POST /v1/reviews/{reviewId}/discussions (the `CreateDiscussion` operationId) request,
+	// with any type of body and a specified content type.
+	//
+	// Open a discussion on an anchor with its first message. Commenting never changes code or starts work.
+	CreateDiscussionWithBody(ctx context.Context, reviewId ReviewId, params *CreateDiscussionParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateDiscussion performs a POST /v1/reviews/{reviewId}/discussions (the `CreateDiscussion` operationId) request.
+	// Takes a body of the `application/json` content type.
+	//
+	// Open a discussion on an anchor with its first message. Commenting never changes code or starts work.
+	CreateDiscussion(ctx context.Context, reviewId ReviewId, params *CreateDiscussionParams, body CreateDiscussionJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListEvidence performs a GET /v1/reviews/{reviewId}/evidence (the `ListEvidence` operationId) request.
 	ListEvidence(ctx context.Context, reviewId ReviewId, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -463,13 +850,13 @@ type ClientInterface interface {
 	// with any type of body and a specified content type.
 	//
 	// Validate a review manifest against a revision (default the current one) and store its records in one transaction.
-	ImportManifestWithBody(ctx context.Context, reviewId ReviewId, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+	ImportManifestWithBody(ctx context.Context, reviewId ReviewId, params *ImportManifestParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ImportManifest performs a POST /v1/reviews/{reviewId}/imports (the `ImportManifest` operationId) request.
 	// Takes a body of the `application/json` content type.
 	//
 	// Validate a review manifest against a revision (default the current one) and store its records in one transaction.
-	ImportManifest(ctx context.Context, reviewId ReviewId, body ImportManifestJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+	ImportManifest(ctx context.Context, reviewId ReviewId, params *ImportManifestParams, body ImportManifestJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListIntents performs a GET /v1/reviews/{reviewId}/intents (the `ListIntents` operationId) request.
 	ListIntents(ctx context.Context, reviewId ReviewId, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -480,12 +867,24 @@ type ClientInterface interface {
 	// CaptureRevision performs a POST /v1/reviews/{reviewId}/revisions (the `CaptureRevision` operationId) request.
 	//
 	// Capture every repository of the review's workspace into a new immutable revision, which becomes the current revision.
-	CaptureRevision(ctx context.Context, reviewId ReviewId, reqEditors ...RequestEditorFn) (*http.Response, error)
+	CaptureRevision(ctx context.Context, reviewId ReviewId, params *CaptureRevisionParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListTopics performs a GET /v1/reviews/{reviewId}/topics (the `ListTopics` operationId) request.
 	//
 	// Topics ordered roots first, then children by parent and position. Build the tree from parent_id.
 	ListTopics(ctx context.Context, reviewId ReviewId, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateTopicWithBody performs a POST /v1/reviews/{reviewId}/topics (the `CreateTopic` operationId) request,
+	// with any type of body and a specified content type.
+	//
+	// Create a MANUAL topic, last among its siblings.
+	CreateTopicWithBody(ctx context.Context, reviewId ReviewId, params *CreateTopicParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateTopic performs a POST /v1/reviews/{reviewId}/topics (the `CreateTopic` operationId) request.
+	// Takes a body of the `application/json` content type.
+	//
+	// Create a MANUAL topic, last among its siblings.
+	CreateTopic(ctx context.Context, reviewId ReviewId, params *CreateTopicParams, body CreateTopicJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetRevision performs a GET /v1/revisions/{revisionId} (the `GetRevision` operationId) request.
 	GetRevision(ctx context.Context, revisionId RevisionId, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -514,6 +913,30 @@ type ClientInterface interface {
 	// GetTopic performs a GET /v1/topics/{topicId} (the `GetTopic` operationId) request.
 	GetTopic(ctx context.Context, topicId TopicId, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// UpdateTopicWithBody performs a PATCH /v1/topics/{topicId} (the `UpdateTopic` operationId) request,
+	// with any type of body and a specified content type.
+	//
+	// Change the fields present. A link list replaces the topic's links of that kind. OBSOLETE topics no longer claim changed files.
+	UpdateTopicWithBody(ctx context.Context, topicId TopicId, params *UpdateTopicParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// UpdateTopic performs a PATCH /v1/topics/{topicId} (the `UpdateTopic` operationId) request.
+	// Takes a body of the `application/json` content type.
+	//
+	// Change the fields present. A link list replaces the topic's links of that kind. OBSOLETE topics no longer claim changed files.
+	UpdateTopic(ctx context.Context, topicId TopicId, params *UpdateTopicParams, body UpdateTopicJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// MoveTopicWithBody performs a POST /v1/topics/{topicId}/move (the `MoveTopic` operationId) request,
+	// with any type of body and a specified content type.
+	//
+	// Place the topic under a parent (null for the root) at a position among its siblings, clamped to the end. Siblings whose position changes get a new version.
+	MoveTopicWithBody(ctx context.Context, topicId TopicId, params *MoveTopicParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// MoveTopic performs a POST /v1/topics/{topicId}/move (the `MoveTopic` operationId) request.
+	// Takes a body of the `application/json` content type.
+	//
+	// Place the topic under a parent (null for the root) at a position among its siblings, clamped to the end. Siblings whose position changes get a new version.
+	MoveTopic(ctx context.Context, topicId TopicId, params *MoveTopicParams, body MoveTopicJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// ListTopicRepresentations performs a GET /v1/topics/{topicId}/representations (the `ListTopicRepresentations` operationId) request.
 	//
 	// Stored representations plus one entry per missing MVP type. Missing code and evidence views
@@ -521,16 +944,28 @@ type ClientInterface interface {
 	// unavailable (origin NONE).
 	ListTopicRepresentations(ctx context.Context, topicId TopicId, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// CreateRepresentationWithBody performs a POST /v1/topics/{topicId}/representations (the `CreateRepresentation` operationId) request,
+	// with any type of body and a specified content type.
+	//
+	// Add a MANUAL representation authored against the review's current revision. Give the config matching the type; references are record IDs of the review.
+	CreateRepresentationWithBody(ctx context.Context, topicId TopicId, params *CreateRepresentationParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateRepresentation performs a POST /v1/topics/{topicId}/representations (the `CreateRepresentation` operationId) request.
+	// Takes a body of the `application/json` content type.
+	//
+	// Add a MANUAL representation authored against the review's current revision. Give the config matching the type; references are record IDs of the review.
+	CreateRepresentation(ctx context.Context, topicId TopicId, params *CreateRepresentationParams, body CreateRepresentationJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// ListWorkspaces performs a GET /v1/workspaces (the `ListWorkspaces` operationId) request.
 	ListWorkspaces(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// CreateWorkspaceWithBody performs a POST /v1/workspaces (the `CreateWorkspace` operationId) request,
 	// with any type of body and a specified content type.
-	CreateWorkspaceWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+	CreateWorkspaceWithBody(ctx context.Context, params *CreateWorkspaceParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// CreateWorkspace performs a POST /v1/workspaces (the `CreateWorkspace` operationId) request.
 	// Takes a body of the `application/json` content type.
-	CreateWorkspace(ctx context.Context, body CreateWorkspaceJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+	CreateWorkspace(ctx context.Context, params *CreateWorkspaceParams, body CreateWorkspaceJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetWorkspace performs a GET /v1/workspaces/{workspaceId} (the `GetWorkspace` operationId) request.
 	GetWorkspace(ctx context.Context, workspaceId WorkspaceId, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -544,6 +979,101 @@ type ClientInterface interface {
 	//
 	// Explicitly associate a runtime session with a workspace. Idempotent.
 	AssociateRuntimeSession(ctx context.Context, workspaceId WorkspaceId, runtimeSessionId RuntimeSessionId, reqEditors ...RequestEditorFn) (*http.Response, error)
+}
+
+// GetDiscussion performs a GET /v1/discussions/{discussionId} (the `GetDiscussion` operationId) request.
+func (c *Client) GetDiscussion(ctx context.Context, discussionId DiscussionId, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetDiscussionRequest(c.Server, discussionId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// UpdateDiscussionWithBody performs a PATCH /v1/discussions/{discussionId} (the `UpdateDiscussion` operationId) request,
+// with any type of body and a specified content type.
+//
+// Resolve or reopen.
+func (c *Client) UpdateDiscussionWithBody(ctx context.Context, discussionId DiscussionId, params *UpdateDiscussionParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateDiscussionRequestWithBody(c.Server, discussionId, params, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// UpdateDiscussion performs a PATCH /v1/discussions/{discussionId} (the `UpdateDiscussion` operationId) request.
+// Takes a body of the `application/json` content type.
+//
+// Resolve or reopen.
+func (c *Client) UpdateDiscussion(ctx context.Context, discussionId DiscussionId, params *UpdateDiscussionParams, body UpdateDiscussionJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateDiscussionRequest(c.Server, discussionId, params, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// CreateMessageWithBody performs a POST /v1/discussions/{discussionId}/messages (the `CreateMessage` operationId) request,
+// with any type of body and a specified content type.
+//
+// Reply. The discussion gets a new version.
+func (c *Client) CreateMessageWithBody(ctx context.Context, discussionId DiscussionId, params *CreateMessageParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateMessageRequestWithBody(c.Server, discussionId, params, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// CreateMessage performs a POST /v1/discussions/{discussionId}/messages (the `CreateMessage` operationId) request.
+// Takes a body of the `application/json` content type.
+//
+// Reply. The discussion gets a new version.
+func (c *Client) CreateMessage(ctx context.Context, discussionId DiscussionId, params *CreateMessageParams, body CreateMessageJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateMessageRequest(c.Server, discussionId, params, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// StreamEvents performs a GET /v1/events (the `StreamEvents` operationId) request.
+//
+// Server-sent events, one per change, in sequence order. Each SSE message has `id` = sequence,
+// `event` = event type, and `data` = an `Event`. The stream resumes after `Last-Event-ID`, else
+// after `after`, else from now. It opens with a `ready` event whose data is `{"sequence": N}`
+// (the sequence it resumes from): fetch or refetch state then. Comments keep the connection alive.
+func (c *Client) StreamEvents(ctx context.Context, params *StreamEventsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewStreamEventsRequest(c.Server, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
 }
 
 // GetEvidence performs a GET /v1/evidence/{evidenceId} (the `GetEvidence` operationId) request.
@@ -572,6 +1102,38 @@ func (c *Client) GetHealth(ctx context.Context, reqEditors ...RequestEditorFn) (
 	return c.Client.Do(req)
 }
 
+// UpdateRepresentationWithBody performs a PATCH /v1/representations/{representationId} (the `UpdateRepresentation` operationId) request,
+// with any type of body and a specified content type.
+//
+// Change the title, and replace the config when one is given. The type cannot change.
+func (c *Client) UpdateRepresentationWithBody(ctx context.Context, representationId string, params *UpdateRepresentationParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateRepresentationRequestWithBody(c.Server, representationId, params, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// UpdateRepresentation performs a PATCH /v1/representations/{representationId} (the `UpdateRepresentation` operationId) request.
+// Takes a body of the `application/json` content type.
+//
+// Change the title, and replace the config when one is given. The type cannot change.
+func (c *Client) UpdateRepresentation(ctx context.Context, representationId string, params *UpdateRepresentationParams, body UpdateRepresentationJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateRepresentationRequest(c.Server, representationId, params, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 // ListReviews performs a GET /v1/reviews (the `ListReviews` operationId) request.
 func (c *Client) ListReviews(ctx context.Context, params *ListReviewsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewListReviewsRequest(c.Server, params)
@@ -587,8 +1149,8 @@ func (c *Client) ListReviews(ctx context.Context, params *ListReviewsParams, req
 
 // CreateReviewWithBody performs a POST /v1/reviews (the `CreateReview` operationId) request,
 // with any type of body and a specified content type.
-func (c *Client) CreateReviewWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewCreateReviewRequestWithBody(c.Server, contentType, body)
+func (c *Client) CreateReviewWithBody(ctx context.Context, params *CreateReviewParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateReviewRequestWithBody(c.Server, params, contentType, body)
 	if err != nil {
 		return nil, err
 	}
@@ -601,8 +1163,8 @@ func (c *Client) CreateReviewWithBody(ctx context.Context, contentType string, b
 
 // CreateReview performs a POST /v1/reviews (the `CreateReview` operationId) request.
 // Takes a body of the `application/json` content type.
-func (c *Client) CreateReview(ctx context.Context, body CreateReviewJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewCreateReviewRequest(c.Server, body)
+func (c *Client) CreateReview(ctx context.Context, params *CreateReviewParams, body CreateReviewJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateReviewRequest(c.Server, params, body)
 	if err != nil {
 		return nil, err
 	}
@@ -642,6 +1204,100 @@ func (c *Client) ListAttention(ctx context.Context, reviewId ReviewId, reqEditor
 // ListChanges performs a GET /v1/reviews/{reviewId}/changes (the `ListChanges` operationId) request.
 func (c *Client) ListChanges(ctx context.Context, reviewId ReviewId, params *ListChangesParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewListChangesRequest(c.Server, reviewId, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ListDecisions performs a GET /v1/reviews/{reviewId}/decisions (the `ListDecisions` operationId) request.
+func (c *Client) ListDecisions(ctx context.Context, reviewId ReviewId, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListDecisionsRequest(c.Server, reviewId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// CreateDecisionWithBody performs a POST /v1/reviews/{reviewId}/decisions (the `CreateDecision` operationId) request,
+// with any type of body and a specified content type.
+//
+// Record a verdict on a revision (default the current one). COMMENT needs a body.
+// REQUEST_CHANGES selects at least one finding or discussion of the review; other verdicts select none.
+// Decisions are never modified.
+func (c *Client) CreateDecisionWithBody(ctx context.Context, reviewId ReviewId, params *CreateDecisionParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateDecisionRequestWithBody(c.Server, reviewId, params, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// CreateDecision performs a POST /v1/reviews/{reviewId}/decisions (the `CreateDecision` operationId) request.
+// Takes a body of the `application/json` content type.
+//
+// Record a verdict on a revision (default the current one). COMMENT needs a body.
+// REQUEST_CHANGES selects at least one finding or discussion of the review; other verdicts select none.
+// Decisions are never modified.
+func (c *Client) CreateDecision(ctx context.Context, reviewId ReviewId, params *CreateDecisionParams, body CreateDecisionJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateDecisionRequest(c.Server, reviewId, params, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ListDiscussions performs a GET /v1/reviews/{reviewId}/discussions (the `ListDiscussions` operationId) request.
+func (c *Client) ListDiscussions(ctx context.Context, reviewId ReviewId, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListDiscussionsRequest(c.Server, reviewId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// CreateDiscussionWithBody performs a POST /v1/reviews/{reviewId}/discussions (the `CreateDiscussion` operationId) request,
+// with any type of body and a specified content type.
+//
+// Open a discussion on an anchor with its first message. Commenting never changes code or starts work.
+func (c *Client) CreateDiscussionWithBody(ctx context.Context, reviewId ReviewId, params *CreateDiscussionParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateDiscussionRequestWithBody(c.Server, reviewId, params, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// CreateDiscussion performs a POST /v1/reviews/{reviewId}/discussions (the `CreateDiscussion` operationId) request.
+// Takes a body of the `application/json` content type.
+//
+// Open a discussion on an anchor with its first message. Commenting never changes code or starts work.
+func (c *Client) CreateDiscussion(ctx context.Context, reviewId ReviewId, params *CreateDiscussionParams, body CreateDiscussionJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateDiscussionRequest(c.Server, reviewId, params, body)
 	if err != nil {
 		return nil, err
 	}
@@ -695,8 +1351,8 @@ func (c *Client) ListImports(ctx context.Context, reviewId ReviewId, reqEditors 
 // with any type of body and a specified content type.
 //
 // Validate a review manifest against a revision (default the current one) and store its records in one transaction.
-func (c *Client) ImportManifestWithBody(ctx context.Context, reviewId ReviewId, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewImportManifestRequestWithBody(c.Server, reviewId, contentType, body)
+func (c *Client) ImportManifestWithBody(ctx context.Context, reviewId ReviewId, params *ImportManifestParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewImportManifestRequestWithBody(c.Server, reviewId, params, contentType, body)
 	if err != nil {
 		return nil, err
 	}
@@ -711,8 +1367,8 @@ func (c *Client) ImportManifestWithBody(ctx context.Context, reviewId ReviewId, 
 // Takes a body of the `application/json` content type.
 //
 // Validate a review manifest against a revision (default the current one) and store its records in one transaction.
-func (c *Client) ImportManifest(ctx context.Context, reviewId ReviewId, body ImportManifestJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewImportManifestRequest(c.Server, reviewId, body)
+func (c *Client) ImportManifest(ctx context.Context, reviewId ReviewId, params *ImportManifestParams, body ImportManifestJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewImportManifestRequest(c.Server, reviewId, params, body)
 	if err != nil {
 		return nil, err
 	}
@@ -752,8 +1408,8 @@ func (c *Client) ListRevisions(ctx context.Context, reviewId ReviewId, reqEditor
 // CaptureRevision performs a POST /v1/reviews/{reviewId}/revisions (the `CaptureRevision` operationId) request.
 //
 // Capture every repository of the review's workspace into a new immutable revision, which becomes the current revision.
-func (c *Client) CaptureRevision(ctx context.Context, reviewId ReviewId, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewCaptureRevisionRequest(c.Server, reviewId)
+func (c *Client) CaptureRevision(ctx context.Context, reviewId ReviewId, params *CaptureRevisionParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCaptureRevisionRequest(c.Server, reviewId, params)
 	if err != nil {
 		return nil, err
 	}
@@ -769,6 +1425,38 @@ func (c *Client) CaptureRevision(ctx context.Context, reviewId ReviewId, reqEdit
 // Topics ordered roots first, then children by parent and position. Build the tree from parent_id.
 func (c *Client) ListTopics(ctx context.Context, reviewId ReviewId, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewListTopicsRequest(c.Server, reviewId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// CreateTopicWithBody performs a POST /v1/reviews/{reviewId}/topics (the `CreateTopic` operationId) request,
+// with any type of body and a specified content type.
+//
+// Create a MANUAL topic, last among its siblings.
+func (c *Client) CreateTopicWithBody(ctx context.Context, reviewId ReviewId, params *CreateTopicParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateTopicRequestWithBody(c.Server, reviewId, params, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// CreateTopic performs a POST /v1/reviews/{reviewId}/topics (the `CreateTopic` operationId) request.
+// Takes a body of the `application/json` content type.
+//
+// Create a MANUAL topic, last among its siblings.
+func (c *Client) CreateTopic(ctx context.Context, reviewId ReviewId, params *CreateTopicParams, body CreateTopicJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateTopicRequest(c.Server, reviewId, params, body)
 	if err != nil {
 		return nil, err
 	}
@@ -876,6 +1564,70 @@ func (c *Client) GetTopic(ctx context.Context, topicId TopicId, reqEditors ...Re
 	return c.Client.Do(req)
 }
 
+// UpdateTopicWithBody performs a PATCH /v1/topics/{topicId} (the `UpdateTopic` operationId) request,
+// with any type of body and a specified content type.
+//
+// Change the fields present. A link list replaces the topic's links of that kind. OBSOLETE topics no longer claim changed files.
+func (c *Client) UpdateTopicWithBody(ctx context.Context, topicId TopicId, params *UpdateTopicParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateTopicRequestWithBody(c.Server, topicId, params, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// UpdateTopic performs a PATCH /v1/topics/{topicId} (the `UpdateTopic` operationId) request.
+// Takes a body of the `application/json` content type.
+//
+// Change the fields present. A link list replaces the topic's links of that kind. OBSOLETE topics no longer claim changed files.
+func (c *Client) UpdateTopic(ctx context.Context, topicId TopicId, params *UpdateTopicParams, body UpdateTopicJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateTopicRequest(c.Server, topicId, params, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// MoveTopicWithBody performs a POST /v1/topics/{topicId}/move (the `MoveTopic` operationId) request,
+// with any type of body and a specified content type.
+//
+// Place the topic under a parent (null for the root) at a position among its siblings, clamped to the end. Siblings whose position changes get a new version.
+func (c *Client) MoveTopicWithBody(ctx context.Context, topicId TopicId, params *MoveTopicParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewMoveTopicRequestWithBody(c.Server, topicId, params, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// MoveTopic performs a POST /v1/topics/{topicId}/move (the `MoveTopic` operationId) request.
+// Takes a body of the `application/json` content type.
+//
+// Place the topic under a parent (null for the root) at a position among its siblings, clamped to the end. Siblings whose position changes get a new version.
+func (c *Client) MoveTopic(ctx context.Context, topicId TopicId, params *MoveTopicParams, body MoveTopicJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewMoveTopicRequest(c.Server, topicId, params, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 // ListTopicRepresentations performs a GET /v1/topics/{topicId}/representations (the `ListTopicRepresentations` operationId) request.
 //
 // Stored representations plus one entry per missing MVP type. Missing code and evidence views
@@ -883,6 +1635,38 @@ func (c *Client) GetTopic(ctx context.Context, topicId TopicId, reqEditors ...Re
 // unavailable (origin NONE).
 func (c *Client) ListTopicRepresentations(ctx context.Context, topicId TopicId, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewListTopicRepresentationsRequest(c.Server, topicId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// CreateRepresentationWithBody performs a POST /v1/topics/{topicId}/representations (the `CreateRepresentation` operationId) request,
+// with any type of body and a specified content type.
+//
+// Add a MANUAL representation authored against the review's current revision. Give the config matching the type; references are record IDs of the review.
+func (c *Client) CreateRepresentationWithBody(ctx context.Context, topicId TopicId, params *CreateRepresentationParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateRepresentationRequestWithBody(c.Server, topicId, params, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// CreateRepresentation performs a POST /v1/topics/{topicId}/representations (the `CreateRepresentation` operationId) request.
+// Takes a body of the `application/json` content type.
+//
+// Add a MANUAL representation authored against the review's current revision. Give the config matching the type; references are record IDs of the review.
+func (c *Client) CreateRepresentation(ctx context.Context, topicId TopicId, params *CreateRepresentationParams, body CreateRepresentationJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateRepresentationRequest(c.Server, topicId, params, body)
 	if err != nil {
 		return nil, err
 	}
@@ -908,8 +1692,8 @@ func (c *Client) ListWorkspaces(ctx context.Context, reqEditors ...RequestEditor
 
 // CreateWorkspaceWithBody performs a POST /v1/workspaces (the `CreateWorkspace` operationId) request,
 // with any type of body and a specified content type.
-func (c *Client) CreateWorkspaceWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewCreateWorkspaceRequestWithBody(c.Server, contentType, body)
+func (c *Client) CreateWorkspaceWithBody(ctx context.Context, params *CreateWorkspaceParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateWorkspaceRequestWithBody(c.Server, params, contentType, body)
 	if err != nil {
 		return nil, err
 	}
@@ -922,8 +1706,8 @@ func (c *Client) CreateWorkspaceWithBody(ctx context.Context, contentType string
 
 // CreateWorkspace performs a POST /v1/workspaces (the `CreateWorkspace` operationId) request.
 // Takes a body of the `application/json` content type.
-func (c *Client) CreateWorkspace(ctx context.Context, body CreateWorkspaceJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewCreateWorkspaceRequest(c.Server, body)
+func (c *Client) CreateWorkspace(ctx context.Context, params *CreateWorkspaceParams, body CreateWorkspaceJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateWorkspaceRequest(c.Server, params, body)
 	if err != nil {
 		return nil, err
 	}
@@ -975,6 +1759,233 @@ func (c *Client) AssociateRuntimeSession(ctx context.Context, workspaceId Worksp
 		return nil, err
 	}
 	return c.Client.Do(req)
+}
+
+// NewGetDiscussionRequest constructs an http.Request for the GetDiscussion method
+func NewGetDiscussionRequest(server string, discussionId DiscussionId) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "discussionId", discussionId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/discussions/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewUpdateDiscussionRequest calls the generic UpdateDiscussion builder with application/json body
+func NewUpdateDiscussionRequest(server string, discussionId DiscussionId, params *UpdateDiscussionParams, body UpdateDiscussionJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewUpdateDiscussionRequestWithBody(server, discussionId, params, "application/json", bodyReader)
+}
+
+// NewUpdateDiscussionRequestWithBody constructs an http.Request for the UpdateDiscussion method, with any body, and a specified content type
+func NewUpdateDiscussionRequestWithBody(server string, discussionId DiscussionId, params *UpdateDiscussionParams, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "discussionId", discussionId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/discussions/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPatch, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	if params != nil {
+
+		if params.IfMatch != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "If-Match", *params.IfMatch, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("If-Match", headerParam0)
+		}
+
+	}
+
+	return req, nil
+}
+
+// NewCreateMessageRequest calls the generic CreateMessage builder with application/json body
+func NewCreateMessageRequest(server string, discussionId DiscussionId, params *CreateMessageParams, body CreateMessageJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewCreateMessageRequestWithBody(server, discussionId, params, "application/json", bodyReader)
+}
+
+// NewCreateMessageRequestWithBody constructs an http.Request for the CreateMessage method, with any body, and a specified content type
+func NewCreateMessageRequestWithBody(server string, discussionId DiscussionId, params *CreateMessageParams, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "discussionId", discussionId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/discussions/%s/messages", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	if params != nil {
+
+		if params.IdempotencyKey != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "Idempotency-Key", *params.IdempotencyKey, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("Idempotency-Key", headerParam0)
+		}
+
+	}
+
+	return req, nil
+}
+
+// NewStreamEventsRequest constructs an http.Request for the StreamEvents method
+func NewStreamEventsRequest(server string, params *StreamEventsParams) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/events")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.After != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "after", *params.After, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: "int64"}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+
+		if params.LastEventID != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "Last-Event-ID", *params.LastEventID, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("Last-Event-ID", headerParam0)
+		}
+
+	}
+
+	return req, nil
 }
 
 // NewGetEvidenceRequest constructs an http.Request for the GetEvidence method
@@ -1038,6 +2049,68 @@ func NewGetHealthRequest(server string) (*http.Request, error) {
 	return req, nil
 }
 
+// NewUpdateRepresentationRequest calls the generic UpdateRepresentation builder with application/json body
+func NewUpdateRepresentationRequest(server string, representationId string, params *UpdateRepresentationParams, body UpdateRepresentationJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewUpdateRepresentationRequestWithBody(server, representationId, params, "application/json", bodyReader)
+}
+
+// NewUpdateRepresentationRequestWithBody constructs an http.Request for the UpdateRepresentation method, with any body, and a specified content type
+func NewUpdateRepresentationRequestWithBody(server string, representationId string, params *UpdateRepresentationParams, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "representationId", representationId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/representations/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPatch, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	if params != nil {
+
+		if params.IfMatch != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "If-Match", *params.IfMatch, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("If-Match", headerParam0)
+		}
+
+	}
+
+	return req, nil
+}
+
 // NewListReviewsRequest constructs an http.Request for the ListReviews method
 func NewListReviewsRequest(server string, params *ListReviewsParams) (*http.Request, error) {
 	var err error
@@ -1093,18 +2166,18 @@ func NewListReviewsRequest(server string, params *ListReviewsParams) (*http.Requ
 }
 
 // NewCreateReviewRequest calls the generic CreateReview builder with application/json body
-func NewCreateReviewRequest(server string, body CreateReviewJSONRequestBody) (*http.Request, error) {
+func NewCreateReviewRequest(server string, params *CreateReviewParams, body CreateReviewJSONRequestBody) (*http.Request, error) {
 	var bodyReader io.Reader
 	buf, err := json.Marshal(body)
 	if err != nil {
 		return nil, err
 	}
 	bodyReader = bytes.NewReader(buf)
-	return NewCreateReviewRequestWithBody(server, "application/json", bodyReader)
+	return NewCreateReviewRequestWithBody(server, params, "application/json", bodyReader)
 }
 
 // NewCreateReviewRequestWithBody constructs an http.Request for the CreateReview method, with any body, and a specified content type
-func NewCreateReviewRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+func NewCreateReviewRequestWithBody(server string, params *CreateReviewParams, contentType string, body io.Reader) (*http.Request, error) {
 	var err error
 
 	serverURL, err := url.Parse(server)
@@ -1128,6 +2201,21 @@ func NewCreateReviewRequestWithBody(server string, contentType string, body io.R
 	}
 
 	req.Header.Add("Content-Type", contentType)
+
+	if params != nil {
+
+		if params.IdempotencyKey != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "Idempotency-Key", *params.IdempotencyKey, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("Idempotency-Key", headerParam0)
+		}
+
+	}
 
 	return req, nil
 }
@@ -1261,6 +2349,198 @@ func NewListChangesRequest(server string, reviewId ReviewId, params *ListChanges
 	return req, nil
 }
 
+// NewListDecisionsRequest constructs an http.Request for the ListDecisions method
+func NewListDecisionsRequest(server string, reviewId ReviewId) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "reviewId", reviewId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/reviews/%s/decisions", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewCreateDecisionRequest calls the generic CreateDecision builder with application/json body
+func NewCreateDecisionRequest(server string, reviewId ReviewId, params *CreateDecisionParams, body CreateDecisionJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewCreateDecisionRequestWithBody(server, reviewId, params, "application/json", bodyReader)
+}
+
+// NewCreateDecisionRequestWithBody constructs an http.Request for the CreateDecision method, with any body, and a specified content type
+func NewCreateDecisionRequestWithBody(server string, reviewId ReviewId, params *CreateDecisionParams, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "reviewId", reviewId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/reviews/%s/decisions", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	if params != nil {
+
+		if params.IdempotencyKey != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "Idempotency-Key", *params.IdempotencyKey, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("Idempotency-Key", headerParam0)
+		}
+
+	}
+
+	return req, nil
+}
+
+// NewListDiscussionsRequest constructs an http.Request for the ListDiscussions method
+func NewListDiscussionsRequest(server string, reviewId ReviewId) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "reviewId", reviewId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/reviews/%s/discussions", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewCreateDiscussionRequest calls the generic CreateDiscussion builder with application/json body
+func NewCreateDiscussionRequest(server string, reviewId ReviewId, params *CreateDiscussionParams, body CreateDiscussionJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewCreateDiscussionRequestWithBody(server, reviewId, params, "application/json", bodyReader)
+}
+
+// NewCreateDiscussionRequestWithBody constructs an http.Request for the CreateDiscussion method, with any body, and a specified content type
+func NewCreateDiscussionRequestWithBody(server string, reviewId ReviewId, params *CreateDiscussionParams, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "reviewId", reviewId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/reviews/%s/discussions", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	if params != nil {
+
+		if params.IdempotencyKey != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "Idempotency-Key", *params.IdempotencyKey, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("Idempotency-Key", headerParam0)
+		}
+
+	}
+
+	return req, nil
+}
+
 // NewListEvidenceRequest constructs an http.Request for the ListEvidence method
 func NewListEvidenceRequest(server string, reviewId ReviewId) (*http.Request, error) {
 	var err error
@@ -1364,18 +2644,18 @@ func NewListImportsRequest(server string, reviewId ReviewId) (*http.Request, err
 }
 
 // NewImportManifestRequest calls the generic ImportManifest builder with application/json body
-func NewImportManifestRequest(server string, reviewId ReviewId, body ImportManifestJSONRequestBody) (*http.Request, error) {
+func NewImportManifestRequest(server string, reviewId ReviewId, params *ImportManifestParams, body ImportManifestJSONRequestBody) (*http.Request, error) {
 	var bodyReader io.Reader
 	buf, err := json.Marshal(body)
 	if err != nil {
 		return nil, err
 	}
 	bodyReader = bytes.NewReader(buf)
-	return NewImportManifestRequestWithBody(server, reviewId, "application/json", bodyReader)
+	return NewImportManifestRequestWithBody(server, reviewId, params, "application/json", bodyReader)
 }
 
 // NewImportManifestRequestWithBody constructs an http.Request for the ImportManifest method, with any body, and a specified content type
-func NewImportManifestRequestWithBody(server string, reviewId ReviewId, contentType string, body io.Reader) (*http.Request, error) {
+func NewImportManifestRequestWithBody(server string, reviewId ReviewId, params *ImportManifestParams, contentType string, body io.Reader) (*http.Request, error) {
 	var err error
 
 	var pathParam0 string
@@ -1406,6 +2686,21 @@ func NewImportManifestRequestWithBody(server string, reviewId ReviewId, contentT
 	}
 
 	req.Header.Add("Content-Type", contentType)
+
+	if params != nil {
+
+		if params.IdempotencyKey != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "Idempotency-Key", *params.IdempotencyKey, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("Idempotency-Key", headerParam0)
+		}
+
+	}
 
 	return req, nil
 }
@@ -1479,7 +2774,7 @@ func NewListRevisionsRequest(server string, reviewId ReviewId) (*http.Request, e
 }
 
 // NewCaptureRevisionRequest constructs an http.Request for the CaptureRevision method
-func NewCaptureRevisionRequest(server string, reviewId ReviewId) (*http.Request, error) {
+func NewCaptureRevisionRequest(server string, reviewId ReviewId, params *CaptureRevisionParams) (*http.Request, error) {
 	var err error
 
 	var pathParam0 string
@@ -1507,6 +2802,21 @@ func NewCaptureRevisionRequest(server string, reviewId ReviewId) (*http.Request,
 	req, err := http.NewRequest(http.MethodPost, queryURL.String(), nil)
 	if err != nil {
 		return nil, err
+	}
+
+	if params != nil {
+
+		if params.IdempotencyKey != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "Idempotency-Key", *params.IdempotencyKey, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("Idempotency-Key", headerParam0)
+		}
+
 	}
 
 	return req, nil
@@ -1541,6 +2851,68 @@ func NewListTopicsRequest(server string, reviewId ReviewId) (*http.Request, erro
 	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
 	if err != nil {
 		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewCreateTopicRequest calls the generic CreateTopic builder with application/json body
+func NewCreateTopicRequest(server string, reviewId ReviewId, params *CreateTopicParams, body CreateTopicJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewCreateTopicRequestWithBody(server, reviewId, params, "application/json", bodyReader)
+}
+
+// NewCreateTopicRequestWithBody constructs an http.Request for the CreateTopic method, with any body, and a specified content type
+func NewCreateTopicRequestWithBody(server string, reviewId ReviewId, params *CreateTopicParams, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "reviewId", reviewId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/reviews/%s/topics", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	if params != nil {
+
+		if params.IdempotencyKey != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "Idempotency-Key", *params.IdempotencyKey, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("Idempotency-Key", headerParam0)
+		}
+
 	}
 
 	return req, nil
@@ -1828,6 +3200,130 @@ func NewGetTopicRequest(server string, topicId TopicId) (*http.Request, error) {
 	return req, nil
 }
 
+// NewUpdateTopicRequest calls the generic UpdateTopic builder with application/json body
+func NewUpdateTopicRequest(server string, topicId TopicId, params *UpdateTopicParams, body UpdateTopicJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewUpdateTopicRequestWithBody(server, topicId, params, "application/json", bodyReader)
+}
+
+// NewUpdateTopicRequestWithBody constructs an http.Request for the UpdateTopic method, with any body, and a specified content type
+func NewUpdateTopicRequestWithBody(server string, topicId TopicId, params *UpdateTopicParams, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "topicId", topicId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/topics/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPatch, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	if params != nil {
+
+		if params.IfMatch != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "If-Match", *params.IfMatch, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("If-Match", headerParam0)
+		}
+
+	}
+
+	return req, nil
+}
+
+// NewMoveTopicRequest calls the generic MoveTopic builder with application/json body
+func NewMoveTopicRequest(server string, topicId TopicId, params *MoveTopicParams, body MoveTopicJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewMoveTopicRequestWithBody(server, topicId, params, "application/json", bodyReader)
+}
+
+// NewMoveTopicRequestWithBody constructs an http.Request for the MoveTopic method, with any body, and a specified content type
+func NewMoveTopicRequestWithBody(server string, topicId TopicId, params *MoveTopicParams, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "topicId", topicId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/topics/%s/move", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	if params != nil {
+
+		if params.IfMatch != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "If-Match", *params.IfMatch, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("If-Match", headerParam0)
+		}
+
+	}
+
+	return req, nil
+}
+
 // NewListTopicRepresentationsRequest constructs an http.Request for the ListTopicRepresentations method
 func NewListTopicRepresentationsRequest(server string, topicId TopicId) (*http.Request, error) {
 	var err error
@@ -1862,6 +3358,68 @@ func NewListTopicRepresentationsRequest(server string, topicId TopicId) (*http.R
 	return req, nil
 }
 
+// NewCreateRepresentationRequest calls the generic CreateRepresentation builder with application/json body
+func NewCreateRepresentationRequest(server string, topicId TopicId, params *CreateRepresentationParams, body CreateRepresentationJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewCreateRepresentationRequestWithBody(server, topicId, params, "application/json", bodyReader)
+}
+
+// NewCreateRepresentationRequestWithBody constructs an http.Request for the CreateRepresentation method, with any body, and a specified content type
+func NewCreateRepresentationRequestWithBody(server string, topicId TopicId, params *CreateRepresentationParams, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "topicId", topicId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/topics/%s/representations", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	if params != nil {
+
+		if params.IdempotencyKey != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "Idempotency-Key", *params.IdempotencyKey, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("Idempotency-Key", headerParam0)
+		}
+
+	}
+
+	return req, nil
+}
+
 // NewListWorkspacesRequest constructs an http.Request for the ListWorkspaces method
 func NewListWorkspacesRequest(server string) (*http.Request, error) {
 	var err error
@@ -1890,18 +3448,18 @@ func NewListWorkspacesRequest(server string) (*http.Request, error) {
 }
 
 // NewCreateWorkspaceRequest calls the generic CreateWorkspace builder with application/json body
-func NewCreateWorkspaceRequest(server string, body CreateWorkspaceJSONRequestBody) (*http.Request, error) {
+func NewCreateWorkspaceRequest(server string, params *CreateWorkspaceParams, body CreateWorkspaceJSONRequestBody) (*http.Request, error) {
 	var bodyReader io.Reader
 	buf, err := json.Marshal(body)
 	if err != nil {
 		return nil, err
 	}
 	bodyReader = bytes.NewReader(buf)
-	return NewCreateWorkspaceRequestWithBody(server, "application/json", bodyReader)
+	return NewCreateWorkspaceRequestWithBody(server, params, "application/json", bodyReader)
 }
 
 // NewCreateWorkspaceRequestWithBody constructs an http.Request for the CreateWorkspace method, with any body, and a specified content type
-func NewCreateWorkspaceRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+func NewCreateWorkspaceRequestWithBody(server string, params *CreateWorkspaceParams, contentType string, body io.Reader) (*http.Request, error) {
 	var err error
 
 	serverURL, err := url.Parse(server)
@@ -1925,6 +3483,21 @@ func NewCreateWorkspaceRequestWithBody(server string, contentType string, body i
 	}
 
 	req.Header.Add("Content-Type", contentType)
+
+	if params != nil {
+
+		if params.IdempotencyKey != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "Idempotency-Key", *params.IdempotencyKey, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("Idempotency-Key", headerParam0)
+		}
+
+	}
 
 	return req, nil
 }
@@ -2089,6 +3662,49 @@ func WithBaseURL(baseURL string) ClientOption {
 // ClientWithResponsesInterface is the interface specification for the client with responses above.
 type ClientWithResponsesInterface interface {
 
+	// GetDiscussionWithResponse performs a GET /v1/discussions/{discussionId} (the `GetDiscussion` operationId) request.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	GetDiscussionWithResponse(ctx context.Context, discussionId DiscussionId, reqEditors ...RequestEditorFn) (*GetDiscussionResponse, error)
+
+	// UpdateDiscussionWithBodyWithResponse performs a PATCH /v1/discussions/{discussionId} (the `UpdateDiscussion` operationId) request,
+	// with any type of body and a specified content type.
+	//
+	// Resolve or reopen.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	UpdateDiscussionWithBodyWithResponse(ctx context.Context, discussionId DiscussionId, params *UpdateDiscussionParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateDiscussionResponse, error)
+
+	// UpdateDiscussionWithResponse performs a PATCH /v1/discussions/{discussionId} (the `UpdateDiscussion` operationId) request.
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Resolve or reopen.
+	UpdateDiscussionWithResponse(ctx context.Context, discussionId DiscussionId, params *UpdateDiscussionParams, body UpdateDiscussionJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateDiscussionResponse, error)
+
+	// CreateMessageWithBodyWithResponse performs a POST /v1/discussions/{discussionId}/messages (the `CreateMessage` operationId) request,
+	// with any type of body and a specified content type.
+	//
+	// Reply. The discussion gets a new version.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	CreateMessageWithBodyWithResponse(ctx context.Context, discussionId DiscussionId, params *CreateMessageParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateMessageResponse, error)
+
+	// CreateMessageWithResponse performs a POST /v1/discussions/{discussionId}/messages (the `CreateMessage` operationId) request.
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Reply. The discussion gets a new version.
+	CreateMessageWithResponse(ctx context.Context, discussionId DiscussionId, params *CreateMessageParams, body CreateMessageJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateMessageResponse, error)
+
+	// StreamEventsWithResponse performs a GET /v1/events (the `StreamEvents` operationId) request.
+	//
+	// Server-sent events, one per change, in sequence order. Each SSE message has `id` = sequence,
+	// `event` = event type, and `data` = an `Event`. The stream resumes after `Last-Event-ID`, else
+	// after `after`, else from now. It opens with a `ready` event whose data is `{"sequence": N}`
+	// (the sequence it resumes from): fetch or refetch state then. Comments keep the connection alive.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	StreamEventsWithResponse(ctx context.Context, params *StreamEventsParams, reqEditors ...RequestEditorFn) (*StreamEventsResponse, error)
+
 	// GetEvidenceWithResponse performs a GET /v1/evidence/{evidenceId} (the `GetEvidence` operationId) request.
 	//
 	// Returns a wrapper object for the known response body format(s).
@@ -2099,6 +3715,20 @@ type ClientWithResponsesInterface interface {
 	// Returns a wrapper object for the known response body format(s).
 	GetHealthWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetHealthResponse, error)
 
+	// UpdateRepresentationWithBodyWithResponse performs a PATCH /v1/representations/{representationId} (the `UpdateRepresentation` operationId) request,
+	// with any type of body and a specified content type.
+	//
+	// Change the title, and replace the config when one is given. The type cannot change.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	UpdateRepresentationWithBodyWithResponse(ctx context.Context, representationId string, params *UpdateRepresentationParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateRepresentationResponse, error)
+
+	// UpdateRepresentationWithResponse performs a PATCH /v1/representations/{representationId} (the `UpdateRepresentation` operationId) request.
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Change the title, and replace the config when one is given. The type cannot change.
+	UpdateRepresentationWithResponse(ctx context.Context, representationId string, params *UpdateRepresentationParams, body UpdateRepresentationJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateRepresentationResponse, error)
+
 	// ListReviewsWithResponse performs a GET /v1/reviews (the `ListReviews` operationId) request.
 	//
 	// Returns a wrapper object for the known response body format(s).
@@ -2108,11 +3738,11 @@ type ClientWithResponsesInterface interface {
 	// with any type of body and a specified content type.
 	//
 	// Returns a wrapper object for the known response body format(s).
-	CreateReviewWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateReviewResponse, error)
+	CreateReviewWithBodyWithResponse(ctx context.Context, params *CreateReviewParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateReviewResponse, error)
 
 	// CreateReviewWithResponse performs a POST /v1/reviews (the `CreateReview` operationId) request.
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
-	CreateReviewWithResponse(ctx context.Context, body CreateReviewJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateReviewResponse, error)
+	CreateReviewWithResponse(ctx context.Context, params *CreateReviewParams, body CreateReviewJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateReviewResponse, error)
 
 	// GetReviewWithResponse performs a GET /v1/reviews/{reviewId} (the `GetReview` operationId) request.
 	//
@@ -2128,6 +3758,48 @@ type ClientWithResponsesInterface interface {
 	//
 	// Returns a wrapper object for the known response body format(s).
 	ListChangesWithResponse(ctx context.Context, reviewId ReviewId, params *ListChangesParams, reqEditors ...RequestEditorFn) (*ListChangesResponse, error)
+
+	// ListDecisionsWithResponse performs a GET /v1/reviews/{reviewId}/decisions (the `ListDecisions` operationId) request.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	ListDecisionsWithResponse(ctx context.Context, reviewId ReviewId, reqEditors ...RequestEditorFn) (*ListDecisionsResponse, error)
+
+	// CreateDecisionWithBodyWithResponse performs a POST /v1/reviews/{reviewId}/decisions (the `CreateDecision` operationId) request,
+	// with any type of body and a specified content type.
+	//
+	// Record a verdict on a revision (default the current one). COMMENT needs a body.
+	// REQUEST_CHANGES selects at least one finding or discussion of the review; other verdicts select none.
+	// Decisions are never modified.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	CreateDecisionWithBodyWithResponse(ctx context.Context, reviewId ReviewId, params *CreateDecisionParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateDecisionResponse, error)
+
+	// CreateDecisionWithResponse performs a POST /v1/reviews/{reviewId}/decisions (the `CreateDecision` operationId) request.
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Record a verdict on a revision (default the current one). COMMENT needs a body.
+	// REQUEST_CHANGES selects at least one finding or discussion of the review; other verdicts select none.
+	// Decisions are never modified.
+	CreateDecisionWithResponse(ctx context.Context, reviewId ReviewId, params *CreateDecisionParams, body CreateDecisionJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateDecisionResponse, error)
+
+	// ListDiscussionsWithResponse performs a GET /v1/reviews/{reviewId}/discussions (the `ListDiscussions` operationId) request.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	ListDiscussionsWithResponse(ctx context.Context, reviewId ReviewId, reqEditors ...RequestEditorFn) (*ListDiscussionsResponse, error)
+
+	// CreateDiscussionWithBodyWithResponse performs a POST /v1/reviews/{reviewId}/discussions (the `CreateDiscussion` operationId) request,
+	// with any type of body and a specified content type.
+	//
+	// Open a discussion on an anchor with its first message. Commenting never changes code or starts work.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	CreateDiscussionWithBodyWithResponse(ctx context.Context, reviewId ReviewId, params *CreateDiscussionParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateDiscussionResponse, error)
+
+	// CreateDiscussionWithResponse performs a POST /v1/reviews/{reviewId}/discussions (the `CreateDiscussion` operationId) request.
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Open a discussion on an anchor with its first message. Commenting never changes code or starts work.
+	CreateDiscussionWithResponse(ctx context.Context, reviewId ReviewId, params *CreateDiscussionParams, body CreateDiscussionJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateDiscussionResponse, error)
 
 	// ListEvidenceWithResponse performs a GET /v1/reviews/{reviewId}/evidence (the `ListEvidence` operationId) request.
 	//
@@ -2150,13 +3822,13 @@ type ClientWithResponsesInterface interface {
 	// Validate a review manifest against a revision (default the current one) and store its records in one transaction.
 	//
 	// Returns a wrapper object for the known response body format(s).
-	ImportManifestWithBodyWithResponse(ctx context.Context, reviewId ReviewId, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ImportManifestResponse, error)
+	ImportManifestWithBodyWithResponse(ctx context.Context, reviewId ReviewId, params *ImportManifestParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ImportManifestResponse, error)
 
 	// ImportManifestWithResponse performs a POST /v1/reviews/{reviewId}/imports (the `ImportManifest` operationId) request.
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
 	// Validate a review manifest against a revision (default the current one) and store its records in one transaction.
-	ImportManifestWithResponse(ctx context.Context, reviewId ReviewId, body ImportManifestJSONRequestBody, reqEditors ...RequestEditorFn) (*ImportManifestResponse, error)
+	ImportManifestWithResponse(ctx context.Context, reviewId ReviewId, params *ImportManifestParams, body ImportManifestJSONRequestBody, reqEditors ...RequestEditorFn) (*ImportManifestResponse, error)
 
 	// ListIntentsWithResponse performs a GET /v1/reviews/{reviewId}/intents (the `ListIntents` operationId) request.
 	//
@@ -2173,7 +3845,7 @@ type ClientWithResponsesInterface interface {
 	// Capture every repository of the review's workspace into a new immutable revision, which becomes the current revision.
 	//
 	// Returns a wrapper object for the known response body format(s).
-	CaptureRevisionWithResponse(ctx context.Context, reviewId ReviewId, reqEditors ...RequestEditorFn) (*CaptureRevisionResponse, error)
+	CaptureRevisionWithResponse(ctx context.Context, reviewId ReviewId, params *CaptureRevisionParams, reqEditors ...RequestEditorFn) (*CaptureRevisionResponse, error)
 
 	// ListTopicsWithResponse performs a GET /v1/reviews/{reviewId}/topics (the `ListTopics` operationId) request.
 	//
@@ -2181,6 +3853,20 @@ type ClientWithResponsesInterface interface {
 	//
 	// Returns a wrapper object for the known response body format(s).
 	ListTopicsWithResponse(ctx context.Context, reviewId ReviewId, reqEditors ...RequestEditorFn) (*ListTopicsResponse, error)
+
+	// CreateTopicWithBodyWithResponse performs a POST /v1/reviews/{reviewId}/topics (the `CreateTopic` operationId) request,
+	// with any type of body and a specified content type.
+	//
+	// Create a MANUAL topic, last among its siblings.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	CreateTopicWithBodyWithResponse(ctx context.Context, reviewId ReviewId, params *CreateTopicParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateTopicResponse, error)
+
+	// CreateTopicWithResponse performs a POST /v1/reviews/{reviewId}/topics (the `CreateTopic` operationId) request.
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Create a MANUAL topic, last among its siblings.
+	CreateTopicWithResponse(ctx context.Context, reviewId ReviewId, params *CreateTopicParams, body CreateTopicJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateTopicResponse, error)
 
 	// GetRevisionWithResponse performs a GET /v1/revisions/{revisionId} (the `GetRevision` operationId) request.
 	//
@@ -2223,6 +3909,34 @@ type ClientWithResponsesInterface interface {
 	// Returns a wrapper object for the known response body format(s).
 	GetTopicWithResponse(ctx context.Context, topicId TopicId, reqEditors ...RequestEditorFn) (*GetTopicResponse, error)
 
+	// UpdateTopicWithBodyWithResponse performs a PATCH /v1/topics/{topicId} (the `UpdateTopic` operationId) request,
+	// with any type of body and a specified content type.
+	//
+	// Change the fields present. A link list replaces the topic's links of that kind. OBSOLETE topics no longer claim changed files.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	UpdateTopicWithBodyWithResponse(ctx context.Context, topicId TopicId, params *UpdateTopicParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateTopicResponse, error)
+
+	// UpdateTopicWithResponse performs a PATCH /v1/topics/{topicId} (the `UpdateTopic` operationId) request.
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Change the fields present. A link list replaces the topic's links of that kind. OBSOLETE topics no longer claim changed files.
+	UpdateTopicWithResponse(ctx context.Context, topicId TopicId, params *UpdateTopicParams, body UpdateTopicJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateTopicResponse, error)
+
+	// MoveTopicWithBodyWithResponse performs a POST /v1/topics/{topicId}/move (the `MoveTopic` operationId) request,
+	// with any type of body and a specified content type.
+	//
+	// Place the topic under a parent (null for the root) at a position among its siblings, clamped to the end. Siblings whose position changes get a new version.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	MoveTopicWithBodyWithResponse(ctx context.Context, topicId TopicId, params *MoveTopicParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*MoveTopicResponse, error)
+
+	// MoveTopicWithResponse performs a POST /v1/topics/{topicId}/move (the `MoveTopic` operationId) request.
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Place the topic under a parent (null for the root) at a position among its siblings, clamped to the end. Siblings whose position changes get a new version.
+	MoveTopicWithResponse(ctx context.Context, topicId TopicId, params *MoveTopicParams, body MoveTopicJSONRequestBody, reqEditors ...RequestEditorFn) (*MoveTopicResponse, error)
+
 	// ListTopicRepresentationsWithResponse performs a GET /v1/topics/{topicId}/representations (the `ListTopicRepresentations` operationId) request.
 	//
 	// Stored representations plus one entry per missing MVP type. Missing code and evidence views
@@ -2231,6 +3945,20 @@ type ClientWithResponsesInterface interface {
 	//
 	// Returns a wrapper object for the known response body format(s).
 	ListTopicRepresentationsWithResponse(ctx context.Context, topicId TopicId, reqEditors ...RequestEditorFn) (*ListTopicRepresentationsResponse, error)
+
+	// CreateRepresentationWithBodyWithResponse performs a POST /v1/topics/{topicId}/representations (the `CreateRepresentation` operationId) request,
+	// with any type of body and a specified content type.
+	//
+	// Add a MANUAL representation authored against the review's current revision. Give the config matching the type; references are record IDs of the review.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	CreateRepresentationWithBodyWithResponse(ctx context.Context, topicId TopicId, params *CreateRepresentationParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateRepresentationResponse, error)
+
+	// CreateRepresentationWithResponse performs a POST /v1/topics/{topicId}/representations (the `CreateRepresentation` operationId) request.
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Add a MANUAL representation authored against the review's current revision. Give the config matching the type; references are record IDs of the review.
+	CreateRepresentationWithResponse(ctx context.Context, topicId TopicId, params *CreateRepresentationParams, body CreateRepresentationJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateRepresentationResponse, error)
 
 	// ListWorkspacesWithResponse performs a GET /v1/workspaces (the `ListWorkspaces` operationId) request.
 	//
@@ -2241,11 +3969,11 @@ type ClientWithResponsesInterface interface {
 	// with any type of body and a specified content type.
 	//
 	// Returns a wrapper object for the known response body format(s).
-	CreateWorkspaceWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateWorkspaceResponse, error)
+	CreateWorkspaceWithBodyWithResponse(ctx context.Context, params *CreateWorkspaceParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateWorkspaceResponse, error)
 
 	// CreateWorkspaceWithResponse performs a POST /v1/workspaces (the `CreateWorkspace` operationId) request.
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
-	CreateWorkspaceWithResponse(ctx context.Context, body CreateWorkspaceJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateWorkspaceResponse, error)
+	CreateWorkspaceWithResponse(ctx context.Context, params *CreateWorkspaceParams, body CreateWorkspaceJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateWorkspaceResponse, error)
 
 	// GetWorkspaceWithResponse performs a GET /v1/workspaces/{workspaceId} (the `GetWorkspace` operationId) request.
 	//
@@ -2265,6 +3993,205 @@ type ClientWithResponsesInterface interface {
 	//
 	// Returns a wrapper object for the known response body format(s).
 	AssociateRuntimeSessionWithResponse(ctx context.Context, workspaceId WorkspaceId, runtimeSessionId RuntimeSessionId, reqEditors ...RequestEditorFn) (*AssociateRuntimeSessionResponse, error)
+}
+
+// GetDiscussionResponse200Headers the declared response headers of an HTTP 200 response for GetDiscussion
+type GetDiscussionResponse200Headers struct {
+	ETag string
+}
+
+type GetDiscussionResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *Discussion
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *Error
+	// Headers200 the parsed response headers for an HTTP 200 response
+	Headers200 *GetDiscussionResponse200Headers
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetDiscussionResponse) GetJSON200() *Discussion {
+	return r.JSON200
+}
+
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r GetDiscussionResponse) GetJSONDefault() *Error {
+	return r.JSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r GetDiscussionResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetDiscussionResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetDiscussionResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetDiscussionResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+// UpdateDiscussionResponse200Headers the declared response headers of an HTTP 200 response for UpdateDiscussion
+type UpdateDiscussionResponse200Headers struct {
+	ETag string
+}
+
+type UpdateDiscussionResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *Discussion
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *Error
+	// Headers200 the parsed response headers for an HTTP 200 response
+	Headers200 *UpdateDiscussionResponse200Headers
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r UpdateDiscussionResponse) GetJSON200() *Discussion {
+	return r.JSON200
+}
+
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r UpdateDiscussionResponse) GetJSONDefault() *Error {
+	return r.JSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r UpdateDiscussionResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r UpdateDiscussionResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r UpdateDiscussionResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r UpdateDiscussionResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type CreateMessageResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON201 the response for an HTTP 201 `application/json` response
+	JSON201 *Message
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *Error
+}
+
+// GetJSON201 returns the response for an HTTP 201 `application/json` response
+func (r CreateMessageResponse) GetJSON201() *Message {
+	return r.JSON201
+}
+
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r CreateMessageResponse) GetJSONDefault() *Error {
+	return r.JSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r CreateMessageResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r CreateMessageResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CreateMessageResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r CreateMessageResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type StreamEventsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *Error
+}
+
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r StreamEventsResponse) GetJSONDefault() *Error {
+	return r.JSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r StreamEventsResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r StreamEventsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r StreamEventsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r StreamEventsResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
 }
 
 type GetEvidenceResponse struct {
@@ -2350,6 +4277,61 @@ func (r GetHealthResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r GetHealthResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+// UpdateRepresentationResponse200Headers the declared response headers of an HTTP 200 response for UpdateRepresentation
+type UpdateRepresentationResponse200Headers struct {
+	ETag string
+}
+
+type UpdateRepresentationResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *Representation
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *Error
+	// Headers200 the parsed response headers for an HTTP 200 response
+	Headers200 *UpdateRepresentationResponse200Headers
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r UpdateRepresentationResponse) GetJSON200() *Representation {
+	return r.JSON200
+}
+
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r UpdateRepresentationResponse) GetJSONDefault() *Error {
+	return r.JSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r UpdateRepresentationResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r UpdateRepresentationResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r UpdateRepresentationResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r UpdateRepresentationResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -2590,6 +4572,198 @@ func (r ListChangesResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r ListChangesResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type ListDecisionsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *[]Decision
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *Error
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ListDecisionsResponse) GetJSON200() *[]Decision {
+	return r.JSON200
+}
+
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r ListDecisionsResponse) GetJSONDefault() *Error {
+	return r.JSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r ListDecisionsResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ListDecisionsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListDecisionsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListDecisionsResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type CreateDecisionResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON201 the response for an HTTP 201 `application/json` response
+	JSON201 *Decision
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *Error
+}
+
+// GetJSON201 returns the response for an HTTP 201 `application/json` response
+func (r CreateDecisionResponse) GetJSON201() *Decision {
+	return r.JSON201
+}
+
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r CreateDecisionResponse) GetJSONDefault() *Error {
+	return r.JSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r CreateDecisionResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r CreateDecisionResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CreateDecisionResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r CreateDecisionResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type ListDiscussionsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *[]Discussion
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *Error
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ListDiscussionsResponse) GetJSON200() *[]Discussion {
+	return r.JSON200
+}
+
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r ListDiscussionsResponse) GetJSONDefault() *Error {
+	return r.JSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r ListDiscussionsResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ListDiscussionsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListDiscussionsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListDiscussionsResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type CreateDiscussionResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON201 the response for an HTTP 201 `application/json` response
+	JSON201 *Discussion
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *Error
+}
+
+// GetJSON201 returns the response for an HTTP 201 `application/json` response
+func (r CreateDiscussionResponse) GetJSON201() *Discussion {
+	return r.JSON201
+}
+
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r CreateDiscussionResponse) GetJSONDefault() *Error {
+	return r.JSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r CreateDiscussionResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r CreateDiscussionResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CreateDiscussionResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r CreateDiscussionResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -2980,6 +5154,54 @@ func (r ListTopicsResponse) ContentType() string {
 	return ""
 }
 
+type CreateTopicResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON201 the response for an HTTP 201 `application/json` response
+	JSON201 *Topic
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *Error
+}
+
+// GetJSON201 returns the response for an HTTP 201 `application/json` response
+func (r CreateTopicResponse) GetJSON201() *Topic {
+	return r.JSON201
+}
+
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r CreateTopicResponse) GetJSONDefault() *Error {
+	return r.JSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r CreateTopicResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r CreateTopicResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CreateTopicResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r CreateTopicResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 type GetRevisionResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -3268,6 +5490,11 @@ func (r ListSessionBackendsResponse) ContentType() string {
 	return ""
 }
 
+// GetTopicResponse200Headers the declared response headers of an HTTP 200 response for GetTopic
+type GetTopicResponse200Headers struct {
+	ETag string
+}
+
 type GetTopicResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -3275,6 +5502,8 @@ type GetTopicResponse struct {
 	JSON200 *Topic
 	// JSONDefault the response for an HTTP default `application/json` response
 	JSONDefault *Error
+	// Headers200 the parsed response headers for an HTTP 200 response
+	Headers200 *GetTopicResponse200Headers
 }
 
 // GetJSON200 returns the response for an HTTP 200 `application/json` response
@@ -3310,6 +5539,116 @@ func (r GetTopicResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r GetTopicResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+// UpdateTopicResponse200Headers the declared response headers of an HTTP 200 response for UpdateTopic
+type UpdateTopicResponse200Headers struct {
+	ETag string
+}
+
+type UpdateTopicResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *Topic
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *Error
+	// Headers200 the parsed response headers for an HTTP 200 response
+	Headers200 *UpdateTopicResponse200Headers
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r UpdateTopicResponse) GetJSON200() *Topic {
+	return r.JSON200
+}
+
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r UpdateTopicResponse) GetJSONDefault() *Error {
+	return r.JSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r UpdateTopicResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r UpdateTopicResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r UpdateTopicResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r UpdateTopicResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+// MoveTopicResponse200Headers the declared response headers of an HTTP 200 response for MoveTopic
+type MoveTopicResponse200Headers struct {
+	ETag string
+}
+
+type MoveTopicResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *Topic
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *Error
+	// Headers200 the parsed response headers for an HTTP 200 response
+	Headers200 *MoveTopicResponse200Headers
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r MoveTopicResponse) GetJSON200() *Topic {
+	return r.JSON200
+}
+
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r MoveTopicResponse) GetJSONDefault() *Error {
+	return r.JSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r MoveTopicResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r MoveTopicResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r MoveTopicResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r MoveTopicResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -3358,6 +5697,54 @@ func (r ListTopicRepresentationsResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r ListTopicRepresentationsResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type CreateRepresentationResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON201 the response for an HTTP 201 `application/json` response
+	JSON201 *Representation
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *Error
+}
+
+// GetJSON201 returns the response for an HTTP 201 `application/json` response
+func (r CreateRepresentationResponse) GetJSON201() *Representation {
+	return r.JSON201
+}
+
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r CreateRepresentationResponse) GetJSONDefault() *Error {
+	return r.JSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r CreateRepresentationResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r CreateRepresentationResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CreateRepresentationResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r CreateRepresentationResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -3597,6 +5984,85 @@ func (r AssociateRuntimeSessionResponse) ContentType() string {
 	return ""
 }
 
+// GetDiscussionWithResponse performs a GET /v1/discussions/{discussionId} (the `GetDiscussion` operationId) request.
+//
+// Returns a wrapper object for the known response body format(s).
+func (c *ClientWithResponses) GetDiscussionWithResponse(ctx context.Context, discussionId DiscussionId, reqEditors ...RequestEditorFn) (*GetDiscussionResponse, error) {
+	rsp, err := c.GetDiscussion(ctx, discussionId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetDiscussionResponse(rsp)
+}
+
+// UpdateDiscussionWithBodyWithResponse performs a PATCH /v1/discussions/{discussionId} (the `UpdateDiscussion` operationId) request,
+// with any type of body and a specified content type.
+//
+// Resolve or reopen.
+//
+// Returns a wrapper object for the known response body format(s).
+func (c *ClientWithResponses) UpdateDiscussionWithBodyWithResponse(ctx context.Context, discussionId DiscussionId, params *UpdateDiscussionParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateDiscussionResponse, error) {
+	rsp, err := c.UpdateDiscussionWithBody(ctx, discussionId, params, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateDiscussionResponse(rsp)
+}
+
+// UpdateDiscussionWithResponse performs a PATCH /v1/discussions/{discussionId} (the `UpdateDiscussion` operationId) request.
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Resolve or reopen.
+func (c *ClientWithResponses) UpdateDiscussionWithResponse(ctx context.Context, discussionId DiscussionId, params *UpdateDiscussionParams, body UpdateDiscussionJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateDiscussionResponse, error) {
+	rsp, err := c.UpdateDiscussion(ctx, discussionId, params, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateDiscussionResponse(rsp)
+}
+
+// CreateMessageWithBodyWithResponse performs a POST /v1/discussions/{discussionId}/messages (the `CreateMessage` operationId) request,
+// with any type of body and a specified content type.
+//
+// Reply. The discussion gets a new version.
+//
+// Returns a wrapper object for the known response body format(s).
+func (c *ClientWithResponses) CreateMessageWithBodyWithResponse(ctx context.Context, discussionId DiscussionId, params *CreateMessageParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateMessageResponse, error) {
+	rsp, err := c.CreateMessageWithBody(ctx, discussionId, params, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateMessageResponse(rsp)
+}
+
+// CreateMessageWithResponse performs a POST /v1/discussions/{discussionId}/messages (the `CreateMessage` operationId) request.
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Reply. The discussion gets a new version.
+func (c *ClientWithResponses) CreateMessageWithResponse(ctx context.Context, discussionId DiscussionId, params *CreateMessageParams, body CreateMessageJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateMessageResponse, error) {
+	rsp, err := c.CreateMessage(ctx, discussionId, params, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateMessageResponse(rsp)
+}
+
+// StreamEventsWithResponse performs a GET /v1/events (the `StreamEvents` operationId) request.
+//
+// Server-sent events, one per change, in sequence order. Each SSE message has `id` = sequence,
+// `event` = event type, and `data` = an `Event`. The stream resumes after `Last-Event-ID`, else
+// after `after`, else from now. It opens with a `ready` event whose data is `{"sequence": N}`
+// (the sequence it resumes from): fetch or refetch state then. Comments keep the connection alive.
+//
+// Returns a wrapper object for the known response body format(s).
+func (c *ClientWithResponses) StreamEventsWithResponse(ctx context.Context, params *StreamEventsParams, reqEditors ...RequestEditorFn) (*StreamEventsResponse, error) {
+	rsp, err := c.StreamEvents(ctx, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseStreamEventsResponse(rsp)
+}
+
 // GetEvidenceWithResponse performs a GET /v1/evidence/{evidenceId} (the `GetEvidence` operationId) request.
 //
 // Returns a wrapper object for the known response body format(s).
@@ -3619,6 +6085,32 @@ func (c *ClientWithResponses) GetHealthWithResponse(ctx context.Context, reqEdit
 	return ParseGetHealthResponse(rsp)
 }
 
+// UpdateRepresentationWithBodyWithResponse performs a PATCH /v1/representations/{representationId} (the `UpdateRepresentation` operationId) request,
+// with any type of body and a specified content type.
+//
+// Change the title, and replace the config when one is given. The type cannot change.
+//
+// Returns a wrapper object for the known response body format(s).
+func (c *ClientWithResponses) UpdateRepresentationWithBodyWithResponse(ctx context.Context, representationId string, params *UpdateRepresentationParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateRepresentationResponse, error) {
+	rsp, err := c.UpdateRepresentationWithBody(ctx, representationId, params, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateRepresentationResponse(rsp)
+}
+
+// UpdateRepresentationWithResponse performs a PATCH /v1/representations/{representationId} (the `UpdateRepresentation` operationId) request.
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Change the title, and replace the config when one is given. The type cannot change.
+func (c *ClientWithResponses) UpdateRepresentationWithResponse(ctx context.Context, representationId string, params *UpdateRepresentationParams, body UpdateRepresentationJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateRepresentationResponse, error) {
+	rsp, err := c.UpdateRepresentation(ctx, representationId, params, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateRepresentationResponse(rsp)
+}
+
 // ListReviewsWithResponse performs a GET /v1/reviews (the `ListReviews` operationId) request.
 //
 // Returns a wrapper object for the known response body format(s).
@@ -3634,8 +6126,8 @@ func (c *ClientWithResponses) ListReviewsWithResponse(ctx context.Context, param
 // with any type of body and a specified content type.
 //
 // Returns a wrapper object for the known response body format(s).
-func (c *ClientWithResponses) CreateReviewWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateReviewResponse, error) {
-	rsp, err := c.CreateReviewWithBody(ctx, contentType, body, reqEditors...)
+func (c *ClientWithResponses) CreateReviewWithBodyWithResponse(ctx context.Context, params *CreateReviewParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateReviewResponse, error) {
+	rsp, err := c.CreateReviewWithBody(ctx, params, contentType, body, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
@@ -3644,8 +6136,8 @@ func (c *ClientWithResponses) CreateReviewWithBodyWithResponse(ctx context.Conte
 
 // CreateReviewWithResponse performs a POST /v1/reviews (the `CreateReview` operationId) request.
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
-func (c *ClientWithResponses) CreateReviewWithResponse(ctx context.Context, body CreateReviewJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateReviewResponse, error) {
-	rsp, err := c.CreateReview(ctx, body, reqEditors...)
+func (c *ClientWithResponses) CreateReviewWithResponse(ctx context.Context, params *CreateReviewParams, body CreateReviewJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateReviewResponse, error) {
+	rsp, err := c.CreateReview(ctx, params, body, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
@@ -3683,6 +6175,84 @@ func (c *ClientWithResponses) ListChangesWithResponse(ctx context.Context, revie
 		return nil, err
 	}
 	return ParseListChangesResponse(rsp)
+}
+
+// ListDecisionsWithResponse performs a GET /v1/reviews/{reviewId}/decisions (the `ListDecisions` operationId) request.
+//
+// Returns a wrapper object for the known response body format(s).
+func (c *ClientWithResponses) ListDecisionsWithResponse(ctx context.Context, reviewId ReviewId, reqEditors ...RequestEditorFn) (*ListDecisionsResponse, error) {
+	rsp, err := c.ListDecisions(ctx, reviewId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListDecisionsResponse(rsp)
+}
+
+// CreateDecisionWithBodyWithResponse performs a POST /v1/reviews/{reviewId}/decisions (the `CreateDecision` operationId) request,
+// with any type of body and a specified content type.
+//
+// Record a verdict on a revision (default the current one). COMMENT needs a body.
+// REQUEST_CHANGES selects at least one finding or discussion of the review; other verdicts select none.
+// Decisions are never modified.
+//
+// Returns a wrapper object for the known response body format(s).
+func (c *ClientWithResponses) CreateDecisionWithBodyWithResponse(ctx context.Context, reviewId ReviewId, params *CreateDecisionParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateDecisionResponse, error) {
+	rsp, err := c.CreateDecisionWithBody(ctx, reviewId, params, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateDecisionResponse(rsp)
+}
+
+// CreateDecisionWithResponse performs a POST /v1/reviews/{reviewId}/decisions (the `CreateDecision` operationId) request.
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Record a verdict on a revision (default the current one). COMMENT needs a body.
+// REQUEST_CHANGES selects at least one finding or discussion of the review; other verdicts select none.
+// Decisions are never modified.
+func (c *ClientWithResponses) CreateDecisionWithResponse(ctx context.Context, reviewId ReviewId, params *CreateDecisionParams, body CreateDecisionJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateDecisionResponse, error) {
+	rsp, err := c.CreateDecision(ctx, reviewId, params, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateDecisionResponse(rsp)
+}
+
+// ListDiscussionsWithResponse performs a GET /v1/reviews/{reviewId}/discussions (the `ListDiscussions` operationId) request.
+//
+// Returns a wrapper object for the known response body format(s).
+func (c *ClientWithResponses) ListDiscussionsWithResponse(ctx context.Context, reviewId ReviewId, reqEditors ...RequestEditorFn) (*ListDiscussionsResponse, error) {
+	rsp, err := c.ListDiscussions(ctx, reviewId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListDiscussionsResponse(rsp)
+}
+
+// CreateDiscussionWithBodyWithResponse performs a POST /v1/reviews/{reviewId}/discussions (the `CreateDiscussion` operationId) request,
+// with any type of body and a specified content type.
+//
+// Open a discussion on an anchor with its first message. Commenting never changes code or starts work.
+//
+// Returns a wrapper object for the known response body format(s).
+func (c *ClientWithResponses) CreateDiscussionWithBodyWithResponse(ctx context.Context, reviewId ReviewId, params *CreateDiscussionParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateDiscussionResponse, error) {
+	rsp, err := c.CreateDiscussionWithBody(ctx, reviewId, params, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateDiscussionResponse(rsp)
+}
+
+// CreateDiscussionWithResponse performs a POST /v1/reviews/{reviewId}/discussions (the `CreateDiscussion` operationId) request.
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Open a discussion on an anchor with its first message. Commenting never changes code or starts work.
+func (c *ClientWithResponses) CreateDiscussionWithResponse(ctx context.Context, reviewId ReviewId, params *CreateDiscussionParams, body CreateDiscussionJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateDiscussionResponse, error) {
+	rsp, err := c.CreateDiscussion(ctx, reviewId, params, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateDiscussionResponse(rsp)
 }
 
 // ListEvidenceWithResponse performs a GET /v1/reviews/{reviewId}/evidence (the `ListEvidence` operationId) request.
@@ -3724,8 +6294,8 @@ func (c *ClientWithResponses) ListImportsWithResponse(ctx context.Context, revie
 // Validate a review manifest against a revision (default the current one) and store its records in one transaction.
 //
 // Returns a wrapper object for the known response body format(s).
-func (c *ClientWithResponses) ImportManifestWithBodyWithResponse(ctx context.Context, reviewId ReviewId, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ImportManifestResponse, error) {
-	rsp, err := c.ImportManifestWithBody(ctx, reviewId, contentType, body, reqEditors...)
+func (c *ClientWithResponses) ImportManifestWithBodyWithResponse(ctx context.Context, reviewId ReviewId, params *ImportManifestParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ImportManifestResponse, error) {
+	rsp, err := c.ImportManifestWithBody(ctx, reviewId, params, contentType, body, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
@@ -3736,8 +6306,8 @@ func (c *ClientWithResponses) ImportManifestWithBodyWithResponse(ctx context.Con
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //
 // Validate a review manifest against a revision (default the current one) and store its records in one transaction.
-func (c *ClientWithResponses) ImportManifestWithResponse(ctx context.Context, reviewId ReviewId, body ImportManifestJSONRequestBody, reqEditors ...RequestEditorFn) (*ImportManifestResponse, error) {
-	rsp, err := c.ImportManifest(ctx, reviewId, body, reqEditors...)
+func (c *ClientWithResponses) ImportManifestWithResponse(ctx context.Context, reviewId ReviewId, params *ImportManifestParams, body ImportManifestJSONRequestBody, reqEditors ...RequestEditorFn) (*ImportManifestResponse, error) {
+	rsp, err := c.ImportManifest(ctx, reviewId, params, body, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
@@ -3771,8 +6341,8 @@ func (c *ClientWithResponses) ListRevisionsWithResponse(ctx context.Context, rev
 // Capture every repository of the review's workspace into a new immutable revision, which becomes the current revision.
 //
 // Returns a wrapper object for the known response body format(s).
-func (c *ClientWithResponses) CaptureRevisionWithResponse(ctx context.Context, reviewId ReviewId, reqEditors ...RequestEditorFn) (*CaptureRevisionResponse, error) {
-	rsp, err := c.CaptureRevision(ctx, reviewId, reqEditors...)
+func (c *ClientWithResponses) CaptureRevisionWithResponse(ctx context.Context, reviewId ReviewId, params *CaptureRevisionParams, reqEditors ...RequestEditorFn) (*CaptureRevisionResponse, error) {
+	rsp, err := c.CaptureRevision(ctx, reviewId, params, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
@@ -3790,6 +6360,32 @@ func (c *ClientWithResponses) ListTopicsWithResponse(ctx context.Context, review
 		return nil, err
 	}
 	return ParseListTopicsResponse(rsp)
+}
+
+// CreateTopicWithBodyWithResponse performs a POST /v1/reviews/{reviewId}/topics (the `CreateTopic` operationId) request,
+// with any type of body and a specified content type.
+//
+// Create a MANUAL topic, last among its siblings.
+//
+// Returns a wrapper object for the known response body format(s).
+func (c *ClientWithResponses) CreateTopicWithBodyWithResponse(ctx context.Context, reviewId ReviewId, params *CreateTopicParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateTopicResponse, error) {
+	rsp, err := c.CreateTopicWithBody(ctx, reviewId, params, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateTopicResponse(rsp)
+}
+
+// CreateTopicWithResponse performs a POST /v1/reviews/{reviewId}/topics (the `CreateTopic` operationId) request.
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Create a MANUAL topic, last among its siblings.
+func (c *ClientWithResponses) CreateTopicWithResponse(ctx context.Context, reviewId ReviewId, params *CreateTopicParams, body CreateTopicJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateTopicResponse, error) {
+	rsp, err := c.CreateTopic(ctx, reviewId, params, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateTopicResponse(rsp)
 }
 
 // GetRevisionWithResponse performs a GET /v1/revisions/{revisionId} (the `GetRevision` operationId) request.
@@ -3875,6 +6471,58 @@ func (c *ClientWithResponses) GetTopicWithResponse(ctx context.Context, topicId 
 	return ParseGetTopicResponse(rsp)
 }
 
+// UpdateTopicWithBodyWithResponse performs a PATCH /v1/topics/{topicId} (the `UpdateTopic` operationId) request,
+// with any type of body and a specified content type.
+//
+// Change the fields present. A link list replaces the topic's links of that kind. OBSOLETE topics no longer claim changed files.
+//
+// Returns a wrapper object for the known response body format(s).
+func (c *ClientWithResponses) UpdateTopicWithBodyWithResponse(ctx context.Context, topicId TopicId, params *UpdateTopicParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateTopicResponse, error) {
+	rsp, err := c.UpdateTopicWithBody(ctx, topicId, params, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateTopicResponse(rsp)
+}
+
+// UpdateTopicWithResponse performs a PATCH /v1/topics/{topicId} (the `UpdateTopic` operationId) request.
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Change the fields present. A link list replaces the topic's links of that kind. OBSOLETE topics no longer claim changed files.
+func (c *ClientWithResponses) UpdateTopicWithResponse(ctx context.Context, topicId TopicId, params *UpdateTopicParams, body UpdateTopicJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateTopicResponse, error) {
+	rsp, err := c.UpdateTopic(ctx, topicId, params, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateTopicResponse(rsp)
+}
+
+// MoveTopicWithBodyWithResponse performs a POST /v1/topics/{topicId}/move (the `MoveTopic` operationId) request,
+// with any type of body and a specified content type.
+//
+// Place the topic under a parent (null for the root) at a position among its siblings, clamped to the end. Siblings whose position changes get a new version.
+//
+// Returns a wrapper object for the known response body format(s).
+func (c *ClientWithResponses) MoveTopicWithBodyWithResponse(ctx context.Context, topicId TopicId, params *MoveTopicParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*MoveTopicResponse, error) {
+	rsp, err := c.MoveTopicWithBody(ctx, topicId, params, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseMoveTopicResponse(rsp)
+}
+
+// MoveTopicWithResponse performs a POST /v1/topics/{topicId}/move (the `MoveTopic` operationId) request.
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Place the topic under a parent (null for the root) at a position among its siblings, clamped to the end. Siblings whose position changes get a new version.
+func (c *ClientWithResponses) MoveTopicWithResponse(ctx context.Context, topicId TopicId, params *MoveTopicParams, body MoveTopicJSONRequestBody, reqEditors ...RequestEditorFn) (*MoveTopicResponse, error) {
+	rsp, err := c.MoveTopic(ctx, topicId, params, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseMoveTopicResponse(rsp)
+}
+
 // ListTopicRepresentationsWithResponse performs a GET /v1/topics/{topicId}/representations (the `ListTopicRepresentations` operationId) request.
 //
 // Stored representations plus one entry per missing MVP type. Missing code and evidence views
@@ -3888,6 +6536,32 @@ func (c *ClientWithResponses) ListTopicRepresentationsWithResponse(ctx context.C
 		return nil, err
 	}
 	return ParseListTopicRepresentationsResponse(rsp)
+}
+
+// CreateRepresentationWithBodyWithResponse performs a POST /v1/topics/{topicId}/representations (the `CreateRepresentation` operationId) request,
+// with any type of body and a specified content type.
+//
+// Add a MANUAL representation authored against the review's current revision. Give the config matching the type; references are record IDs of the review.
+//
+// Returns a wrapper object for the known response body format(s).
+func (c *ClientWithResponses) CreateRepresentationWithBodyWithResponse(ctx context.Context, topicId TopicId, params *CreateRepresentationParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateRepresentationResponse, error) {
+	rsp, err := c.CreateRepresentationWithBody(ctx, topicId, params, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateRepresentationResponse(rsp)
+}
+
+// CreateRepresentationWithResponse performs a POST /v1/topics/{topicId}/representations (the `CreateRepresentation` operationId) request.
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Add a MANUAL representation authored against the review's current revision. Give the config matching the type; references are record IDs of the review.
+func (c *ClientWithResponses) CreateRepresentationWithResponse(ctx context.Context, topicId TopicId, params *CreateRepresentationParams, body CreateRepresentationJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateRepresentationResponse, error) {
+	rsp, err := c.CreateRepresentation(ctx, topicId, params, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateRepresentationResponse(rsp)
 }
 
 // ListWorkspacesWithResponse performs a GET /v1/workspaces (the `ListWorkspaces` operationId) request.
@@ -3905,8 +6579,8 @@ func (c *ClientWithResponses) ListWorkspacesWithResponse(ctx context.Context, re
 // with any type of body and a specified content type.
 //
 // Returns a wrapper object for the known response body format(s).
-func (c *ClientWithResponses) CreateWorkspaceWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateWorkspaceResponse, error) {
-	rsp, err := c.CreateWorkspaceWithBody(ctx, contentType, body, reqEditors...)
+func (c *ClientWithResponses) CreateWorkspaceWithBodyWithResponse(ctx context.Context, params *CreateWorkspaceParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateWorkspaceResponse, error) {
+	rsp, err := c.CreateWorkspaceWithBody(ctx, params, contentType, body, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
@@ -3915,8 +6589,8 @@ func (c *ClientWithResponses) CreateWorkspaceWithBodyWithResponse(ctx context.Co
 
 // CreateWorkspaceWithResponse performs a POST /v1/workspaces (the `CreateWorkspace` operationId) request.
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
-func (c *ClientWithResponses) CreateWorkspaceWithResponse(ctx context.Context, body CreateWorkspaceJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateWorkspaceResponse, error) {
-	rsp, err := c.CreateWorkspace(ctx, body, reqEditors...)
+func (c *ClientWithResponses) CreateWorkspaceWithResponse(ctx context.Context, params *CreateWorkspaceParams, body CreateWorkspaceJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateWorkspaceResponse, error) {
+	rsp, err := c.CreateWorkspace(ctx, params, body, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
@@ -3958,6 +6632,157 @@ func (c *ClientWithResponses) AssociateRuntimeSessionWithResponse(ctx context.Co
 		return nil, err
 	}
 	return ParseAssociateRuntimeSessionResponse(rsp)
+}
+
+// ParseGetDiscussionResponse parses an HTTP response from a GetDiscussionWithResponse call
+func ParseGetDiscussionResponse(rsp *http.Response) (*GetDiscussionResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetDiscussionResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest Discussion
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	switch {
+	case rsp.StatusCode == 200:
+		var headers GetDiscussionResponse200Headers
+		if values := rsp.Header.Values("ETag"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "ETag", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.ETag = value
+		}
+		response.Headers200 = &headers
+	}
+
+	return response, nil
+}
+
+// ParseUpdateDiscussionResponse parses an HTTP response from a UpdateDiscussionWithResponse call
+func ParseUpdateDiscussionResponse(rsp *http.Response) (*UpdateDiscussionResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &UpdateDiscussionResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest Discussion
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	switch {
+	case rsp.StatusCode == 200:
+		var headers UpdateDiscussionResponse200Headers
+		if values := rsp.Header.Values("ETag"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "ETag", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.ETag = value
+		}
+		response.Headers200 = &headers
+	}
+
+	return response, nil
+}
+
+// ParseCreateMessageResponse parses an HTTP response from a CreateMessageWithResponse call
+func ParseCreateMessageResponse(rsp *http.Response) (*CreateMessageResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &CreateMessageResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest Message
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseStreamEventsResponse parses an HTTP response from a StreamEventsWithResponse call
+func ParseStreamEventsResponse(rsp *http.Response) (*StreamEventsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &StreamEventsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
 }
 
 // ParseGetEvidenceResponse parses an HTTP response from a GetEvidenceWithResponse call
@@ -4014,6 +6839,52 @@ func ParseGetHealthResponse(rsp *http.Response) (*GetHealthResponse, error) {
 		}
 		response.JSON200 = &dest
 
+	}
+
+	return response, nil
+}
+
+// ParseUpdateRepresentationResponse parses an HTTP response from a UpdateRepresentationWithResponse call
+func ParseUpdateRepresentationResponse(rsp *http.Response) (*UpdateRepresentationResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &UpdateRepresentationResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest Representation
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	switch {
+	case rsp.StatusCode == 200:
+		var headers UpdateRepresentationResponse200Headers
+		if values := rsp.Header.Values("ETag"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "ETag", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.ETag = value
+		}
+		response.Headers200 = &headers
 	}
 
 	return response, nil
@@ -4171,6 +7042,138 @@ func ParseListChangesResponse(rsp *http.Response) (*ListChangesResponse, error) 
 			return nil, err
 		}
 		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListDecisionsResponse parses an HTTP response from a ListDecisionsWithResponse call
+func ParseListDecisionsResponse(rsp *http.Response) (*ListDecisionsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListDecisionsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest []Decision
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseCreateDecisionResponse parses an HTTP response from a CreateDecisionWithResponse call
+func ParseCreateDecisionResponse(rsp *http.Response) (*CreateDecisionResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &CreateDecisionResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest Decision
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListDiscussionsResponse parses an HTTP response from a ListDiscussionsWithResponse call
+func ParseListDiscussionsResponse(rsp *http.Response) (*ListDiscussionsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListDiscussionsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest []Discussion
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseCreateDiscussionResponse parses an HTTP response from a CreateDiscussionWithResponse call
+func ParseCreateDiscussionResponse(rsp *http.Response) (*CreateDiscussionResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &CreateDiscussionResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest Discussion
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
 		var dest Error
@@ -4448,6 +7451,39 @@ func ParseListTopicsResponse(rsp *http.Response) (*ListTopicsResponse, error) {
 	return response, nil
 }
 
+// ParseCreateTopicResponse parses an HTTP response from a CreateTopicWithResponse call
+func ParseCreateTopicResponse(rsp *http.Response) (*CreateTopicResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &CreateTopicResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest Topic
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
 // ParseGetRevisionResponse parses an HTTP response from a GetRevisionWithResponse call
 func ParseGetRevisionResponse(rsp *http.Response) (*GetRevisionResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -4676,6 +7712,111 @@ func ParseGetTopicResponse(rsp *http.Response) (*GetTopicResponse, error) {
 
 	}
 
+	switch {
+	case rsp.StatusCode == 200:
+		var headers GetTopicResponse200Headers
+		if values := rsp.Header.Values("ETag"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "ETag", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.ETag = value
+		}
+		response.Headers200 = &headers
+	}
+
+	return response, nil
+}
+
+// ParseUpdateTopicResponse parses an HTTP response from a UpdateTopicWithResponse call
+func ParseUpdateTopicResponse(rsp *http.Response) (*UpdateTopicResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &UpdateTopicResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest Topic
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	switch {
+	case rsp.StatusCode == 200:
+		var headers UpdateTopicResponse200Headers
+		if values := rsp.Header.Values("ETag"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "ETag", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.ETag = value
+		}
+		response.Headers200 = &headers
+	}
+
+	return response, nil
+}
+
+// ParseMoveTopicResponse parses an HTTP response from a MoveTopicWithResponse call
+func ParseMoveTopicResponse(rsp *http.Response) (*MoveTopicResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &MoveTopicResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest Topic
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	switch {
+	case rsp.StatusCode == 200:
+		var headers MoveTopicResponse200Headers
+		if values := rsp.Header.Values("ETag"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "ETag", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.ETag = value
+		}
+		response.Headers200 = &headers
+	}
+
 	return response, nil
 }
 
@@ -4699,6 +7840,39 @@ func ParseListTopicRepresentationsResponse(rsp *http.Response) (*ListTopicRepres
 			return nil, err
 		}
 		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseCreateRepresentationResponse parses an HTTP response from a CreateRepresentationWithResponse call
+func ParseCreateRepresentationResponse(rsp *http.Response) (*CreateRepresentationResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &CreateRepresentationResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest Representation
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
 		var dest Error
@@ -4876,17 +8050,32 @@ func ParseAssociateRuntimeSessionResponse(rsp *http.Response) (*AssociateRuntime
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
 
+	// (GET /v1/discussions/{discussionId})
+	GetDiscussion(w http.ResponseWriter, r *http.Request, discussionId DiscussionId)
+
+	// (PATCH /v1/discussions/{discussionId})
+	UpdateDiscussion(w http.ResponseWriter, r *http.Request, discussionId DiscussionId, params UpdateDiscussionParams)
+
+	// (POST /v1/discussions/{discussionId}/messages)
+	CreateMessage(w http.ResponseWriter, r *http.Request, discussionId DiscussionId, params CreateMessageParams)
+
+	// (GET /v1/events)
+	StreamEvents(w http.ResponseWriter, r *http.Request, params StreamEventsParams)
+
 	// (GET /v1/evidence/{evidenceId})
 	GetEvidence(w http.ResponseWriter, r *http.Request, evidenceId string)
 
 	// (GET /v1/health)
 	GetHealth(w http.ResponseWriter, r *http.Request)
 
+	// (PATCH /v1/representations/{representationId})
+	UpdateRepresentation(w http.ResponseWriter, r *http.Request, representationId string, params UpdateRepresentationParams)
+
 	// (GET /v1/reviews)
 	ListReviews(w http.ResponseWriter, r *http.Request, params ListReviewsParams)
 
 	// (POST /v1/reviews)
-	CreateReview(w http.ResponseWriter, r *http.Request)
+	CreateReview(w http.ResponseWriter, r *http.Request, params CreateReviewParams)
 
 	// (GET /v1/reviews/{reviewId})
 	GetReview(w http.ResponseWriter, r *http.Request, reviewId ReviewId)
@@ -4896,6 +8085,18 @@ type ServerInterface interface {
 
 	// (GET /v1/reviews/{reviewId}/changes)
 	ListChanges(w http.ResponseWriter, r *http.Request, reviewId ReviewId, params ListChangesParams)
+
+	// (GET /v1/reviews/{reviewId}/decisions)
+	ListDecisions(w http.ResponseWriter, r *http.Request, reviewId ReviewId)
+
+	// (POST /v1/reviews/{reviewId}/decisions)
+	CreateDecision(w http.ResponseWriter, r *http.Request, reviewId ReviewId, params CreateDecisionParams)
+
+	// (GET /v1/reviews/{reviewId}/discussions)
+	ListDiscussions(w http.ResponseWriter, r *http.Request, reviewId ReviewId)
+
+	// (POST /v1/reviews/{reviewId}/discussions)
+	CreateDiscussion(w http.ResponseWriter, r *http.Request, reviewId ReviewId, params CreateDiscussionParams)
 
 	// (GET /v1/reviews/{reviewId}/evidence)
 	ListEvidence(w http.ResponseWriter, r *http.Request, reviewId ReviewId)
@@ -4907,7 +8108,7 @@ type ServerInterface interface {
 	ListImports(w http.ResponseWriter, r *http.Request, reviewId ReviewId)
 
 	// (POST /v1/reviews/{reviewId}/imports)
-	ImportManifest(w http.ResponseWriter, r *http.Request, reviewId ReviewId)
+	ImportManifest(w http.ResponseWriter, r *http.Request, reviewId ReviewId, params ImportManifestParams)
 
 	// (GET /v1/reviews/{reviewId}/intents)
 	ListIntents(w http.ResponseWriter, r *http.Request, reviewId ReviewId)
@@ -4916,10 +8117,13 @@ type ServerInterface interface {
 	ListRevisions(w http.ResponseWriter, r *http.Request, reviewId ReviewId)
 
 	// (POST /v1/reviews/{reviewId}/revisions)
-	CaptureRevision(w http.ResponseWriter, r *http.Request, reviewId ReviewId)
+	CaptureRevision(w http.ResponseWriter, r *http.Request, reviewId ReviewId, params CaptureRevisionParams)
 
 	// (GET /v1/reviews/{reviewId}/topics)
 	ListTopics(w http.ResponseWriter, r *http.Request, reviewId ReviewId)
+
+	// (POST /v1/reviews/{reviewId}/topics)
+	CreateTopic(w http.ResponseWriter, r *http.Request, reviewId ReviewId, params CreateTopicParams)
 
 	// (GET /v1/revisions/{revisionId})
 	GetRevision(w http.ResponseWriter, r *http.Request, revisionId RevisionId)
@@ -4942,14 +8146,23 @@ type ServerInterface interface {
 	// (GET /v1/topics/{topicId})
 	GetTopic(w http.ResponseWriter, r *http.Request, topicId TopicId)
 
+	// (PATCH /v1/topics/{topicId})
+	UpdateTopic(w http.ResponseWriter, r *http.Request, topicId TopicId, params UpdateTopicParams)
+
+	// (POST /v1/topics/{topicId}/move)
+	MoveTopic(w http.ResponseWriter, r *http.Request, topicId TopicId, params MoveTopicParams)
+
 	// (GET /v1/topics/{topicId}/representations)
 	ListTopicRepresentations(w http.ResponseWriter, r *http.Request, topicId TopicId)
+
+	// (POST /v1/topics/{topicId}/representations)
+	CreateRepresentation(w http.ResponseWriter, r *http.Request, topicId TopicId, params CreateRepresentationParams)
 
 	// (GET /v1/workspaces)
 	ListWorkspaces(w http.ResponseWriter, r *http.Request)
 
 	// (POST /v1/workspaces)
-	CreateWorkspace(w http.ResponseWriter, r *http.Request)
+	CreateWorkspace(w http.ResponseWriter, r *http.Request, params CreateWorkspaceParams)
 
 	// (GET /v1/workspaces/{workspaceId})
 	GetWorkspace(w http.ResponseWriter, r *http.Request, workspaceId WorkspaceId)
@@ -4969,6 +8182,186 @@ type ServerInterfaceWrapper struct {
 }
 
 type MiddlewareFunc func(http.Handler) http.Handler
+
+// GetDiscussion operation middleware
+func (siw *ServerInterfaceWrapper) GetDiscussion(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "discussionId" -------------
+	var discussionId DiscussionId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "discussionId", r.PathValue("discussionId"), &discussionId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "discussionId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetDiscussion(w, r, discussionId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateDiscussion operation middleware
+func (siw *ServerInterfaceWrapper) UpdateDiscussion(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "discussionId" -------------
+	var discussionId DiscussionId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "discussionId", r.PathValue("discussionId"), &discussionId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "discussionId", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params UpdateDiscussionParams
+
+	headers := r.Header
+
+	// ------------- Optional header parameter "If-Match" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("If-Match")]; found {
+		var IfMatch IfMatch
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "If-Match", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "If-Match", valueList[0], &IfMatch, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "If-Match", Err: err})
+			return
+		}
+
+		params.IfMatch = &IfMatch
+
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateDiscussion(w, r, discussionId, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateMessage operation middleware
+func (siw *ServerInterfaceWrapper) CreateMessage(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "discussionId" -------------
+	var discussionId DiscussionId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "discussionId", r.PathValue("discussionId"), &discussionId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "discussionId", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params CreateMessageParams
+
+	headers := r.Header
+
+	// ------------- Optional header parameter "Idempotency-Key" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("Idempotency-Key")]; found {
+		var IdempotencyKey IdempotencyKey
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "Idempotency-Key", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "Idempotency-Key", valueList[0], &IdempotencyKey, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "Idempotency-Key", Err: err})
+			return
+		}
+
+		params.IdempotencyKey = &IdempotencyKey
+
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateMessage(w, r, discussionId, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// StreamEvents operation middleware
+func (siw *ServerInterfaceWrapper) StreamEvents(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params StreamEventsParams
+
+	// ------------- Optional query parameter "after" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "after", r.URL.Query(), &params.After, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "after"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "after", Err: err})
+		}
+		return
+	}
+
+	headers := r.Header
+
+	// ------------- Optional header parameter "Last-Event-ID" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("Last-Event-ID")]; found {
+		var LastEventID string
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "Last-Event-ID", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "Last-Event-ID", valueList[0], &LastEventID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "Last-Event-ID", Err: err})
+			return
+		}
+
+		params.LastEventID = &LastEventID
+
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.StreamEvents(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
 
 // GetEvidence operation middleware
 func (siw *ServerInterfaceWrapper) GetEvidence(w http.ResponseWriter, r *http.Request) {
@@ -5001,6 +8394,56 @@ func (siw *ServerInterfaceWrapper) GetHealth(w http.ResponseWriter, r *http.Requ
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetHealth(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateRepresentation operation middleware
+func (siw *ServerInterfaceWrapper) UpdateRepresentation(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "representationId" -------------
+	var representationId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "representationId", r.PathValue("representationId"), &representationId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "representationId", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params UpdateRepresentationParams
+
+	headers := r.Header
+
+	// ------------- Optional header parameter "If-Match" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("If-Match")]; found {
+		var IfMatch IfMatch
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "If-Match", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "If-Match", valueList[0], &IfMatch, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "If-Match", Err: err})
+			return
+		}
+
+		params.IfMatch = &IfMatch
+
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateRepresentation(w, r, representationId, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -5046,8 +8489,35 @@ func (siw *ServerInterfaceWrapper) ListReviews(w http.ResponseWriter, r *http.Re
 // CreateReview operation middleware
 func (siw *ServerInterfaceWrapper) CreateReview(w http.ResponseWriter, r *http.Request) {
 
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params CreateReviewParams
+
+	headers := r.Header
+
+	// ------------- Optional header parameter "Idempotency-Key" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("Idempotency-Key")]; found {
+		var IdempotencyKey IdempotencyKey
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "Idempotency-Key", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "Idempotency-Key", valueList[0], &IdempotencyKey, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "Idempotency-Key", Err: err})
+			return
+		}
+
+		params.IdempotencyKey = &IdempotencyKey
+
+	}
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.CreateReview(w, r)
+		siw.Handler.CreateReview(w, r, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -5151,6 +8621,158 @@ func (siw *ServerInterfaceWrapper) ListChanges(w http.ResponseWriter, r *http.Re
 	handler.ServeHTTP(w, r)
 }
 
+// ListDecisions operation middleware
+func (siw *ServerInterfaceWrapper) ListDecisions(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "reviewId" -------------
+	var reviewId ReviewId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "reviewId", r.PathValue("reviewId"), &reviewId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "reviewId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListDecisions(w, r, reviewId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateDecision operation middleware
+func (siw *ServerInterfaceWrapper) CreateDecision(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "reviewId" -------------
+	var reviewId ReviewId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "reviewId", r.PathValue("reviewId"), &reviewId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "reviewId", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params CreateDecisionParams
+
+	headers := r.Header
+
+	// ------------- Optional header parameter "Idempotency-Key" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("Idempotency-Key")]; found {
+		var IdempotencyKey IdempotencyKey
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "Idempotency-Key", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "Idempotency-Key", valueList[0], &IdempotencyKey, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "Idempotency-Key", Err: err})
+			return
+		}
+
+		params.IdempotencyKey = &IdempotencyKey
+
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateDecision(w, r, reviewId, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListDiscussions operation middleware
+func (siw *ServerInterfaceWrapper) ListDiscussions(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "reviewId" -------------
+	var reviewId ReviewId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "reviewId", r.PathValue("reviewId"), &reviewId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "reviewId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListDiscussions(w, r, reviewId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateDiscussion operation middleware
+func (siw *ServerInterfaceWrapper) CreateDiscussion(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "reviewId" -------------
+	var reviewId ReviewId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "reviewId", r.PathValue("reviewId"), &reviewId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "reviewId", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params CreateDiscussionParams
+
+	headers := r.Header
+
+	// ------------- Optional header parameter "Idempotency-Key" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("Idempotency-Key")]; found {
+		var IdempotencyKey IdempotencyKey
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "Idempotency-Key", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "Idempotency-Key", valueList[0], &IdempotencyKey, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "Idempotency-Key", Err: err})
+			return
+		}
+
+		params.IdempotencyKey = &IdempotencyKey
+
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateDiscussion(w, r, reviewId, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ListEvidence operation middleware
 func (siw *ServerInterfaceWrapper) ListEvidence(w http.ResponseWriter, r *http.Request) {
 
@@ -5244,8 +8866,32 @@ func (siw *ServerInterfaceWrapper) ImportManifest(w http.ResponseWriter, r *http
 		return
 	}
 
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ImportManifestParams
+
+	headers := r.Header
+
+	// ------------- Optional header parameter "Idempotency-Key" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("Idempotency-Key")]; found {
+		var IdempotencyKey IdempotencyKey
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "Idempotency-Key", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "Idempotency-Key", valueList[0], &IdempotencyKey, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "Idempotency-Key", Err: err})
+			return
+		}
+
+		params.IdempotencyKey = &IdempotencyKey
+
+	}
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.ImportManifest(w, r, reviewId)
+		siw.Handler.ImportManifest(w, r, reviewId, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -5322,8 +8968,32 @@ func (siw *ServerInterfaceWrapper) CaptureRevision(w http.ResponseWriter, r *htt
 		return
 	}
 
+	// Parameter object where we will unmarshal all parameters from the context
+	var params CaptureRevisionParams
+
+	headers := r.Header
+
+	// ------------- Optional header parameter "Idempotency-Key" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("Idempotency-Key")]; found {
+		var IdempotencyKey IdempotencyKey
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "Idempotency-Key", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "Idempotency-Key", valueList[0], &IdempotencyKey, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "Idempotency-Key", Err: err})
+			return
+		}
+
+		params.IdempotencyKey = &IdempotencyKey
+
+	}
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.CaptureRevision(w, r, reviewId)
+		siw.Handler.CaptureRevision(w, r, reviewId, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -5350,6 +9020,56 @@ func (siw *ServerInterfaceWrapper) ListTopics(w http.ResponseWriter, r *http.Req
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ListTopics(w, r, reviewId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateTopic operation middleware
+func (siw *ServerInterfaceWrapper) CreateTopic(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "reviewId" -------------
+	var reviewId ReviewId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "reviewId", r.PathValue("reviewId"), &reviewId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "reviewId", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params CreateTopicParams
+
+	headers := r.Header
+
+	// ------------- Optional header parameter "Idempotency-Key" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("Idempotency-Key")]; found {
+		var IdempotencyKey IdempotencyKey
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "Idempotency-Key", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "Idempotency-Key", valueList[0], &IdempotencyKey, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "Idempotency-Key", Err: err})
+			return
+		}
+
+		params.IdempotencyKey = &IdempotencyKey
+
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateTopic(w, r, reviewId, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -5565,6 +9285,106 @@ func (siw *ServerInterfaceWrapper) GetTopic(w http.ResponseWriter, r *http.Reque
 	handler.ServeHTTP(w, r)
 }
 
+// UpdateTopic operation middleware
+func (siw *ServerInterfaceWrapper) UpdateTopic(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "topicId" -------------
+	var topicId TopicId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "topicId", r.PathValue("topicId"), &topicId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "topicId", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params UpdateTopicParams
+
+	headers := r.Header
+
+	// ------------- Optional header parameter "If-Match" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("If-Match")]; found {
+		var IfMatch IfMatch
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "If-Match", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "If-Match", valueList[0], &IfMatch, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "If-Match", Err: err})
+			return
+		}
+
+		params.IfMatch = &IfMatch
+
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateTopic(w, r, topicId, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// MoveTopic operation middleware
+func (siw *ServerInterfaceWrapper) MoveTopic(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "topicId" -------------
+	var topicId TopicId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "topicId", r.PathValue("topicId"), &topicId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "topicId", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params MoveTopicParams
+
+	headers := r.Header
+
+	// ------------- Optional header parameter "If-Match" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("If-Match")]; found {
+		var IfMatch IfMatch
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "If-Match", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "If-Match", valueList[0], &IfMatch, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "If-Match", Err: err})
+			return
+		}
+
+		params.IfMatch = &IfMatch
+
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.MoveTopic(w, r, topicId, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ListTopicRepresentations operation middleware
 func (siw *ServerInterfaceWrapper) ListTopicRepresentations(w http.ResponseWriter, r *http.Request) {
 
@@ -5591,6 +9411,56 @@ func (siw *ServerInterfaceWrapper) ListTopicRepresentations(w http.ResponseWrite
 	handler.ServeHTTP(w, r)
 }
 
+// CreateRepresentation operation middleware
+func (siw *ServerInterfaceWrapper) CreateRepresentation(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "topicId" -------------
+	var topicId TopicId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "topicId", r.PathValue("topicId"), &topicId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "topicId", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params CreateRepresentationParams
+
+	headers := r.Header
+
+	// ------------- Optional header parameter "Idempotency-Key" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("Idempotency-Key")]; found {
+		var IdempotencyKey IdempotencyKey
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "Idempotency-Key", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "Idempotency-Key", valueList[0], &IdempotencyKey, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "Idempotency-Key", Err: err})
+			return
+		}
+
+		params.IdempotencyKey = &IdempotencyKey
+
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateRepresentation(w, r, topicId, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ListWorkspaces operation middleware
 func (siw *ServerInterfaceWrapper) ListWorkspaces(w http.ResponseWriter, r *http.Request) {
 
@@ -5608,8 +9478,35 @@ func (siw *ServerInterfaceWrapper) ListWorkspaces(w http.ResponseWriter, r *http
 // CreateWorkspace operation middleware
 func (siw *ServerInterfaceWrapper) CreateWorkspace(w http.ResponseWriter, r *http.Request) {
 
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params CreateWorkspaceParams
+
+	headers := r.Header
+
+	// ------------- Optional header parameter "Idempotency-Key" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("Idempotency-Key")]; found {
+		var IdempotencyKey IdempotencyKey
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "Idempotency-Key", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "Idempotency-Key", valueList[0], &IdempotencyKey, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "Idempotency-Key", Err: err})
+			return
+		}
+
+		params.IdempotencyKey = &IdempotencyKey
+
+	}
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.CreateWorkspace(w, r)
+		siw.Handler.CreateWorkspace(w, r, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -5850,14 +9747,27 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/reviews/{reviewId}/imports", wrapper.ListImports)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/reviews/{reviewId}/imports", wrapper.ImportManifest)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/reviews/{reviewId}/topics", wrapper.ListTopics)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/reviews/{reviewId}/topics", wrapper.CreateTopic)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/topics/{topicId}", wrapper.GetTopic)
+	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/v1/topics/{topicId}", wrapper.UpdateTopic)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/topics/{topicId}/move", wrapper.MoveTopic)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/topics/{topicId}/representations", wrapper.ListTopicRepresentations)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/topics/{topicId}/representations", wrapper.CreateRepresentation)
+	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/v1/representations/{representationId}", wrapper.UpdateRepresentation)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/reviews/{reviewId}/intents", wrapper.ListIntents)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/reviews/{reviewId}/changes", wrapper.ListChanges)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/reviews/{reviewId}/findings", wrapper.ListFindings)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/reviews/{reviewId}/evidence", wrapper.ListEvidence)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/reviews/{reviewId}/attention", wrapper.ListAttention)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/evidence/{evidenceId}", wrapper.GetEvidence)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/reviews/{reviewId}/discussions", wrapper.ListDiscussions)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/reviews/{reviewId}/discussions", wrapper.CreateDiscussion)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/discussions/{discussionId}", wrapper.GetDiscussion)
+	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/v1/discussions/{discussionId}", wrapper.UpdateDiscussion)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/discussions/{discussionId}/messages", wrapper.CreateMessage)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/reviews/{reviewId}/decisions", wrapper.ListDecisions)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/reviews/{reviewId}/decisions", wrapper.CreateDecision)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/events", wrapper.StreamEvents)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/session-backends", wrapper.ListSessionBackends)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/runtime-sessions", wrapper.ListRuntimeSessions)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/runtime-sessions/{runtimeSessionId}", wrapper.GetRuntimeSession)
@@ -5868,6 +9778,211 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 }
 
 type ErrorJSONResponse Error
+
+type GetDiscussionRequestObject struct {
+	DiscussionId DiscussionId `json:"discussionId"`
+}
+
+type GetDiscussionResponseObject interface {
+	VisitGetDiscussionResponse(w http.ResponseWriter) error
+}
+
+type GetDiscussion200ResponseHeaders struct {
+	ETag string
+}
+
+type GetDiscussion200JSONResponse struct {
+	Body    Discussion
+	Headers GetDiscussion200ResponseHeaders
+}
+
+func (response GetDiscussion200JSONResponse) VisitGetDiscussionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("ETag", fmt.Sprint(response.Headers.ETag))
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetDiscussiondefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response GetDiscussiondefaultJSONResponse) VisitGetDiscussionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateDiscussionRequestObject struct {
+	DiscussionId DiscussionId `json:"discussionId"`
+	Params       UpdateDiscussionParams
+	Body         *UpdateDiscussionJSONRequestBody
+}
+
+type UpdateDiscussionResponseObject interface {
+	VisitUpdateDiscussionResponse(w http.ResponseWriter) error
+}
+
+type UpdateDiscussion200ResponseHeaders struct {
+	ETag string
+}
+
+type UpdateDiscussion200JSONResponse struct {
+	Body    Discussion
+	Headers UpdateDiscussion200ResponseHeaders
+}
+
+func (response UpdateDiscussion200JSONResponse) VisitUpdateDiscussionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("ETag", fmt.Sprint(response.Headers.ETag))
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateDiscussiondefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response UpdateDiscussiondefaultJSONResponse) VisitUpdateDiscussionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateMessageRequestObject struct {
+	DiscussionId DiscussionId `json:"discussionId"`
+	Params       CreateMessageParams
+	Body         *CreateMessageJSONRequestBody
+}
+
+type CreateMessageResponseObject interface {
+	VisitCreateMessageResponse(w http.ResponseWriter) error
+}
+
+type CreateMessage201JSONResponse Message
+
+func (response CreateMessage201JSONResponse) VisitCreateMessageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateMessagedefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response CreateMessagedefaultJSONResponse) VisitCreateMessageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type StreamEventsRequestObject struct {
+	Params StreamEventsParams
+}
+
+type StreamEventsResponseObject interface {
+	VisitStreamEventsResponse(w http.ResponseWriter) error
+}
+
+type StreamEvents200TexteventStreamResponse struct {
+	Body          io.Reader
+	ContentLength int64
+}
+
+func (response StreamEvents200TexteventStreamResponse) VisitStreamEventsResponse(w http.ResponseWriter) error {
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	if response.ContentLength != 0 {
+		w.Header().Set("Content-Length", fmt.Sprint(response.ContentLength))
+	}
+	w.WriteHeader(200)
+
+	if closer, ok := response.Body.(io.ReadCloser); ok {
+		defer closer.Close()
+	}
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		// If w doesn't support flushing, fall back to io.Copy.
+		_, err := io.Copy(w, response.Body)
+		return err
+	}
+	// text/event-stream messages are typically small; use a
+	// modest buffer and flush after each chunk so clients see
+	// events immediately instead of waiting on OS buffering.
+	buf := make([]byte, 4096)
+	for {
+		n, err := response.Body.Read(buf)
+		if n > 0 {
+			if _, writeErr := w.Write(buf[:n]); writeErr != nil {
+				return writeErr
+			}
+			flusher.Flush()
+		}
+		if err != nil {
+			if err == io.EOF {
+				return nil
+			}
+			return err
+		}
+	}
+}
+
+type StreamEventsdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response StreamEventsdefaultJSONResponse) VisitStreamEventsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
 
 type GetEvidenceRequestObject struct {
 	EvidenceId string `json:"evidenceId"`
@@ -5929,6 +10044,55 @@ func (response GetHealth200JSONResponse) VisitGetHealthResponse(w http.ResponseW
 	return err
 }
 
+type UpdateRepresentationRequestObject struct {
+	RepresentationId string `json:"representationId"`
+	Params           UpdateRepresentationParams
+	Body             *UpdateRepresentationJSONRequestBody
+}
+
+type UpdateRepresentationResponseObject interface {
+	VisitUpdateRepresentationResponse(w http.ResponseWriter) error
+}
+
+type UpdateRepresentation200ResponseHeaders struct {
+	ETag string
+}
+
+type UpdateRepresentation200JSONResponse struct {
+	Body    Representation
+	Headers UpdateRepresentation200ResponseHeaders
+}
+
+func (response UpdateRepresentation200JSONResponse) VisitUpdateRepresentationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("ETag", fmt.Sprint(response.Headers.ETag))
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateRepresentationdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response UpdateRepresentationdefaultJSONResponse) VisitUpdateRepresentationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListReviewsRequestObject struct {
 	Params ListReviewsParams
 }
@@ -5969,7 +10133,8 @@ func (response ListReviewsdefaultJSONResponse) VisitListReviewsResponse(w http.R
 }
 
 type CreateReviewRequestObject struct {
-	Body *CreateReviewJSONRequestBody
+	Params CreateReviewParams
+	Body   *CreateReviewJSONRequestBody
 }
 
 type CreateReviewResponseObject interface {
@@ -6125,6 +10290,166 @@ func (response ListChangesdefaultJSONResponse) VisitListChangesResponse(w http.R
 	return err
 }
 
+type ListDecisionsRequestObject struct {
+	ReviewId ReviewId `json:"reviewId"`
+}
+
+type ListDecisionsResponseObject interface {
+	VisitListDecisionsResponse(w http.ResponseWriter) error
+}
+
+type ListDecisions200JSONResponse []Decision
+
+func (response ListDecisions200JSONResponse) VisitListDecisionsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListDecisionsdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response ListDecisionsdefaultJSONResponse) VisitListDecisionsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateDecisionRequestObject struct {
+	ReviewId ReviewId `json:"reviewId"`
+	Params   CreateDecisionParams
+	Body     *CreateDecisionJSONRequestBody
+}
+
+type CreateDecisionResponseObject interface {
+	VisitCreateDecisionResponse(w http.ResponseWriter) error
+}
+
+type CreateDecision201JSONResponse Decision
+
+func (response CreateDecision201JSONResponse) VisitCreateDecisionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateDecisiondefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response CreateDecisiondefaultJSONResponse) VisitCreateDecisionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListDiscussionsRequestObject struct {
+	ReviewId ReviewId `json:"reviewId"`
+}
+
+type ListDiscussionsResponseObject interface {
+	VisitListDiscussionsResponse(w http.ResponseWriter) error
+}
+
+type ListDiscussions200JSONResponse []Discussion
+
+func (response ListDiscussions200JSONResponse) VisitListDiscussionsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListDiscussionsdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response ListDiscussionsdefaultJSONResponse) VisitListDiscussionsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateDiscussionRequestObject struct {
+	ReviewId ReviewId `json:"reviewId"`
+	Params   CreateDiscussionParams
+	Body     *CreateDiscussionJSONRequestBody
+}
+
+type CreateDiscussionResponseObject interface {
+	VisitCreateDiscussionResponse(w http.ResponseWriter) error
+}
+
+type CreateDiscussion201JSONResponse Discussion
+
+func (response CreateDiscussion201JSONResponse) VisitCreateDiscussionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateDiscussiondefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response CreateDiscussiondefaultJSONResponse) VisitCreateDiscussionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListEvidenceRequestObject struct {
 	ReviewId ReviewId `json:"reviewId"`
 }
@@ -6244,6 +10569,7 @@ func (response ListImportsdefaultJSONResponse) VisitListImportsResponse(w http.R
 
 type ImportManifestRequestObject struct {
 	ReviewId ReviewId `json:"reviewId"`
+	Params   ImportManifestParams
 	Body     *ImportManifestJSONRequestBody
 }
 
@@ -6362,6 +10688,7 @@ func (response ListRevisionsdefaultJSONResponse) VisitListRevisionsResponse(w ht
 
 type CaptureRevisionRequestObject struct {
 	ReviewId ReviewId `json:"reviewId"`
+	Params   CaptureRevisionParams
 }
 
 type CaptureRevisionResponseObject interface {
@@ -6427,6 +10754,47 @@ type ListTopicsdefaultJSONResponse struct {
 }
 
 func (response ListTopicsdefaultJSONResponse) VisitListTopicsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateTopicRequestObject struct {
+	ReviewId ReviewId `json:"reviewId"`
+	Params   CreateTopicParams
+	Body     *CreateTopicJSONRequestBody
+}
+
+type CreateTopicResponseObject interface {
+	VisitCreateTopicResponse(w http.ResponseWriter) error
+}
+
+type CreateTopic201JSONResponse Topic
+
+func (response CreateTopic201JSONResponse) VisitCreateTopicResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateTopicdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response CreateTopicdefaultJSONResponse) VisitCreateTopicResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -6680,15 +11048,23 @@ type GetTopicResponseObject interface {
 	VisitGetTopicResponse(w http.ResponseWriter) error
 }
 
-type GetTopic200JSONResponse Topic
+type GetTopic200ResponseHeaders struct {
+	ETag string
+}
+
+type GetTopic200JSONResponse struct {
+	Body    Topic
+	Headers GetTopic200ResponseHeaders
+}
 
 func (response GetTopic200JSONResponse) VisitGetTopicResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
 		return err
 	}
 	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("ETag", fmt.Sprint(response.Headers.ETag))
 	w.WriteHeader(200)
 	_, err := buf.WriteTo(w)
 	return err
@@ -6700,6 +11076,104 @@ type GetTopicdefaultJSONResponse struct {
 }
 
 func (response GetTopicdefaultJSONResponse) VisitGetTopicResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateTopicRequestObject struct {
+	TopicId TopicId `json:"topicId"`
+	Params  UpdateTopicParams
+	Body    *UpdateTopicJSONRequestBody
+}
+
+type UpdateTopicResponseObject interface {
+	VisitUpdateTopicResponse(w http.ResponseWriter) error
+}
+
+type UpdateTopic200ResponseHeaders struct {
+	ETag string
+}
+
+type UpdateTopic200JSONResponse struct {
+	Body    Topic
+	Headers UpdateTopic200ResponseHeaders
+}
+
+func (response UpdateTopic200JSONResponse) VisitUpdateTopicResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("ETag", fmt.Sprint(response.Headers.ETag))
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateTopicdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response UpdateTopicdefaultJSONResponse) VisitUpdateTopicResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type MoveTopicRequestObject struct {
+	TopicId TopicId `json:"topicId"`
+	Params  MoveTopicParams
+	Body    *MoveTopicJSONRequestBody
+}
+
+type MoveTopicResponseObject interface {
+	VisitMoveTopicResponse(w http.ResponseWriter) error
+}
+
+type MoveTopic200ResponseHeaders struct {
+	ETag string
+}
+
+type MoveTopic200JSONResponse struct {
+	Body    Topic
+	Headers MoveTopic200ResponseHeaders
+}
+
+func (response MoveTopic200JSONResponse) VisitMoveTopicResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("ETag", fmt.Sprint(response.Headers.ETag))
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type MoveTopicdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response MoveTopicdefaultJSONResponse) VisitMoveTopicResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -6750,6 +11224,47 @@ func (response ListTopicRepresentationsdefaultJSONResponse) VisitListTopicRepres
 	return err
 }
 
+type CreateRepresentationRequestObject struct {
+	TopicId TopicId `json:"topicId"`
+	Params  CreateRepresentationParams
+	Body    *CreateRepresentationJSONRequestBody
+}
+
+type CreateRepresentationResponseObject interface {
+	VisitCreateRepresentationResponse(w http.ResponseWriter) error
+}
+
+type CreateRepresentation201JSONResponse Representation
+
+func (response CreateRepresentation201JSONResponse) VisitCreateRepresentationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateRepresentationdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response CreateRepresentationdefaultJSONResponse) VisitCreateRepresentationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListWorkspacesRequestObject struct {
 }
 
@@ -6789,7 +11304,8 @@ func (response ListWorkspacesdefaultJSONResponse) VisitListWorkspacesResponse(w 
 }
 
 type CreateWorkspaceRequestObject struct {
-	Body *CreateWorkspaceJSONRequestBody
+	Params CreateWorkspaceParams
+	Body   *CreateWorkspaceJSONRequestBody
 }
 
 type CreateWorkspaceResponseObject interface {
@@ -6943,11 +11459,26 @@ func (response AssociateRuntimeSessiondefaultJSONResponse) VisitAssociateRuntime
 // StrictServerInterface represents all server handlers.
 type StrictServerInterface interface {
 
+	// (GET /v1/discussions/{discussionId})
+	GetDiscussion(ctx context.Context, request GetDiscussionRequestObject) (GetDiscussionResponseObject, error)
+
+	// (PATCH /v1/discussions/{discussionId})
+	UpdateDiscussion(ctx context.Context, request UpdateDiscussionRequestObject) (UpdateDiscussionResponseObject, error)
+
+	// (POST /v1/discussions/{discussionId}/messages)
+	CreateMessage(ctx context.Context, request CreateMessageRequestObject) (CreateMessageResponseObject, error)
+
+	// (GET /v1/events)
+	StreamEvents(ctx context.Context, request StreamEventsRequestObject) (StreamEventsResponseObject, error)
+
 	// (GET /v1/evidence/{evidenceId})
 	GetEvidence(ctx context.Context, request GetEvidenceRequestObject) (GetEvidenceResponseObject, error)
 
 	// (GET /v1/health)
 	GetHealth(ctx context.Context, request GetHealthRequestObject) (GetHealthResponseObject, error)
+
+	// (PATCH /v1/representations/{representationId})
+	UpdateRepresentation(ctx context.Context, request UpdateRepresentationRequestObject) (UpdateRepresentationResponseObject, error)
 
 	// (GET /v1/reviews)
 	ListReviews(ctx context.Context, request ListReviewsRequestObject) (ListReviewsResponseObject, error)
@@ -6963,6 +11494,18 @@ type StrictServerInterface interface {
 
 	// (GET /v1/reviews/{reviewId}/changes)
 	ListChanges(ctx context.Context, request ListChangesRequestObject) (ListChangesResponseObject, error)
+
+	// (GET /v1/reviews/{reviewId}/decisions)
+	ListDecisions(ctx context.Context, request ListDecisionsRequestObject) (ListDecisionsResponseObject, error)
+
+	// (POST /v1/reviews/{reviewId}/decisions)
+	CreateDecision(ctx context.Context, request CreateDecisionRequestObject) (CreateDecisionResponseObject, error)
+
+	// (GET /v1/reviews/{reviewId}/discussions)
+	ListDiscussions(ctx context.Context, request ListDiscussionsRequestObject) (ListDiscussionsResponseObject, error)
+
+	// (POST /v1/reviews/{reviewId}/discussions)
+	CreateDiscussion(ctx context.Context, request CreateDiscussionRequestObject) (CreateDiscussionResponseObject, error)
 
 	// (GET /v1/reviews/{reviewId}/evidence)
 	ListEvidence(ctx context.Context, request ListEvidenceRequestObject) (ListEvidenceResponseObject, error)
@@ -6988,6 +11531,9 @@ type StrictServerInterface interface {
 	// (GET /v1/reviews/{reviewId}/topics)
 	ListTopics(ctx context.Context, request ListTopicsRequestObject) (ListTopicsResponseObject, error)
 
+	// (POST /v1/reviews/{reviewId}/topics)
+	CreateTopic(ctx context.Context, request CreateTopicRequestObject) (CreateTopicResponseObject, error)
+
 	// (GET /v1/revisions/{revisionId})
 	GetRevision(ctx context.Context, request GetRevisionRequestObject) (GetRevisionResponseObject, error)
 
@@ -7009,8 +11555,17 @@ type StrictServerInterface interface {
 	// (GET /v1/topics/{topicId})
 	GetTopic(ctx context.Context, request GetTopicRequestObject) (GetTopicResponseObject, error)
 
+	// (PATCH /v1/topics/{topicId})
+	UpdateTopic(ctx context.Context, request UpdateTopicRequestObject) (UpdateTopicResponseObject, error)
+
+	// (POST /v1/topics/{topicId}/move)
+	MoveTopic(ctx context.Context, request MoveTopicRequestObject) (MoveTopicResponseObject, error)
+
 	// (GET /v1/topics/{topicId}/representations)
 	ListTopicRepresentations(ctx context.Context, request ListTopicRepresentationsRequestObject) (ListTopicRepresentationsResponseObject, error)
+
+	// (POST /v1/topics/{topicId}/representations)
+	CreateRepresentation(ctx context.Context, request CreateRepresentationRequestObject) (CreateRepresentationResponseObject, error)
 
 	// (GET /v1/workspaces)
 	ListWorkspaces(ctx context.Context, request ListWorkspacesRequestObject) (ListWorkspacesResponseObject, error)
@@ -7067,6 +11622,126 @@ type strictHandler struct {
 	options     StrictHTTPServerOptions
 }
 
+// GetDiscussion operation middleware
+func (sh *strictHandler) GetDiscussion(w http.ResponseWriter, r *http.Request, discussionId DiscussionId) {
+	var request GetDiscussionRequestObject
+
+	request.DiscussionId = discussionId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetDiscussion(ctx, request.(GetDiscussionRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetDiscussion")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetDiscussionResponseObject); ok {
+		if err := validResponse.VisitGetDiscussionResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// UpdateDiscussion operation middleware
+func (sh *strictHandler) UpdateDiscussion(w http.ResponseWriter, r *http.Request, discussionId DiscussionId, params UpdateDiscussionParams) {
+	var request UpdateDiscussionRequestObject
+
+	request.DiscussionId = discussionId
+	request.Params = params
+
+	var body UpdateDiscussionJSONRequestBody
+	if err := runtime.BindJSONBody(r, &body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.UpdateDiscussion(ctx, request.(UpdateDiscussionRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UpdateDiscussion")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(UpdateDiscussionResponseObject); ok {
+		if err := validResponse.VisitUpdateDiscussionResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CreateMessage operation middleware
+func (sh *strictHandler) CreateMessage(w http.ResponseWriter, r *http.Request, discussionId DiscussionId, params CreateMessageParams) {
+	var request CreateMessageRequestObject
+
+	request.DiscussionId = discussionId
+	request.Params = params
+
+	var body CreateMessageJSONRequestBody
+	if err := runtime.BindJSONBody(r, &body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateMessage(ctx, request.(CreateMessageRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateMessage")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CreateMessageResponseObject); ok {
+		if err := validResponse.VisitCreateMessageResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// StreamEvents operation middleware
+func (sh *strictHandler) StreamEvents(w http.ResponseWriter, r *http.Request, params StreamEventsParams) {
+	var request StreamEventsRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.StreamEvents(ctx, request.(StreamEventsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "StreamEvents")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(StreamEventsResponseObject); ok {
+		if err := validResponse.VisitStreamEventsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // GetEvidence operation middleware
 func (sh *strictHandler) GetEvidence(w http.ResponseWriter, r *http.Request, evidenceId string) {
 	var request GetEvidenceRequestObject
@@ -7117,6 +11792,40 @@ func (sh *strictHandler) GetHealth(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// UpdateRepresentation operation middleware
+func (sh *strictHandler) UpdateRepresentation(w http.ResponseWriter, r *http.Request, representationId string, params UpdateRepresentationParams) {
+	var request UpdateRepresentationRequestObject
+
+	request.RepresentationId = representationId
+	request.Params = params
+
+	var body UpdateRepresentationJSONRequestBody
+	if err := runtime.BindJSONBody(r, &body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.UpdateRepresentation(ctx, request.(UpdateRepresentationRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UpdateRepresentation")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(UpdateRepresentationResponseObject); ok {
+		if err := validResponse.VisitUpdateRepresentationResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // ListReviews operation middleware
 func (sh *strictHandler) ListReviews(w http.ResponseWriter, r *http.Request, params ListReviewsParams) {
 	var request ListReviewsRequestObject
@@ -7144,8 +11853,10 @@ func (sh *strictHandler) ListReviews(w http.ResponseWriter, r *http.Request, par
 }
 
 // CreateReview operation middleware
-func (sh *strictHandler) CreateReview(w http.ResponseWriter, r *http.Request) {
+func (sh *strictHandler) CreateReview(w http.ResponseWriter, r *http.Request, params CreateReviewParams) {
 	var request CreateReviewRequestObject
+
+	request.Params = params
 
 	var body CreateReviewJSONRequestBody
 	if err := runtime.BindJSONBody(r, &body); err != nil {
@@ -7253,6 +11964,126 @@ func (sh *strictHandler) ListChanges(w http.ResponseWriter, r *http.Request, rev
 	}
 }
 
+// ListDecisions operation middleware
+func (sh *strictHandler) ListDecisions(w http.ResponseWriter, r *http.Request, reviewId ReviewId) {
+	var request ListDecisionsRequestObject
+
+	request.ReviewId = reviewId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListDecisions(ctx, request.(ListDecisionsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListDecisions")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListDecisionsResponseObject); ok {
+		if err := validResponse.VisitListDecisionsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CreateDecision operation middleware
+func (sh *strictHandler) CreateDecision(w http.ResponseWriter, r *http.Request, reviewId ReviewId, params CreateDecisionParams) {
+	var request CreateDecisionRequestObject
+
+	request.ReviewId = reviewId
+	request.Params = params
+
+	var body CreateDecisionJSONRequestBody
+	if err := runtime.BindJSONBody(r, &body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateDecision(ctx, request.(CreateDecisionRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateDecision")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CreateDecisionResponseObject); ok {
+		if err := validResponse.VisitCreateDecisionResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListDiscussions operation middleware
+func (sh *strictHandler) ListDiscussions(w http.ResponseWriter, r *http.Request, reviewId ReviewId) {
+	var request ListDiscussionsRequestObject
+
+	request.ReviewId = reviewId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListDiscussions(ctx, request.(ListDiscussionsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListDiscussions")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListDiscussionsResponseObject); ok {
+		if err := validResponse.VisitListDiscussionsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CreateDiscussion operation middleware
+func (sh *strictHandler) CreateDiscussion(w http.ResponseWriter, r *http.Request, reviewId ReviewId, params CreateDiscussionParams) {
+	var request CreateDiscussionRequestObject
+
+	request.ReviewId = reviewId
+	request.Params = params
+
+	var body CreateDiscussionJSONRequestBody
+	if err := runtime.BindJSONBody(r, &body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateDiscussion(ctx, request.(CreateDiscussionRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateDiscussion")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CreateDiscussionResponseObject); ok {
+		if err := validResponse.VisitCreateDiscussionResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // ListEvidence operation middleware
 func (sh *strictHandler) ListEvidence(w http.ResponseWriter, r *http.Request, reviewId ReviewId) {
 	var request ListEvidenceRequestObject
@@ -7332,10 +12163,11 @@ func (sh *strictHandler) ListImports(w http.ResponseWriter, r *http.Request, rev
 }
 
 // ImportManifest operation middleware
-func (sh *strictHandler) ImportManifest(w http.ResponseWriter, r *http.Request, reviewId ReviewId) {
+func (sh *strictHandler) ImportManifest(w http.ResponseWriter, r *http.Request, reviewId ReviewId, params ImportManifestParams) {
 	var request ImportManifestRequestObject
 
 	request.ReviewId = reviewId
+	request.Params = params
 
 	var body ImportManifestJSONRequestBody
 	if err := runtime.BindJSONBody(r, &body); err != nil {
@@ -7417,10 +12249,11 @@ func (sh *strictHandler) ListRevisions(w http.ResponseWriter, r *http.Request, r
 }
 
 // CaptureRevision operation middleware
-func (sh *strictHandler) CaptureRevision(w http.ResponseWriter, r *http.Request, reviewId ReviewId) {
+func (sh *strictHandler) CaptureRevision(w http.ResponseWriter, r *http.Request, reviewId ReviewId, params CaptureRevisionParams) {
 	var request CaptureRevisionRequestObject
 
 	request.ReviewId = reviewId
+	request.Params = params
 
 	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
 		return sh.ssi.CaptureRevision(ctx, request.(CaptureRevisionRequestObject))
@@ -7461,6 +12294,40 @@ func (sh *strictHandler) ListTopics(w http.ResponseWriter, r *http.Request, revi
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(ListTopicsResponseObject); ok {
 		if err := validResponse.VisitListTopicsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CreateTopic operation middleware
+func (sh *strictHandler) CreateTopic(w http.ResponseWriter, r *http.Request, reviewId ReviewId, params CreateTopicParams) {
+	var request CreateTopicRequestObject
+
+	request.ReviewId = reviewId
+	request.Params = params
+
+	var body CreateTopicJSONRequestBody
+	if err := runtime.BindJSONBody(r, &body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateTopic(ctx, request.(CreateTopicRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateTopic")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CreateTopicResponseObject); ok {
+		if err := validResponse.VisitCreateTopicResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -7649,6 +12516,74 @@ func (sh *strictHandler) GetTopic(w http.ResponseWriter, r *http.Request, topicI
 	}
 }
 
+// UpdateTopic operation middleware
+func (sh *strictHandler) UpdateTopic(w http.ResponseWriter, r *http.Request, topicId TopicId, params UpdateTopicParams) {
+	var request UpdateTopicRequestObject
+
+	request.TopicId = topicId
+	request.Params = params
+
+	var body UpdateTopicJSONRequestBody
+	if err := runtime.BindJSONBody(r, &body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.UpdateTopic(ctx, request.(UpdateTopicRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UpdateTopic")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(UpdateTopicResponseObject); ok {
+		if err := validResponse.VisitUpdateTopicResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// MoveTopic operation middleware
+func (sh *strictHandler) MoveTopic(w http.ResponseWriter, r *http.Request, topicId TopicId, params MoveTopicParams) {
+	var request MoveTopicRequestObject
+
+	request.TopicId = topicId
+	request.Params = params
+
+	var body MoveTopicJSONRequestBody
+	if err := runtime.BindJSONBody(r, &body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.MoveTopic(ctx, request.(MoveTopicRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "MoveTopic")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(MoveTopicResponseObject); ok {
+		if err := validResponse.VisitMoveTopicResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // ListTopicRepresentations operation middleware
 func (sh *strictHandler) ListTopicRepresentations(w http.ResponseWriter, r *http.Request, topicId TopicId) {
 	var request ListTopicRepresentationsRequestObject
@@ -7668,6 +12603,40 @@ func (sh *strictHandler) ListTopicRepresentations(w http.ResponseWriter, r *http
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(ListTopicRepresentationsResponseObject); ok {
 		if err := validResponse.VisitListTopicRepresentationsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CreateRepresentation operation middleware
+func (sh *strictHandler) CreateRepresentation(w http.ResponseWriter, r *http.Request, topicId TopicId, params CreateRepresentationParams) {
+	var request CreateRepresentationRequestObject
+
+	request.TopicId = topicId
+	request.Params = params
+
+	var body CreateRepresentationJSONRequestBody
+	if err := runtime.BindJSONBody(r, &body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateRepresentation(ctx, request.(CreateRepresentationRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateRepresentation")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CreateRepresentationResponseObject); ok {
+		if err := validResponse.VisitCreateRepresentationResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -7700,8 +12669,10 @@ func (sh *strictHandler) ListWorkspaces(w http.ResponseWriter, r *http.Request) 
 }
 
 // CreateWorkspace operation middleware
-func (sh *strictHandler) CreateWorkspace(w http.ResponseWriter, r *http.Request) {
+func (sh *strictHandler) CreateWorkspace(w http.ResponseWriter, r *http.Request, params CreateWorkspaceParams) {
 	var request CreateWorkspaceRequestObject
+
+	request.Params = params
 
 	var body CreateWorkspaceJSONRequestBody
 	if err := runtime.BindJSONBody(r, &body); err != nil {
@@ -7815,114 +12786,156 @@ func (sh *strictHandler) AssociateRuntimeSession(w http.ResponseWriter, r *http.
 // const string: with thousands of chunks the chained `+` fold is several
 // times slower for the Go compiler than parsing a slice literal.
 var swaggerSpec = []string{
-	"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",
+	"7H1tc+K4uuBfUXm3arqrHNI9Z869d9O1H2gg3dQkkAOk506dTBHFfgCdNjIjiaSprnzdH7A/cX/Jlt5s",
+	"2dhgQ0xnbt1PISBL8vOm513fvSBermIKVHDv4ru3ABwCUx97EzyXf0PgASMrQWLqXXiTBSAGPF6zANAj",
+	"ME5i6qM/17GAsOX5HoM/14RB6F0Itgbf48EClljOIzYr8C48Lhihc+/5+dn3VpjhJQizYJfwYM3lhP1Q",
+	"/k/keissFp7vUbyUD4fukDqL+V4/hOUqFkCDza+w2X6xTkSAirNgEXOgaE3Jn2tAX2GDxAILtMRfgSOM",
+	"GAhGIERyZeACcTwD+dpqrxp46W6dJc/kmu4Gl/jbFdC5WHgXP//97763JNT+/94v2v7sGotgsb1viSYU",
+	"z5BYJPhQn4MFpnNAhKMHzCFEMW2hkYHXBxQviRCEzhER8p3WjHL0y8//Uf4qszO9/m4gj+CRwFMp+pj9",
+	"uR7q5Kw7yYKlA2rOvKaCLGEMu8mO5YfVW2USr0hQOrkwv9ab87eYfeUrHEDpvE/OiJp8yYCvYspBywHG",
+	"YiY/BDEVQIX8iFeriARYkuD5v7ikw+/OjP+Twcy78P7HeSpbzvWv/FzPplbJ0bH8oaXezYyVU7VpsNCr",
+	"4zAkciiObli8AiaI3N4MRxx8b+V8JTcawpRJ8pf/xRSGM+/in8mb0nUUec/+7n124hBGaornP559DyJY",
+	"AhVTEm5zYJfgOcNLROMQUL+LZjFD3X7706h9Pe1d9a57g4nkK736Py2gfb0POTkJi+UsVi+vpE0Qs/CD",
+	"4uvQrMZgxYADFQoLRYt+QHIF9cuo96Xf+w1hGqLOsNubjtqDT73dm9K/7AaSxs5Ejnx+dmnsn/px9WoZ",
+	"4Pkucv6wq3jxw78gEN6z7zlTXnz3gK6Xcja9f8/3JsObfsfzvf5g0htMPN/rfJav4vneZX/Q7Q8+eb7X",
+	"+9Lv9gYd+WX6sp7v5cDjLG9p3/faQpI4iemYzCmOahIeXgtDrTuhpkdJqnokIdAApiRUzxMBS17Ak8lG",
+	"MWN44yUkszWMLFcxE1P31yLcrhiJGREbF8Sf+58+e7533ev2b68937saSnjfDn4dDH8bFMJqxeJHoJgG",
+	"e+nkJh0pyQRrcELhK1hZPi15RYHZHERNxJTNlSMzS10pLRny+qPoSC4m9yKiXtMAmMCEapDvnoqEXhYK",
+	"yTs7iHOhmJ0/gxffkqRLGjm629qw7307m8dn5kt9ZrfyjOEMOtNTyzdTJ9CFNydisX5oBfHyHIfrR2Bz",
+	"YOcrtqYQRXDOgT0COydUAKM4OtcrKDi0Ewaqjdys+LxkAGezmC2RBgCSLyyI2PgIWvMWwiiK54SimKEV",
+	"ubhbv3v3t4Dr4139o5S6nTqZ730lNMxw0O11e+D5XvtTsXTJ4Vk9XkwyxRiwmGwC8B9x8BVo+BlwJBZ1",
+	"j9sFBF8hnGK1Ewl0+ckLsYAzQZaw85gBq12UDyF0FpdvqYCtc4oFDVcxoQKFIDCJOOLrYIEwRwy+Ta3G",
+	"LE9GvCJTy3ctL48TqZcILDLyojMcDHqdiRYVo16787n98aqnxKb7X7c/lp+6+2lCr2Ch4rugNXDYQyuG",
+	"hnkri9AXJBq7gtp7qiXVI5mHKH6YLjAvsGfGn9tnP//936xJw4XSgGYkAmQU0Ja3BUbfAxpOI0LVRpaE",
+	"kuV66XKt3P4c1KGr37rw5FnFnIiYbcrOHg4RBALCqYBvongECTMU8rE9lhTwudfuFp6hXGAmKm08RynZ",
+	"zfpW91frZ6Z1QOM7cM+/TDUZlOK7GTHU0RgeSusUCsT6b4uNogpFDoSjiHABIXoiYhGvhSUQ3lJvbTDQ",
+	"H7RHvyvVcTi9ao+UKji+/Xg97N4q7hwMJ9P2dNT7dHvVHk0v+/JLKXv+2CW2OgywgC4ESlqMtDegLhPE",
+	"4aZEfulp96lVdvlf5Uny7DveEatQ7nq6370iXMm1GaEhofN6D+X0tCIvkR6ANH6l1yGEGV5HgiMRax/F",
+	"mjGgAsUUCpg6R/EJVCqSaiGGGiJbvVYC/sPoAVezdbOQNpadUP4pGouFdOpAxOEDUtqsj7Sp5COtyvrI",
+	"KLc+snaSehjdk/D+wx3NGUlm4h2Gp3xOH5/aAL5PrT05X2qBmanuUwPwHsmT13iqjIw3Yj85h++ot9u8",
+	"rwHg05wRr/kEKDJOsq6Nrf3tMZ2OcQ8U7cYKxT26907p082JGc2pP/FE3hRoeSVCx/Ck2VctybMlDZqU",
+	"PdfAOZ7DcQfRPh+0C5ja8MjtsElgjDIS6jCYKCETktlsr0PT2NLyXOzEdEbmfbpaC30eK4m59xjXw3IP",
+	"Jza61HGO2IRVVXc9PoFvW48REcF+1pL4+4mjNV/jCKlnCrXzLUdL7z8nqUfOOuq6/ctLx383veqPJxVd",
+	"L3UosZg8miVI+cVhhJiBf5EgtojaIzGTcECxoM8BNTPaLlIPyO4rNwlcFV05kMmV5lFP7837bBtUsYmy",
+	"Zuo9s8Jsx2HO18slZpsjCCnPfOqhdOI6JJJBXJMUksTKDqMSHU+roJIYfYxA1plf5yTGHKYKz3uXIzSI",
+	"1iFM11Qw6esxepASzzbIZx56iOMIMJVPRfgBogqzWwU4K/1vsFggE1/WUP+AlmsuUEQAEcpJCOq3QJ0l",
+	"awYhwlEUP0GIWBxru3w3Pen9JcpsAo8iVXFJaF/D+H0+QJKbVWEwh6E6lLpFQM1Qa9ex+xuMOpX6HQL1",
+	"shUcuY34KrKk1g7U2z9EgNKhHL0Z9f5x2xtPptqaHb+VJFU9bJYTw6VLmnFHr1cihjXOpzt+reZZMTkf",
+	"IQkEUiF5aarH+7ksCTHpTeTDTQlODa1k4baFOyfI5FBQNf7qpks1yVG/5kI1neH1tY4ft29uRsMvPeW/",
+	"z2C60FgvUNXr8SqE89zpUMEy6IVzKKIuGoeHHzWH6TEkrHB4fN2G9s1woOE97o2+9FVsvtuetMeT4Uh+",
+	"/sdt71b+bXcmw5EcNendqD/tifx6OPncGxUipOp5Zs7UnTaUig+OYFbMLvZkUi935HGk8FY0h4vweuic",
+	"sXhZKE0SCG39IuL9doCaVg21M1Xka+dFGmLtRAgd7Gbd77vynhPhVvl4PeQULTkJltpnUl1gGCdLkbB4",
+	"yTNHgxA9YY6WOASE55hQXhyY4wKLNXfFwfCmN1Dydjy8+tIr9oqqpLjiY1qZDdzdB4MIC3X0XThfQ4jU",
+	"LB/0Hxksol+ldzwzRNtY/h3VtqAvMwLMaZc8yAAHi60nrQDNpGX9xO2iMu0KI+lGuqNMT60eDwR5BDtz",
+	"/ETtvDqkRXW6adb9XV3fWK/C2rRnQuA1vc97VIjEb5oiMiEFR1+wazuknmGgzBtVlTyJXGhG8KTnRKM5",
+	"SJUy3I7JSyqEXvpyDQHPpnvUABwc8IzkOxeqMsh7ObwddBVkv7Sv+t1pe/Tp1miBneHg8qrfUR/bN5Pb",
+	"UW962e7LlA3fuxn1OsNBtz/pDwcl30rVsT9S398O2reTz73BpN9pT/TI3ui6Px7Lcd3eoN/rGuSOBu2r",
+	"Qtln8lTqJQQa/tl/oivIpOPT5bb1kdyTGg9Faot1PzdsuDaQ1+vkNO/Lzz002XJbG3ZyUifS4hj1xrdX",
+	"Sjm+6XX6l5Jy+kOVSTZoX/0+7o+nw9vJza0yV0aT/mW7M3nZhMw9KZe62qMkyU7GF1DMyJxQk1unPUDL",
+	"pQwKq9NsxeJwHcjDVrTQNd6gB0CwXIlNcazA+iFrp0majDrrk7S4TV6gSmrkrvTkYolpab8hgbkV2TnS",
+	"zqsqUvLMXz9ltGDrp4LRQab5AQbxc4EwvCQRdJxSiZre36U5ucoFihoWk7DCKBv8y/LtwJYF4DA0eRdc",
+	"pXDEOu9qO9GucAFCs6EEx81sJpjGaSLXbqGcSft69lX9UQVQqGF7QaFG7QFFCBGIw4ERR+E0mzRSNOqI",
+	"tJK9Mjoxs3YBWtLmWI/cTidxRWlJcknymo4yn1KtizaHTB00JVSzTSIuxbooqyZrXKZrRsg4oHMO83a3",
+	"qxS662G3f6l1u27vqqc1v1Fv0L5Wnya/3/SMY1EriZNRu/Nrie17qc3PV1t7MiOMiykHoNN9VPnSmtNo",
+	"1OtMBr3xWMF53P80UC7Fzu2oP/ld69qXw9F1e9BJlKtP7ZudHsTmqljKvS0cHqFa/U1/cDksSxsrdqt0",
+	"+2NpbvS6e10sNfUsa+iXoD9Rv5KXc2SEVcncopVGylQs7zQjA9LyiCzvbSMj/loIc8fXsr8QQEHOPlFk",
+	"dhktpBbz9hNgNChbdrJ9TfdULb/lUWGvHA3WcToZqDZDdXryw3IXlpiSGexPILu2406YW5nsrQ6Mm43A",
+	"2zX4OqoLaXOMlhUpVS5e2uLyfDWTIGKDpKxFb7TzmvuJL9o3ydTcT0LYvvE1+wjbEr636P/9n/+LLPhV",
+	"kwP5BeaczCmEqN8tLH8qOLUP5kRHymeZsLqoz+CqIXI4xIrDQQArIc+1acCIAEbwbjXnr1I1nFfHPvY+",
+	"t7/0Vby2MxyMJ6N2f/DyjqkdWlTilirUjlRW+wGHglVjkikc/1ERbhvSZPpNGjO/wqa+6nDtnCV1KlTU",
+	"staMRk+MCAEUPWwQprY6943YrEiAo0iXd5HlShclyOAYngMVb1tIST4CHDGYAZPQvKMyMIdisQAm5/sK",
+	"G247t6yAIUhlZQv1HoFtTCcFWTqGhWDkYS1UmFCtqvfy4Y6m+JQDTQUi5iiEIMLy8xtTFo+eFkCto8BH",
+	"w48yu6GnO0BIRyJSjkT+tpWpg7HEoFPndG0qFnsKYT6gG4NX1X4negSOiOB3VPlfZZheDecUr/giFkV1",
+	"M4n8PzZlZB8TW+qSMgOKU81ecweCgzoMlL1oWXhvK6pXNZQnFzq6x0CdhgJFi+VFQ+1IjtZSDiVEPBPA",
+	"CsH9ALOYFaM12+iquth7QarfcYKqiOBlO8mMkn96N72BjPP+biKU/U+3Ixsauu034tXYlSAuzfqZ6foz",
+	"3TZ5bwdfeiPrBBvf3twMR9oN1hlKd1e335lUKYGXsEsPYbOdBLG+wX0VonQRdwiVvY46w20TbJT8hlRK",
+	"VnHazenLEI+oQdwKw7pMU5GZXl9cdYeCWtH5lmGGkiKc8jRn/goO+r+wD/cFvLSHoNnxn267Tatg33gF",
+	"Dj5cd9mvzrud5lxsyLJ8Gdsxi7dtg7EKtrR3pqAaAelSLm0lPIDtdaEPQqn7o2BBopABzdQk1C5/4zUQ",
+	"eADOXVlU8RGHgI81MxQIy05YpwqUH6Uk2DrhJkVsoWswLTD+S9cg1KGNsOIx03zJwSFFBtaHcniZwYGV",
+	"BVvl5KemVZt/UWNdDsFRvFla6HYA3S0A26D87jPBDixrGbEPhclLFz5Zok/8iAr7AmFQqby4ypG6t6x4",
+	"HxSNQ6Kaq9UyZUPOVpfnm3UqvWjOeKGjaSf8mksbv06zm09QGJtVxK4x+xrGT/QDYkBDYE6/MYaf0OfJ",
+	"9VWhBX5QNa1bWVk9o6boIMlO5cQlTEln7VLN6yRjvBEMx4/HdHLItD0oSPFbxo+mjZXSt5PodRzvSexT",
+	"zo18ecy7vV6RdD/OFBXhnIdEMwAfPqgfw87iAA9XuQO2Ns8157B9RfHRV+Ld3ZtE+sO9v+VZ/aWu4Ayh",
+	"FO+zoRBtjoWa4dObDK6zou1z/ORELtFXGj/xC3Tda49vR70ueiPiOELxWqzWIul6i5EALhBb07dOxPIN",
+	"B6AoJAwCEW1kHaKKX8occSbIDAeCv5WtBC97IzUzA8xjVbsYM/SvdThfyiCtj0y0roXGSdTU2aAJoMrI",
+	"pdui025Y0rzZkHaqqcX2xAClN3xsop5HdFvZjiTJH/kCb0N9KZF3Jn9/I93pPrLzvC060h+YrIXcnqUn",
+	"C2B0AFnOIiPNIQgcLPQ9KlvzyKDwNIjXGXeGE0pQGdNmvwfllycjyg1cLvAcwl272BYM0oHXHxu9tD9w",
+	"/i3C5pruXyPpeLNr0BNmdMsFXq/kJZ8DvwUipz+NQy8OKhLs50C39Z7bL5VBuJNJm7xXNRGV4Y5mBNQo",
+	"E6p6KfYrO4qLuh7taHO0TedxLKbF3Y06mMZUZqGgFNNKQ8y2PCrkznrd1RQ5ZR5JHT/pBjPktf3i1Qkg",
+	"Cc81hH7Hj3qwhXZYNafVI1Ua3SMmkezeU1aSdHBDR28rCdMMQf0ut4k6Tr6PtC74In5q/Vfy0b6YNv2a",
+	"XLWHUZ3TKeaP/U5cvdg+BbOaZ9c3hFHJw1uTyEsuInIq5Bh5lCodDdGaJtyGgApGgO+pj1MFwi7ar9uD",
+	"2/aV1AmuE1vhU2/QG5my+W5v1NeK4GA46BWit9CcKVr9B/qed/uSqnmSDmfBQ73Wx1LroU5s0yykeQ+3",
+	"7zkkPNXWzG4ackp3jmcQq6gm8xdJEbuiAxffOmetg9zwlXv6Fb5aSa1LZR3CPeKb0iPUx5rR1wN8rKZQ",
+	"ZVpZeuzrwLu3IjdXode5Go5r1uQd1tnneKXUkpkLAscYKQLlsf17DB00R2QHtAwL8EqsWU3ozwidA1sx",
+	"UpKAUEI2MQuJuXlud+7gnuIIY/RVVyIzpmJRcC+h56z8c2167c/ArgH1FVZCZ7ZLb1G4lhtEBqAfknx1",
+	"2Uhsg5bkG5LLQOYGlzoehH3FHRa6fganWWQ5BJ5CsTrxNth6Kntdac06jDZasTgAzqXLTgBbSkCgRayz",
+	"ijYII3O1E3rQd0ehN+rqSPjmo5hC+shDFAdf37bQIBYI0zuqCjRkfYc8sNQR0bJ+QLQETLUL0E4aYEpj",
+	"YcsFI9UMJjaO1A+ICBTG+iaTOyofVs/ajXMRr1YQFhU3mOnL2MH+nDc+Rr3/VFmxo640LK7bg/anEtEc",
+	"4BV+IBERpIZhZjDVsc9uihgreNpzAME3TQqF4a3hCst6Fwtefc/djAAzN4ZJUaUIBMU02rS8CzltobhK",
+	"yrrrSLkFZhQ4ny6MmMu5VGKpVSIzSOHS3KUr+9UCZspWZmvbOmhFWqiN5Fy+JAFVIaSoy17fV/8iVVs2",
+	"cxY/bdU2VrEUI3wIWKI4wNH2ZkZryq03yWDsJ654UCUNouBJ1yahVdJpW10+LdsPQh53jnNjCQKHWBQ4",
+	"q809cGd8BYGMi9hb8AorPA2fFXR6ihnMWbymoeRFfdstXsJubGxdlzccXPUHymK/vDSfxpPhzc1eH7+a",
+	"aWrKo2rhga/nc5ASbupqNgVvmLT45uhpEXNAbrNwVbyGCXUJ+CeOFJIlzlpoAI/ATA/mUIY7Ysl2qqKt",
+	"XsfoPdvsfZMXLxMhi3XjgOjcxTorFB2QjuzMScqs7PGT+wmtg0OKrpRsLNnnpEJOdjrUmn/dcnzl5VOO",
+	"LwtIpOpFibkztambEs38hh3r659NnT1JS7GcURvTMw4BA5Ee3Kapvz7hi8QHqObpRbexypfSuqGrChB5",
+	"zqMolqoXIq6PvXQxR+YtkmYcu6CQvQezuleyumJgr4eooImqoYlb0IJriz8C63U2r1iVlHM01jApO4Tl",
+	"wK3bH3eGX3o66UHW3Uz0dYvjzqj/sdiNN1bJ8p00Gb0GZ7zEpRuq5dehDzfaBe3IrmL1e4LlGi/XaDxM",
+	"bfeIIlBsJUeVNxMrbw+W7iyzXJW81BcJf9ePDmvCqrbB3Yk56fuWx7yr9XPTEmZrvmrmbZZTm7Fx83eR",
+	"vUa3fdUU0MPuWHjJVPPqlxLsdNmrfMSmu/tmLuOqLnoO8QHnEZPrcWTToGTHeKfTu7Ggj7hw5lSpiNmb",
+	"w6qvWjdMV5icuH0D2b7E2pxHg4XSllrGdI44eYhkuovDXtVdoHn7s92Z9NVVL8OP46Fs0lhsbB5QxPBD",
+	"O++7ucb5wgknQmRttwTwJYmQDu1kmDJ/C1CGh9xo1XH+fy1qmjlbbtVmjr2n+ZAbLYrb+1WDSNmum4TR",
+	"f1+h+oJXqO67ULEyDZzy5lK94n9fruk+0+SJ8mJEcoLakcRZeoJwfcnhXuJ12XEN577Yp8mSfJFbdXY4",
+	"f3KW2HGHZYqIJhD9/KxDSEUtaOQQ66xr3/RbqB1FiMVrARzBtwBWAt2fP74/1y6se2TAIbuc4SgClkR0",
+	"Lu4oRvcTGZMIcARntxzY2VU8J/QeSQMHGOLSC7lByRg0luuqq5owiuJ4JR2KagXgwlpmdzQdr+fh6I30",
+	"MJpoirx7CdjbFpK3W9k9ZaoV4hkC1TROSzIZm1zir8Bbd1RdYyOvvdb3nd6r/+8R0EeI4hW07ugdvV4L",
+	"/GDatUmzmaMAMybjrPdGV7r/gDih8wjO7Bg5eBVTrrrciTWjSLn60X1vgucX6M67W79797fAPK/+gTvv",
+	"3r+jKulIkQ9PYH3fn51dYxEs7hVQdDDpEUdrQG9++fk/EhuWCB/98v5n7aDlAkcgO9YZEcL1Y5pOEY+X",
+	"INRdWLpNiIzQ3fdDWK5iATTYnP0Km/sLxGAFWNirrWSDUbMBQBwv5Y1YBln6LTXYTaM9CwL0Jp1YnI1g",
+	"FeENhBdIsDXcv1UZVz//ghbxmnEdEI5IAJQrqeBEQS+86/7Esp/+JxW7SXQQGYpu3/QdXfbCe9d633on",
+	"H4hXQPGKeBfe39RX2u2mBIskc+eO0vPv6T/98FmOMO3kpChUJ3c/9C68TyAyd1UlqJdDf373TqtQaQdS",
+	"GVvSZU3n/zLZalp87VeOklUUS29f7pZuuGXKF4CpbUiyK5veDDtXY8zE5vbh4geSFzxX7KJPNTznUkI6",
+	"8DM+TYaXINQ2/lk8XTrEecN+6D3/oXBTVHMz0p0TkbozTmJUvm4WK3ll26u7l/5MsZzahqHyj8ap9CLY",
+	"LLMGnrOHjuSS5x9GVHqT4asjrGd/D7eeu1cuHkuEMRdFNLiKNvrUSVdGcxAy7E/hCRnhs02a+i7qtAy7",
+	"Jl2mQvpX2DRGnplN1qLN9y+2BwuiAsLU2wuRQXPLa4C64NHWLBu5n92CUl7YGQcqkB6q86tWwIym4ctg",
+	"KJewU05HFgJroZ5sdTse9+zW0ULqBSS8R/87Gevf0Xs1pfxSfUBSIfRVSvK9DLnLH+SR3VOjNBlywQAv",
+	"5bm7XgJHqqoW3V9hLs7UsLN+995HEHG4o+ZH9cd8qZvP0viphfoCSanK9WmP0T0DHG7uzVZ0XoXchVS0",
+	"7r/feXbfd94FGjzf39E3OgRs3pyIZFNyjbcXaAYiWGjxrT8qi0xqD7SFOvFyKcGJvgKs7D30VLu1EY7I",
+	"I2g9IctVY/X2vUdTPpxjKiIx9uca2CZVIWzZcUqMiUlAqPi3Xzx/T6cAM62Wc+m8GYhn5s9bF3/sFezS",
+	"ZaEJ8UyjN8s9+Qm328wrjOlHj2USww8Of2gj//y7/bRHTXKuWGvsPEvWKFGR7FaPBYbdbIGSo4jCBEQN",
+	"SaQA8vICdCd9GEinKRJloDV5EQ0C1qxQAFYtCKUsYGsqi1pbGUjxDRewTMkm17Dt/Hv2C0ND+2Gaf6we",
+	"ZEt1Sx0VVWJHGRda6DJptgRgpdGMzE3PcKp6i8/Jo5RcksDkSklyrJqrTDndKsd4jQpqsavyxEpqDlI7",
+	"FNUsUfwoZTUVDgnNS6uUl3KwdEyOzJhKZ1euvuOYI2Y3Wiq63bSnaSs0/Vx8iYDUlFba1xhtpH9GslHy",
+	"SseKZgtsE50sALfWHpMKlVesgOs9/iD9e5Q4EMvUb+O+fDGEZdnl/Lv+sEetSPDYoPwpA8RkAS8OhLoE",
+	"OTJA8hJ9YRt+55lLI0plUDsZdQqxkaw2JnOKoyryI3kEcfUMl3UG9vIDnXKvKyVlPUIUx19N/QEKYQaB",
+	"usL4wWQ7NqgBvgTCnKa+pehKM7gqHBnZRLIffGLkWi5VwLx9wt6M9crRF0JAuM1gK0VgNxl1CqDb1aqA",
+	"O9mZj+IoBC6QStx/WUfLEZAvd8upi4GwdL+FJFA9X3By+w56Y/auFXlz1V1M4W0LdYbX17L0kQKEUo7I",
+	"XDwZPun941b2rtetOMeIQwSBdPIJFAHm6ml7SZv0aKRv6F79A08fzP1GZl/cTIRoTKU/I4E3wgwQVWUo",
+	"yzgkM2Lr5IpUGPvU61Zi7C5/kBqTkn25ImPZtRFHYpF4cMbtFBDOuJOICCccUEFIpLtLAoOEWc/mX010",
+	"DFeq5tllYKoqF2kgw8jqBYng+m0Sz7N1V0r212xrDqik8566PoUr+6YsGHBMnOqknHxYuOr9icJVCTc7",
+	"4arT8LPbibyUmV/K/1mJk5PFKvBxr3mn6EvoVO4VFKVAvrSDTgFks1gVGNt96TiQLtW3V8S8crjrPKTd",
+	"YO+bMaeAul6rCtBtR3NkXsE9pXR20OuwI8qOpC84IiEWYFRYeEpv+8VzTCgX5pfdyq1yYau0HHWA6csz",
+	"uYxOqoYQDFOOA1EYrNawdjrrv8rTKXun9InPpMwFxgVEqH9XIdBIpAlUsudgclWziDP3OL8gVe5g6/R6",
+	"nnK2NmNOwtZ6sgpsbXb1ysWm5cv9bv/T6fd2taq+eq3bO0eWabzzEt7OBlX5jm4KZPI+nS5GGZP8J54G",
+	"HRChIjaZO2S5THI+9TZ99LQgwQI9QBAvgWcErHtRfk6317twmgm9gPBs0Ndfqlbr9widV3057JfzT3qj",
+	"WmH+jcqPT2mTxbG1zXyJH5pcqybJ1tzBJs9BWzfVQh/XJAoVLgUDk/+SFGFto1Nyq170JKyqlqrCp3pP",
+	"r1qP0YYZwkiXIerLO3wUSf+ZLhCUeolbJFhkJduSsldsIGeKNk6shxiCKTeLFdQb0Sy4zeTQHysE7JpO",
+	"lt4lzybOfexKJGilODkkkm5xP/qUS5JQd4L6fEYiKBWT7Z3X0adeLZO1/4A5KJgsAIdIwDexzY2fQMhm",
+	"E1XDTvn+ClVzdPziCU0WUK1cn8bITMLB9PsoozQJ9r8IIenilbPt0ONWUiHbVCCr5JomLlNAH0B2COJI",
+	"xC0kwcbNN6q6JJYdhNRYFf+YRXgu5077WxRSYb6PRWNozi5UJGIdYHCVApzS/atDvu6UdZY0A9ppnmTa",
+	"ahWEmnM+dBptktaAdgEEpttZtEn6nZnWG0gsCHdTf/y/QrpTBiaVTKk8RKRfOX5M/YCZhp1HnzsJZtND",
+	"Oofz8+8s8xL7Tux8c7Xmzu0cbEtO7yw8XxBetRksB8aUzcykZxapOwoJstjXhkhZEzXf9WFaG1QnCLfQ",
+	"RzuFFKL2MQgLm7IpWeWbmJVYsHg91yJbloEWGj/ZvmSnsYKya1bhtXHjzKTPtPPv6u8ezrE2S2MMU6r1",
+	"T5JLEq2Kq68FU91w+I9Pja3LaRMNba9a7vaMQBRyZLKBZZaYfG11+bpN5nbukfyJa6hoPQYLJFv7tZDt",
+	"BmC1mLTLYRBhssyoQLwszftAq/Uk2d31zdUTEK7N5Tbm6itJ4c4z/bm8irR+dWGGigt9JTdJoYHm3rW6",
+	"YARbF9Ybau+psBefvpW5SDjxaxU4VHxJr8uVjjPIx0BS99j8agq6kudt/sIcxL5SxuSO01dH31u3r74W",
+	"6pYbe/W0navRKVddbKl/ZjhaRWuuQotABdsoc2hJOJeW3vWXG1Ui00LX5huVJiOPqKQ9m/IE31Gpw9i7",
+	"WLRKpPhBC+o3uh8WMtcLvf2QrCB9Fmo+03NIT6c0IgarmAkI76h7r4udSt5P9LYo1y5x/I5yYDlNxCZb",
+	"+1IlbpPZ5Y9zDO+Xde0wTJ3CWSoy8XkIk0h3JnCzFX1Bn8hjpj5rKeWLbV0hYfZBVZsySWKWHFSuqHP5",
+	"m03l90sKRo4r2Dpt4cjBdVvvT1i3lRaSZOu2XljAJf6D3c6OtHn8SVg7Wa5S5UMUpX6So5k6nWlvmVS6",
+	"y1dN8Mk2fxCtO8gsJ/MXq3HL4G+LyM+/J5/3mKcuchvThXaCRpqpzYClLrn+lsIs9eKUAbWqRy2ECAQU",
+	"1SlI+0GlF6c3QLRQwjIFYZcuMSNhnzvul4KTNl0FMbV2+AO9ZhlQ+4c42XzPNJUuvlfD9TTLFLmsv9D2",
+	"tUjpbifg21Xhfmo3qONMb84jKr/WjkON2jWLvAtvIcTq4vz8/c//3nrXetd6f/Hvf/tf7xRezBTfre/e",
+	"1P8/+8k3Dpc639oCyNxXehvOlxa+zldulrbztWlY4XyTvNbzH8//fwA=",
 }
 
 // decodeSpec returns the embedded OpenAPI spec as raw JSON bytes,

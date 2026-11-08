@@ -5,7 +5,13 @@ info:
   description: |
     Review server API. All routes except `/v1/health` require a caller identity:
     a `Tailscale-User-Login` header set by Tailscale Serve, or a loopback request without
-    Tailscale headers (the machine owner). Errors use the `Error` envelope.
+    Tailscale headers (the machine owner). The caller is the author of every change it makes.
+    Errors use the `Error` envelope.
+
+    Mutable resources carry a `version`; single-resource responses return it as `ETag: "<version>"`,
+    and updates require `If-Match` with that value (428 without it, 412 when stale).
+    Requests that create something accept an `Idempotency-Key`: repeating the key with the same
+    request returns the stored response (`Idempotent-Replayed: true`) for 24 hours.
   license:
     name: MIT
     identifier: MIT
@@ -17,6 +23,8 @@ tags:
   - name: reviews
   - name: revisions
   - name: content
+  - name: discussions
+  - name: events
   - name: sessions
 paths:
   /v1/health:
@@ -43,6 +51,8 @@ paths:
     post:
       tags: [workspaces]
       operationId: createWorkspace
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
       requestBody:
         required: true
         content:
@@ -87,6 +97,8 @@ paths:
     post:
       tags: [reviews]
       operationId: createReview
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
       requestBody:
         required: true
         content:
@@ -128,6 +140,8 @@ paths:
     post:
       tags: [revisions]
       operationId: captureRevision
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
       description: Capture every repository of the review's workspace into a new immutable revision, which becomes the current revision.
       responses:
         "201":
@@ -202,6 +216,8 @@ paths:
     post:
       tags: [content]
       operationId: importManifest
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
       description: Validate a review manifest against a revision (default the current one) and store its records in one transaction.
       requestBody:
         required: true
@@ -229,6 +245,24 @@ paths:
             application/json:
               schema: { type: array, items: { $ref: "#/components/schemas/Topic" } }
         default: { $ref: "#/components/responses/Error" }
+    post:
+      tags: [content]
+      operationId: createTopic
+      description: Create a MANUAL topic, last among its siblings.
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateTopicRequest" }
+      responses:
+        "201":
+          description: Created topic.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Topic" }
+        default: { $ref: "#/components/responses/Error" }
   /v1/topics/{topicId}:
     parameters:
       - $ref: "#/components/parameters/TopicId"
@@ -238,6 +272,51 @@ paths:
       responses:
         "200":
           description: The topic and its direct links.
+          headers:
+            ETag: { $ref: "#/components/headers/ETag" }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Topic" }
+        default: { $ref: "#/components/responses/Error" }
+    patch:
+      tags: [content]
+      operationId: updateTopic
+      description: Change the fields present. A link list replaces the topic's links of that kind. OBSOLETE topics no longer claim changed files.
+      parameters:
+        - $ref: "#/components/parameters/IfMatch"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateTopicRequest" }
+      responses:
+        "200":
+          description: Updated topic.
+          headers:
+            ETag: { $ref: "#/components/headers/ETag" }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Topic" }
+        default: { $ref: "#/components/responses/Error" }
+  /v1/topics/{topicId}/move:
+    parameters:
+      - $ref: "#/components/parameters/TopicId"
+    post:
+      tags: [content]
+      operationId: moveTopic
+      description: Place the topic under a parent (null for the root) at a position among its siblings, clamped to the end. Siblings whose position changes get a new version.
+      parameters:
+        - $ref: "#/components/parameters/IfMatch"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/MoveTopicRequest" }
+      responses:
+        "200":
+          description: Moved topic.
+          headers:
+            ETag: { $ref: "#/components/headers/ETag" }
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Topic" }
@@ -258,6 +337,50 @@ paths:
           content:
             application/json:
               schema: { type: array, items: { $ref: "#/components/schemas/Representation" } }
+        default: { $ref: "#/components/responses/Error" }
+    post:
+      tags: [content]
+      operationId: createRepresentation
+      description: Add a MANUAL representation authored against the review's current revision. Give the config matching the type; references are record IDs of the review.
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateRepresentationRequest" }
+      responses:
+        "201":
+          description: Created representation.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Representation" }
+        default: { $ref: "#/components/responses/Error" }
+  /v1/representations/{representationId}:
+    parameters:
+      - name: representationId
+        in: path
+        required: true
+        schema: { type: string }
+    patch:
+      tags: [content]
+      operationId: updateRepresentation
+      description: Change the title, and replace the config when one is given. The type cannot change.
+      parameters:
+        - $ref: "#/components/parameters/IfMatch"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateRepresentationRequest" }
+      responses:
+        "200":
+          description: Updated representation.
+          headers:
+            ETag: { $ref: "#/components/headers/ETag" }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Representation" }
         default: { $ref: "#/components/responses/Error" }
   /v1/reviews/{reviewId}/intents:
     parameters:
@@ -344,6 +467,153 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Evidence" }
+        default: { $ref: "#/components/responses/Error" }
+
+  /v1/reviews/{reviewId}/discussions:
+    parameters:
+      - $ref: "#/components/parameters/ReviewId"
+    get:
+      tags: [discussions]
+      operationId: listDiscussions
+      responses:
+        "200":
+          description: Discussions with their messages, oldest first.
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/Discussion" } }
+        default: { $ref: "#/components/responses/Error" }
+    post:
+      tags: [discussions]
+      operationId: createDiscussion
+      description: Open a discussion on an anchor with its first message. Commenting never changes code or starts work.
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateDiscussionRequest" }
+      responses:
+        "201":
+          description: Created discussion.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Discussion" }
+        default: { $ref: "#/components/responses/Error" }
+  /v1/discussions/{discussionId}:
+    parameters:
+      - $ref: "#/components/parameters/DiscussionId"
+    get:
+      tags: [discussions]
+      operationId: getDiscussion
+      responses:
+        "200":
+          description: The discussion.
+          headers:
+            ETag: { $ref: "#/components/headers/ETag" }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Discussion" }
+        default: { $ref: "#/components/responses/Error" }
+    patch:
+      tags: [discussions]
+      operationId: updateDiscussion
+      description: Resolve or reopen.
+      parameters:
+        - $ref: "#/components/parameters/IfMatch"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateDiscussionRequest" }
+      responses:
+        "200":
+          description: Updated discussion.
+          headers:
+            ETag: { $ref: "#/components/headers/ETag" }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Discussion" }
+        default: { $ref: "#/components/responses/Error" }
+  /v1/discussions/{discussionId}/messages:
+    parameters:
+      - $ref: "#/components/parameters/DiscussionId"
+    post:
+      tags: [discussions]
+      operationId: createMessage
+      description: Reply. The discussion gets a new version.
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateMessageRequest" }
+      responses:
+        "201":
+          description: Created message.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Message" }
+        default: { $ref: "#/components/responses/Error" }
+  /v1/reviews/{reviewId}/decisions:
+    parameters:
+      - $ref: "#/components/parameters/ReviewId"
+    get:
+      tags: [discussions]
+      operationId: listDecisions
+      responses:
+        "200":
+          description: Decisions, oldest first.
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/Decision" } }
+        default: { $ref: "#/components/responses/Error" }
+    post:
+      tags: [discussions]
+      operationId: createDecision
+      description: |
+        Record a verdict on a revision (default the current one). COMMENT needs a body.
+        REQUEST_CHANGES selects at least one finding or discussion of the review; other verdicts select none.
+        Decisions are never modified.
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateDecisionRequest" }
+      responses:
+        "201":
+          description: Created decision.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Decision" }
+        default: { $ref: "#/components/responses/Error" }
+  /v1/events:
+    get:
+      tags: [events]
+      operationId: streamEvents
+      description: |
+        Server-sent events, one per change, in sequence order. Each SSE message has `id` = sequence,
+        `event` = event type, and `data` = an `Event`. The stream resumes after `Last-Event-ID`, else
+        after `after`, else from now. It opens with a `ready` event whose data is `{"sequence": N}`
+        (the sequence it resumes from): fetch or refetch state then. Comments keep the connection alive.
+      parameters:
+        - name: after
+          in: query
+          required: false
+          schema: { type: integer, format: int64, minimum: 0 }
+        - name: Last-Event-ID
+          in: header
+          required: false
+          schema: { type: string }
+      responses:
+        "200":
+          description: Event stream.
+          content:
+            text/event-stream:
+              schema: { type: string }
         default: { $ref: "#/components/responses/Error" }
 
   /v1/session-backends:
@@ -439,6 +709,29 @@ components:
       in: path
       required: true
       schema: { type: string }
+    DiscussionId:
+      name: discussionId
+      in: path
+      required: true
+      schema: { type: string }
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: false
+      description: Client-chosen unique key that makes a retried request safe.
+      schema: { type: string, minLength: 1, maxLength: 255 }
+    IfMatch:
+      name: If-Match
+      in: header
+      required: false
+      description: ETag of the version the change is based on. Required; omitting it returns 428.
+      schema: { type: string }
+
+  headers:
+    ETag:
+      description: The resource version, quoted.
+      required: true
+      schema: { type: string }
 
   responses:
     Error:
@@ -460,7 +753,7 @@ components:
           properties:
             code:
               type: string
-              enum: [NOT_FOUND, INVALID_ARGUMENT, CONFLICT, CAPTURE_FAILED, UNAUTHENTICATED, PERMISSION_DENIED, INTERNAL]
+              enum: [NOT_FOUND, INVALID_ARGUMENT, CONFLICT, CAPTURE_FAILED, PRECONDITION_FAILED, PRECONDITION_REQUIRED, UNAUTHENTICATED, PERMISSION_DENIED, INTERNAL]
             message: { type: string }
             details: { type: array, items: { type: string } }
 
@@ -679,7 +972,7 @@ components:
       x-go-type: review.Topic
       x-go-type-import: { path: github.com/aduverger/prunelle/server/internal/review }
       type: object
-      required: [id, review_id, parent_id, title, summary, origin, state, position, author, import_id, intent_ids, change_ids, finding_ids, evidence_ids, created_at, updated_at]
+      required: [id, review_id, parent_id, title, summary, origin, state, position, author, import_id, intent_ids, change_ids, finding_ids, evidence_ids, version, created_at, updated_at]
       additionalProperties: false
       properties:
         id: { type: string }
@@ -696,8 +989,52 @@ components:
         change_ids: { type: array, items: { type: string } }
         finding_ids: { type: array, items: { type: string } }
         evidence_ids: { type: array, items: { type: string }, description: Directly linked evidence only. }
+        version: { type: integer, minimum: 1 }
         created_at: { type: string, format: date-time }
         updated_at: { type: string, format: date-time }
+
+    CreateTopicRequest:
+      x-go-type: review.CreateTopicRequest
+      x-go-type-import: { path: github.com/aduverger/prunelle/server/internal/review }
+      type: object
+      required: [title, summary]
+      additionalProperties: false
+      properties:
+        parent_id: { type: string }
+        title: { type: string, minLength: 1 }
+        summary: { type: string }
+        intent_ids: { $ref: "#/components/schemas/IDList" }
+        change_ids: { $ref: "#/components/schemas/IDList" }
+        finding_ids: { $ref: "#/components/schemas/IDList" }
+        evidence_ids: { $ref: "#/components/schemas/IDList" }
+
+    UpdateTopicRequest:
+      x-go-type: review.UpdateTopicRequest
+      x-go-type-import: { path: github.com/aduverger/prunelle/server/internal/review }
+      type: object
+      additionalProperties: false
+      properties:
+        title: { type: string, minLength: 1 }
+        summary: { type: string }
+        state: { type: string, enum: [ACTIVE, OBSOLETE] }
+        intent_ids: { $ref: "#/components/schemas/IDList" }
+        change_ids: { $ref: "#/components/schemas/IDList" }
+        finding_ids: { $ref: "#/components/schemas/IDList" }
+        evidence_ids: { $ref: "#/components/schemas/IDList" }
+
+    MoveTopicRequest:
+      x-go-type: review.MoveTopicRequest
+      x-go-type-import: { path: github.com/aduverger/prunelle/server/internal/review }
+      type: object
+      required: [parent_id, position]
+      additionalProperties: false
+      properties:
+        parent_id: { type: [string, "null"], description: Null moves the topic to the root. }
+        position: { type: integer, minimum: 0 }
+
+    IDList:
+      type: array
+      items: { type: string }
 
     Intent:
       x-go-type: review.Intent
@@ -840,10 +1177,11 @@ components:
       x-go-type: review.Representation
       x-go-type-import: { path: github.com/aduverger/prunelle/server/internal/review }
       type: object
-      required: [id, topic_id, type, title, origin, available, unavailable_reason, revision_id, author]
+      required: [id, version, topic_id, type, title, origin, available, unavailable_reason, revision_id, author]
       additionalProperties: false
       properties:
         id: { type: [string, "null"], description: Null for derived and unavailable entries. }
+        version: { type: [integer, "null"], description: Null for derived and unavailable entries. }
         topic_id: { type: string }
         type: { type: string, enum: [TEXT, DIAGRAM, CODE_DIFF, EVIDENCE_LIST] }
         title: { type: string }
@@ -898,6 +1236,235 @@ components:
           description: Evidence IDs of the code ranges to show.
         evidence_list:
           $ref: "#/components/schemas/EvidenceListConfig"
+
+    CreateRepresentationRequest:
+      x-go-type: review.CreateRepresentationRequest
+      x-go-type-import: { path: github.com/aduverger/prunelle/server/internal/review }
+      type: object
+      required: [type]
+      additionalProperties: false
+      properties:
+        type: { type: string, enum: [TEXT, DIAGRAM, CODE_DIFF, EVIDENCE_LIST] }
+        title: { type: string, description: Defaults to the type's usual title. }
+        text: { $ref: "#/components/schemas/TextConfigInput" }
+        diagram: { $ref: "#/components/schemas/DiagramConfigInput" }
+        code_diff: { $ref: "#/components/schemas/EvidenceListConfigInput" }
+        evidence_list: { $ref: "#/components/schemas/EvidenceListConfigInput" }
+
+    UpdateRepresentationRequest:
+      x-go-type: review.UpdateRepresentationRequest
+      x-go-type-import: { path: github.com/aduverger/prunelle/server/internal/review }
+      type: object
+      additionalProperties: false
+      properties:
+        title: { type: string, minLength: 1 }
+        text: { $ref: "#/components/schemas/TextConfigInput" }
+        diagram: { $ref: "#/components/schemas/DiagramConfigInput" }
+        code_diff: { $ref: "#/components/schemas/EvidenceListConfigInput" }
+        evidence_list: { $ref: "#/components/schemas/EvidenceListConfigInput" }
+
+    TextConfigInput:
+      type: object
+      required: [sections]
+      additionalProperties: false
+      properties:
+        sections:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            required: [heading, body]
+            additionalProperties: false
+            properties:
+              heading: { type: string }
+              body: { type: string, description: Markdown; rendered without raw HTML. }
+              evidence_ids: { $ref: "#/components/schemas/IDList" }
+
+    DiagramConfigInput:
+      type: object
+      required: [nodes]
+      additionalProperties: false
+      properties:
+        nodes:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            required: [id, label, kind]
+            additionalProperties: false
+            properties:
+              id: { type: string, minLength: 1 }
+              label: { type: string, minLength: 1 }
+              kind: { type: string, enum: [COMPONENT, SERVICE, DATASTORE, QUEUE, ACTOR, STEP, STATE, OTHER] }
+              ref: { $ref: "#/components/schemas/EntityRef" }
+              evidence_ids: { $ref: "#/components/schemas/IDList" }
+        edges:
+          type: array
+          items: { $ref: "#/components/schemas/DiagramEdge" }
+
+    EvidenceListConfigInput:
+      type: object
+      additionalProperties: false
+      properties:
+        evidence_ids: { $ref: "#/components/schemas/IDList" }
+
+    Discussion:
+      x-go-type: review.Discussion
+      x-go-type-import: { path: github.com/aduverger/prunelle/server/internal/review }
+      type: object
+      required: [id, review_id, revision_id, anchor, topic_ids, status, author, version, messages, created_at, updated_at]
+      additionalProperties: false
+      properties:
+        id: { type: string }
+        review_id: { type: string }
+        revision_id: { type: string, description: The revision the anchor was made against. }
+        anchor: { $ref: "#/components/schemas/Anchor" }
+        topic_ids:
+          type: array
+          items: { type: string }
+          description: |
+            Topics the anchor relates to: the anchored topic; topics linking the anchored intent,
+            change, or finding; topics reaching the anchored evidence; the diagram's topic; for a code
+            range, the active topics owning the file in that revision.
+        status: { type: string, enum: [OPEN, RESOLVED] }
+        author: { $ref: "#/components/schemas/Author" }
+        version: { type: integer, minimum: 1 }
+        messages: { type: array, items: { $ref: "#/components/schemas/Message" } }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    Anchor:
+      type: object
+      required: [type, id, element_id, code_range]
+      additionalProperties: false
+      properties:
+        type: { $ref: "#/components/schemas/AnchorType" }
+        id: { type: [string, "null"], description: The anchored record; the diagram representation for DIAGRAM_ELEMENT; null for REVIEW and CODE_RANGE. }
+        element_id: { type: [string, "null"], description: Diagram node ID for DIAGRAM_ELEMENT. }
+        code_range:
+          oneOf:
+            - type: "null"
+            - $ref: "#/components/schemas/CodeRange"
+
+    AnchorType:
+      type: string
+      enum: [REVIEW, TOPIC, INTENT, CHANGE, FINDING, EVIDENCE, CODE_RANGE, DIAGRAM_ELEMENT]
+
+    Message:
+      x-go-type: review.Message
+      x-go-type-import: { path: github.com/aduverger/prunelle/server/internal/review }
+      type: object
+      required: [id, discussion_id, author, body, created_at]
+      additionalProperties: false
+      properties:
+        id: { type: string }
+        discussion_id: { type: string }
+        author: { $ref: "#/components/schemas/Author" }
+        body: { type: string, description: Markdown; rendered without raw HTML. }
+        created_at: { type: string, format: date-time }
+
+    CreateDiscussionRequest:
+      x-go-type: review.CreateDiscussionRequest
+      x-go-type-import: { path: github.com/aduverger/prunelle/server/internal/review }
+      type: object
+      required: [anchor, body]
+      additionalProperties: false
+      properties:
+        revision_id: { type: string, description: Defaults to the review's current revision. }
+        body: { type: string, minLength: 1 }
+        anchor:
+          type: object
+          required: [type]
+          additionalProperties: false
+          description: |
+            REVIEW takes nothing else; TOPIC, INTENT, CHANGE, FINDING, EVIDENCE take `id`;
+            DIAGRAM_ELEMENT takes the diagram representation `id` and a node `element_id`;
+            CODE_RANGE takes `code_range` on a changed file of the revision.
+          properties:
+            type: { $ref: "#/components/schemas/AnchorType" }
+            id: { type: string }
+            element_id: { type: string }
+            code_range:
+              type: object
+              required: [repository_id, path, side, start_line, end_line]
+              additionalProperties: false
+              properties:
+                repository_id: { type: string }
+                path: { type: string }
+                side: { type: string, enum: [BASE, HEAD] }
+                start_line: { type: integer, minimum: 1 }
+                end_line: { type: integer, minimum: 1 }
+
+    UpdateDiscussionRequest:
+      x-go-type: review.UpdateDiscussionRequest
+      x-go-type-import: { path: github.com/aduverger/prunelle/server/internal/review }
+      type: object
+      required: [status]
+      additionalProperties: false
+      properties:
+        status: { type: string, enum: [OPEN, RESOLVED] }
+
+    CreateMessageRequest:
+      x-go-type: review.CreateMessageRequest
+      x-go-type-import: { path: github.com/aduverger/prunelle/server/internal/review }
+      type: object
+      required: [body]
+      additionalProperties: false
+      properties:
+        body: { type: string, minLength: 1 }
+
+    Decision:
+      x-go-type: review.Decision
+      x-go-type-import: { path: github.com/aduverger/prunelle/server/internal/review }
+      type: object
+      required: [id, review_id, revision_id, decision, body, finding_ids, discussion_ids, author, created_at]
+      additionalProperties: false
+      properties:
+        id: { type: string }
+        review_id: { type: string }
+        revision_id: { type: string, description: The revision the verdict applies to. }
+        decision: { $ref: "#/components/schemas/DecisionKind" }
+        body: { type: string }
+        finding_ids: { type: array, items: { type: string }, description: Actionable findings (REQUEST_CHANGES). }
+        discussion_ids: { type: array, items: { type: string }, description: Actionable discussions (REQUEST_CHANGES). }
+        author: { $ref: "#/components/schemas/Author" }
+        created_at: { type: string, format: date-time }
+
+    DecisionKind:
+      type: string
+      enum: [COMMENT, APPROVE, REQUEST_CHANGES]
+
+    CreateDecisionRequest:
+      x-go-type: review.CreateDecisionRequest
+      x-go-type-import: { path: github.com/aduverger/prunelle/server/internal/review }
+      type: object
+      required: [decision]
+      additionalProperties: false
+      properties:
+        revision_id: { type: string, description: The revision reviewed; defaults to the current one. }
+        decision: { $ref: "#/components/schemas/DecisionKind" }
+        body: { type: string }
+        finding_ids: { $ref: "#/components/schemas/IDList" }
+        discussion_ids: { $ref: "#/components/schemas/IDList" }
+
+    Event:
+      x-go-type: events.Event
+      x-go-type-import: { path: github.com/aduverger/prunelle/server/internal/events }
+      description: |
+        A change to refetch. Types: workspace.created, review.created, revision.created, import.created,
+        topic.created, topic.updated (edit or move; refetch the topic list, sibling positions may change),
+        representation.created, representation.updated, discussion.created, discussion.updated
+        (status change or reply), decision.created.
+      type: object
+      required: [sequence, type, entity_id, review_id, actor, occurred_at]
+      additionalProperties: false
+      properties:
+        sequence: { type: integer, format: int64, minimum: 1 }
+        type: { type: string }
+        entity_id: { type: string }
+        review_id: { type: [string, "null"] }
+        actor: { $ref: "#/components/schemas/Author" }
+        occurred_at: { type: string, format: date-time }
 
     DiagramEdge:
       x-go-type: review.DiagramEdge

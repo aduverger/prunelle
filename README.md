@@ -58,6 +58,17 @@ With a session backend configured, `prunelle sessions ls` lists discovered runti
 
 The API contract is [`server/api/openapi.yaml`](server/api/openapi.yaml). Review content is imported as a manifest: `prunelle review import REVIEW_ID manifest.json`; `prunelle fixture --print-manifest` prints a complete example.
 
+Reviewers edit topics and representations, discuss, and decide through the API; every change is attributed to the caller (the Tailscale login, or the machine owner for local requests). Updates need the `ETag` they were based on, for example:
+
+```sh
+curl -X POST localhost:7390/v1/reviews/REVIEW_ID/discussions -H 'Content-Type: application/json' \
+  -d '{"anchor": {"type": "TOPIC", "id": "TOPIC_ID"}, "body": "Why two retry loops?"}'
+curl -X PATCH localhost:7390/v1/discussions/DISCUSSION_ID -H 'If-Match: "1"' -H 'Content-Type: application/json' \
+  -d '{"status": "RESOLVED"}'
+```
+
+`prunelle events` follows changes as they happen (`/v1/events`, server-sent events).
+
 ## License
 
 MIT

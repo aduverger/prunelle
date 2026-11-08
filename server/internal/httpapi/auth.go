@@ -12,6 +12,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/aduverger/prunelle/server/internal/review"
 )
 
 // Access policy (docs/decisions.md D2): the server listens on loopback and is exposed through
@@ -59,37 +61,53 @@ func (a *Authorizer) Middleware(next http.Handler, publicPaths ...string) http.H
 			next.ServeHTTP(w, r)
 			return
 		}
-		if code, message := a.check(r); code != "" {
+		caller, code, message := a.check(r)
+		if code != "" {
 			writeError(w, statusByCode[code], code, message, nil)
 			return
 		}
-		next.ServeHTTP(w, r)
+		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), callerKey{}, caller)))
 	})
 }
 
-func (a *Authorizer) check(r *http.Request) (code, message string) {
+// check returns the caller's login, or the error code and message rejecting the request.
+func (a *Authorizer) check(r *http.Request) (caller, code, message string) {
 	host, _, err := net.SplitHostPort(r.RemoteAddr)
 	if ip := net.ParseIP(host); err != nil || ip == nil || !ip.IsLoopback() {
-		return "PERMISSION_DENIED", "only loopback connections are accepted"
+		return "", "PERMISSION_DENIED", "only loopback connections are accepted"
 	}
 	hostname := hostOnly(r.Host)
 	if !proxied(r) {
 		if !loopbackHost(hostname) {
-			return "PERMISSION_DENIED", "direct requests must address the server as localhost or a loopback IP"
+			return "", "PERMISSION_DENIED", "direct requests must address the server as localhost or a loopback IP"
 		}
-		return "", ""
+		if owner := a.ownerLogin(r.Context()); owner != "" {
+			return owner, "", ""
+		}
+		return localCaller, "", ""
 	}
 	if !tailnetHost(hostname) {
-		return "PERMISSION_DENIED", "proxied requests must address the server by its Tailscale name or an IP"
+		return "", "PERMISSION_DENIED", "proxied requests must address the server by its Tailscale name or an IP"
 	}
 	login := r.Header.Get(loginHeader)
 	if login == "" {
-		return "UNAUTHENTICATED", "proxied request without a Tailscale user identity"
+		return "", "UNAUTHENTICATED", "proxied request without a Tailscale user identity"
 	}
 	if a.allowedLogins[login] || login == a.ownerLogin(r.Context()) {
-		return "", ""
+		return login, "", ""
 	}
-	return "PERMISSION_DENIED", fmt.Sprintf("%s is not allowed on this server", login)
+	return "", "PERMISSION_DENIED", fmt.Sprintf("%s is not allowed on this server", login)
+}
+
+// localCaller names a local process when the machine's Tailscale owner is unknown.
+const localCaller = "local"
+
+type callerKey struct{}
+
+// callerFrom returns the author of the changes a request makes: the human the access check admitted.
+func callerFrom(ctx context.Context) review.Author {
+	login, _ := ctx.Value(callerKey{}).(string)
+	return review.Author{Kind: "HUMAN", ID: login}
 }
 
 func proxied(r *http.Request) bool {

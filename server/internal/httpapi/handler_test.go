@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/getkin/kin-openapi/openapi3filter"
@@ -31,35 +32,44 @@ func ownerLookup(context.Context) (string, error) { return ownerLogin, nil }
 type testServer struct {
 	client   *api.ClientWithResponses
 	url      string
+	root     string
 	reposDir string
 	sessions *sessions.Service
+	stop     func()
 }
 
 // newTestServer serves the API and returns a client whose responses are validated against openapi.yaml.
 func newTestServer(t *testing.T, allowedLogins []string, backends ...sessions.Registration) *testServer {
 	t.Helper()
-	ctx := context.Background()
 	root, err := filepath.EvalSymlinks(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
+	return startTestServer(t, root, allowedLogins, backends...)
+}
+
+// startTestServer serves the API from the database in root; stop shuts the server and database down.
+func startTestServer(t *testing.T, root string, allowedLogins []string, backends ...sessions.Registration) *testServer {
+	t.Helper()
+	ctx := context.Background()
 	db, err := store.Open(ctx, root)
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { db.Close() })
 	reposDir := filepath.Join(root, "repos")
 	reviews := review.NewService(db, []string{reposDir})
 	sessionSvc, err := sessions.NewService(ctx, db, reviews, backends)
 	if err != nil {
 		t.Fatal(err)
 	}
-	handler, err := httpapi.NewHandler(reviews, sessionSvc, httpapi.NewAuthorizer(allowedLogins, ownerLookup), "test")
+	handler, err := httpapi.NewHandler(db, reviews, sessionSvc, httpapi.NewAuthorizer(allowedLogins, ownerLookup), "test")
 	if err != nil {
 		t.Fatal(err)
 	}
 	srv := httptest.NewServer(handler)
-	t.Cleanup(srv.Close)
+	var once sync.Once
+	stop := func() { once.Do(func() { srv.Close(); db.Close() }) }
+	t.Cleanup(stop)
 
 	spec, err := api.GetSwagger()
 	if err != nil {
@@ -75,7 +85,7 @@ func newTestServer(t *testing.T, allowedLogins []string, backends ...sessions.Re
 	if err != nil {
 		t.Fatal(err)
 	}
-	return &testServer{client: client, url: srv.URL, reposDir: reposDir, sessions: sessionSvc}
+	return &testServer{client: client, url: srv.URL, root: root, reposDir: reposDir, sessions: sessionSvc, stop: stop}
 }
 
 type validatingTransport struct {
@@ -138,13 +148,13 @@ func (s *testServer) seed(t *testing.T) (review.Review, review.Revision, review.
 	t.Helper()
 	ctx := context.Background()
 	repos := must(fixture.BuildRepos(s.reposDir))
-	ws := must(s.client.CreateWorkspaceWithResponse(ctx, fixture.WorkspaceRequest(repos)))
+	ws := must(s.client.CreateWorkspaceWithResponse(ctx, nil, fixture.WorkspaceRequest(repos)))
 	expectStatus(t, ws.StatusCode(), http.StatusCreated, ws.Body)
-	rv := must(s.client.CreateReviewWithResponse(ctx, review.CreateReviewRequest{WorkspaceID: ws.JSON201.ID, Title: fixture.ReviewTitle}))
+	rv := must(s.client.CreateReviewWithResponse(ctx, nil, review.CreateReviewRequest{WorkspaceID: ws.JSON201.ID, Title: fixture.ReviewTitle}))
 	expectStatus(t, rv.StatusCode(), http.StatusCreated, rv.Body)
-	revision := must(s.client.CaptureRevisionWithResponse(ctx, rv.JSON201.ID))
+	revision := must(s.client.CaptureRevisionWithResponse(ctx, rv.JSON201.ID, nil))
 	expectStatus(t, revision.StatusCode(), http.StatusCreated, revision.Body)
-	imported := must(s.client.ImportManifestWithResponse(ctx, rv.JSON201.ID, review.ImportRequest{Manifest: fixture.Manifest()}))
+	imported := must(s.client.ImportManifestWithResponse(ctx, rv.JSON201.ID, nil, review.ImportRequest{Manifest: fixture.Manifest()}))
 	expectStatus(t, imported.StatusCode(), http.StatusCreated, imported.Body)
 	return *rv.JSON201, *revision.JSON201, *imported.JSON201
 }
@@ -221,7 +231,7 @@ func TestRequestValidationRejectsUnknownManifestFields(t *testing.T) {
 
 	body := `{"manifest": {"author": {"kind": "AGENT", "id": "pi:x"}, "findings": [
 		{"key": "F", "kind": "DESIGN", "severity": "LOW", "title": "t", "rationale": "r", "evidense": ["E"]}]}}`
-	resp := must(s.client.ImportManifestWithBodyWithResponse(ctx, rv.ID, "application/json", strings.NewReader(body)))
+	resp := must(s.client.ImportManifestWithBodyWithResponse(ctx, rv.ID, nil, "application/json", strings.NewReader(body)))
 	expectStatus(t, resp.StatusCode(), http.StatusBadRequest, resp.Body)
 	if resp.JSONDefault.Error.Code != "INVALID_ARGUMENT" || !strings.Contains(resp.JSONDefault.Error.Message, "evidense") {
 		t.Fatalf("body = %s", resp.Body)
@@ -235,7 +245,7 @@ func TestInvalidManifestReportsEveryProblem(t *testing.T) {
 	m := fixture.Manifest()
 	m.Topics[0].Changes = []string{"C-missing"}
 	m.Topics[0].Findings = []string{"F-missing"}
-	resp := must(s.client.ImportManifestWithResponse(ctx, rv.ID, review.ImportRequest{Manifest: m}))
+	resp := must(s.client.ImportManifestWithResponse(ctx, rv.ID, nil, review.ImportRequest{Manifest: m}))
 	expectStatus(t, resp.StatusCode(), http.StatusBadRequest, resp.Body)
 	if len(resp.JSONDefault.Error.Details) != 2 {
 		t.Fatalf("details = %v", resp.JSONDefault.Error.Details)
