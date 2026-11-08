@@ -37,14 +37,15 @@ const healthPath = "/v1/health"
 const codePreconditionRequired = "PRECONDITION_REQUIRED"
 
 // NewHandler returns the API handler: access check, request validation against the OpenAPI
-// document, idempotent replay, then the generated router.
-func NewHandler(db *store.DB, reviews *review.Service, sessionSvc *sessions.Service, auth *Authorizer, version string) (http.Handler, error) {
+// document, idempotent replay, then the generated router. Event streams end when lifetime is done,
+// so that shutdown does not wait for them; other requests are left to finish.
+func NewHandler(lifetime context.Context, db *store.DB, reviews *review.Service, sessionSvc *sessions.Service, auth *Authorizer, version string) (http.Handler, error) {
 	spec, err := api.GetSwagger()
 	if err != nil {
 		return nil, err
 	}
 	spec.Servers = nil // validate paths regardless of the host the server is reached through
-	strict := api.NewStrictHandlerWithOptions(&handlers{db: db, svc: reviews, sessions: sessionSvc, version: version}, nil, api.StrictHTTPServerOptions{
+	strict := api.NewStrictHandlerWithOptions(&handlers{lifetime: lifetime, db: db, svc: reviews, sessions: sessionSvc, version: version}, nil, api.StrictHTTPServerOptions{
 		RequestErrorHandlerFunc:  writeRequestError,
 		ResponseErrorHandlerFunc: writeResponseError,
 	})
@@ -96,6 +97,7 @@ func writeResponseError(w http.ResponseWriter, r *http.Request, err error) {
 }
 
 type handlers struct {
+	lifetime context.Context
 	db       *store.DB
 	svc      *review.Service
 	sessions *sessions.Service

@@ -62,7 +62,7 @@ func startTestServer(t *testing.T, root string, allowedLogins []string, backends
 	if err != nil {
 		t.Fatal(err)
 	}
-	handler, err := httpapi.NewHandler(db, reviews, sessionSvc, httpapi.NewAuthorizer(allowedLogins, ownerLookup), "test")
+	handler, err := httpapi.NewHandler(context.Background(), db, reviews, sessionSvc, httpapi.NewAuthorizer(allowedLogins, ownerLookup), "test")
 	if err != nil {
 		t.Fatal(err)
 	}

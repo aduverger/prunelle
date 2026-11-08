@@ -26,7 +26,7 @@ func (h *handlers) StreamEvents(ctx context.Context, req api.StreamEventsRequest
 	if err != nil {
 		return nil, err
 	}
-	return eventStream{ctx: ctx, db: h.db, after: after}, nil
+	return eventStream{ctx: ctx, serverDone: h.lifetime.Done(), db: h.db, after: after}, nil
 }
 
 // resumePoint is the sequence after which the stream starts: Last-Event-ID (sent by reconnecting
@@ -45,13 +45,14 @@ func resumePoint(ctx context.Context, db *store.DB, params api.StreamEventsParam
 	return events.Head(ctx, db)
 }
 
-// eventStream writes events as server-sent events until the client leaves or the server stops.
+// eventStream writes events as server-sent events until the client leaves (ctx) or the server stops (serverDone).
 // The database is the source: a commit only wakes the stream, which then reads what it has not sent,
 // so a slow or reconnecting client misses nothing.
 type eventStream struct {
-	ctx   context.Context
-	db    *store.DB
-	after int64
+	ctx        context.Context
+	serverDone <-chan struct{}
+	db         *store.DB
+	after      int64
 }
 
 func (s eventStream) VisitStreamEventsResponse(w http.ResponseWriter) error {
@@ -84,6 +85,8 @@ func (s eventStream) VisitStreamEventsResponse(w http.ResponseWriter) error {
 		}
 		select {
 		case <-s.ctx.Done():
+			return nil
+		case <-s.serverDone:
 			return nil
 		case <-changed:
 		case <-keepalive.C:

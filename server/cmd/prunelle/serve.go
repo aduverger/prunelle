@@ -57,7 +57,7 @@ func serve(ctx context.Context, cfg config.Config, args []string) error {
 	if err != nil {
 		return err
 	}
-	handler, err := httpapi.NewHandler(db, reviews, sessionSvc, httpapi.NewAuthorizer(cfg.AllowedLogins, httpapi.TailscaleOwner), version)
+	handler, err := httpapi.NewHandler(ctx, db, reviews, sessionSvc, httpapi.NewAuthorizer(cfg.AllowedLogins, httpapi.TailscaleOwner), version)
 	if err != nil {
 		return err
 	}
@@ -69,8 +69,7 @@ func serve(ctx context.Context, cfg config.Config, args []string) error {
 	if err != nil {
 		return err
 	}
-	// Requests derive from ctx so that event streams end when the server stops.
-	server := &http.Server{Handler: handler, ReadHeaderTimeout: 10 * time.Second, BaseContext: func(net.Listener) context.Context { return ctx }}
+	server := &http.Server{Handler: handler, ReadHeaderTimeout: 10 * time.Second}
 	slog.Info("prunelle serving", "listen", listener.Addr().String(), "data_dir", cfg.DataDir, "version", version)
 
 	errs := make(chan error, 1)
