@@ -20,7 +20,6 @@ import (
 // Registration configures one backend from the server config file.
 type Registration struct {
 	Name    string
-	Kind    string
 	Config  json.RawMessage
 	Backend Backend
 }
@@ -60,7 +59,7 @@ func NewService(ctx context.Context, db *store.DB, workspaces WorkspaceDirectory
 			if err := tx.QueryRowContext(ctx, `INSERT INTO session_backends (id, name, kind, config, enabled, created_at, updated_at)
 				VALUES (?, ?, ?, ?, 1, ?, ?)
 				ON CONFLICT (name) DO UPDATE SET kind = excluded.kind, config = excluded.config, enabled = 1, updated_at = excluded.updated_at
-				RETURNING id`, id, reg.Name, reg.Kind, string(reg.Config), now, now).Scan(&id); err != nil {
+				RETURNING id`, id, reg.Name, reg.Backend.Kind(), string(reg.Config), now, now).Scan(&id); err != nil {
 				return fmt.Errorf("register session backend %s: %w", reg.Name, err)
 			}
 			s.backends = append(s.backends, &backendState{id: id, backend: reg.Backend, health: BackendHealth{State: HealthConnecting, Info: map[string]string{}}})
@@ -237,21 +236,17 @@ func upsertRuntime(ctx context.Context, tx *sql.Tx, b *backendState, o Observed,
 	if len(metadata) == 0 {
 		metadata = json.RawMessage("{}")
 	}
-	capabilities, err := json.Marshal(b.backend.Capabilities())
-	if err != nil {
-		return err
-	}
 	at := store.FormatTime(now)
-	_, err = tx.ExecContext(ctx, `INSERT INTO runtime_sessions
-		(id, backend_id, external_id, state, label, cwd, process, local, harness_hint, metadata, capabilities, first_seen_at, last_seen_at, state_changed_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	_, err := tx.ExecContext(ctx, `INSERT INTO runtime_sessions
+		(id, backend_id, external_id, state, label, cwd, process, local, harness_hint, metadata, first_seen_at, last_seen_at, state_changed_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT (backend_id, external_id) DO UPDATE SET
 			state_changed_at = CASE WHEN runtime_sessions.state = excluded.state THEN runtime_sessions.state_changed_at ELSE excluded.state_changed_at END,
 			state = excluded.state, label = excluded.label, cwd = excluded.cwd, process = excluded.process, local = excluded.local,
-			harness_hint = excluded.harness_hint, metadata = excluded.metadata, capabilities = excluded.capabilities,
+			harness_hint = excluded.harness_hint, metadata = excluded.metadata,
 			last_seen_at = excluded.last_seen_at`,
 		store.NewID("rts"), b.id, o.ExternalID, o.State, o.Label, emptyNull(o.Cwd), emptyNull(o.Process), o.Local, emptyNull(o.HarnessHint),
-		string(metadata), string(capabilities), at, at, at)
+		string(metadata), at, at, at)
 	return err
 }
 
@@ -307,7 +302,7 @@ func (s *Service) ListBackends(ctx context.Context) ([]SessionBackend, error) {
 }
 
 const runtimeColumns = `r.id, r.backend_id, b.kind, r.external_id, r.state, r.label, r.cwd, r.process, r.local, r.harness_hint,
-	r.metadata, r.capabilities, r.first_seen_at, r.last_seen_at, r.state_changed_at`
+	r.metadata, r.first_seen_at, r.last_seen_at, r.state_changed_at`
 
 // ListRuntimeSessions returns runtimes, only those associated with workspaceID when set.
 func (s *Service) ListRuntimeSessions(ctx context.Context, workspaceID *string) ([]RuntimeSession, error) {
@@ -350,15 +345,17 @@ func (s *Service) queryRuntimes(ctx context.Context, query string, args ...any) 
 	for rows.Next() {
 		var r RuntimeSession
 		var cwd, process, hint sql.NullString
-		var metadata, capabilities, first, last, changed string
+		var metadata, first, last, changed string
 		if err := rows.Scan(&r.ID, &r.BackendID, &r.BackendKind, &r.ExternalID, &r.State, &r.Label, &cwd, &process, &r.Local, &hint,
-			&metadata, &capabilities, &first, &last, &changed); err != nil {
+			&metadata, &first, &last, &changed); err != nil {
 			return nil, err
 		}
 		r.Cwd, r.Process, r.HarnessHint = nullablePtr(cwd), nullablePtr(process), nullablePtr(hint)
 		r.Metadata = json.RawMessage(metadata)
-		if err := json.Unmarshal([]byte(capabilities), &r.Capabilities); err != nil {
-			return nil, err
+		// Capabilities belong to the backend; a runtime of a disabled backend offers none.
+		r.Capabilities = []string{}
+		if b, err := s.backend(r.BackendID); err == nil {
+			r.Capabilities = b.backend.Capabilities()
 		}
 		r.FirstSeenAt, r.LastSeenAt, r.StateChangedAt = store.ParseTime(first), store.ParseTime(last), store.ParseTime(changed)
 		runtimes = append(runtimes, r)

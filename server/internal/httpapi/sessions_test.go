@@ -25,7 +25,7 @@ func (s *testServer) runObservers(t *testing.T) {
 func TestReviewWorksWhileRexIsUnavailable(t *testing.T) {
 	ctx := context.Background()
 	missingRex := rex.New(rex.Config{Path: filepath.Join(t.TempDir(), "rex")})
-	s := newTestServer(t, nil, sessions.Registration{Name: "rex", Kind: rex.Kind, Config: json.RawMessage(`{}`), Backend: missingRex})
+	s := newTestServer(t, nil, sessions.Registration{Name: "rex", Config: json.RawMessage(`{}`), Backend: missingRex})
 	s.runObservers(t)
 
 	rv, revision, _ := s.seed(t)
@@ -60,7 +60,7 @@ func TestReviewWorksWhileRexIsUnavailable(t *testing.T) {
 func TestRuntimeSessionAssociationOverHTTP(t *testing.T) {
 	ctx := context.Background()
 	fake := sessionstest.NewFake()
-	s := newTestServer(t, nil, sessions.Registration{Name: "rex", Kind: fake.Kind(), Config: json.RawMessage(`{"server":""}`), Backend: fake})
+	s := newTestServer(t, nil, sessions.Registration{Name: "rex", Config: json.RawMessage(`{"server":""}`), Backend: fake})
 	rv, _, _ := s.seed(t)
 	ws := must(s.client.GetWorkspaceWithResponse(ctx, rv.WorkspaceID))
 	fake.Set(sessions.Observed{ExternalID: "session:a/block:a1", State: sessions.StateOnline, Label: "prunelle / shell",

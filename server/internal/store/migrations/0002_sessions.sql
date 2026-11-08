@@ -19,7 +19,6 @@ CREATE TABLE runtime_sessions (
     local            INTEGER NOT NULL,
     harness_hint     TEXT,
     metadata         TEXT NOT NULL,
-    capabilities     TEXT NOT NULL,
     first_seen_at    TEXT NOT NULL,
     last_seen_at     TEXT NOT NULL,
     state_changed_at TEXT NOT NULL,

@@ -49,7 +49,7 @@ Per enabled backend, a goroutine: discover → reconcile → subscribe; on each 
 ### Persistence (migration 2)
 
 - `session_backends` (id, name unique, kind `REX`/`HERDR`/`MANAGED`, config JSON, enabled). Synced from the config file at startup; backends removed from the config are disabled, not deleted.
-- `runtime_sessions` (Prunelle ID, backend, external ID unique per backend, state, label, cwd, process, local, harness hint, metadata JSON, capabilities JSON, first/last seen, state changed at).
+- `runtime_sessions` (Prunelle ID, backend, external ID unique per backend, state, label, cwd, process, local, harness hint, metadata JSON, first/last seen, state changed at); capabilities come from the backend.
 - `workspace_runtime_sessions` (workspace, runtime session): explicit associations.
 
 Backend health (reachable, error, Rex version/API revision, checked at) is in memory.

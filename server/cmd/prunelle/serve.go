@@ -92,7 +92,7 @@ func sessionRegistrations(backends []config.SessionBackend) []sessions.Registrat
 	for _, b := range backends {
 		rexCfg := rex.Config{Path: b.RexPath, Server: b.Server}
 		encoded, _ := json.Marshal(rexCfg)
-		regs = append(regs, sessions.Registration{Name: b.Name, Kind: b.Kind, Config: encoded, Backend: rex.New(rexCfg)})
+		regs = append(regs, sessions.Registration{Name: b.Name, Config: encoded, Backend: rex.New(rexCfg)})
 	}
 	return regs
 }

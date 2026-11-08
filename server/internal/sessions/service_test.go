@@ -57,7 +57,7 @@ func (e *env) newService(t *testing.T, backends ...sessions.Backend) *sessions.S
 	t.Helper()
 	var regs []sessions.Registration
 	for i, b := range backends {
-		regs = append(regs, sessions.Registration{Name: []string{"rex", "rex-2"}[i], Kind: b.Kind(), Config: json.RawMessage(`{}`), Backend: b})
+		regs = append(regs, sessions.Registration{Name: []string{"rex", "rex-2"}[i], Config: json.RawMessage(`{}`), Backend: b})
 	}
 	svc, err := sessions.NewService(e.ctx, e.db, e.reviews, regs)
 	if err != nil {
