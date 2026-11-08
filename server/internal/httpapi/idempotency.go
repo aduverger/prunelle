@@ -34,12 +34,7 @@ const (
 var replayedHeaders = []string{"Content-Type", "ETag"}
 
 type idempotency struct {
-	db  *store.DB
-	now func() time.Time
-}
-
-func newIdempotency(db *store.DB) *idempotency {
-	return &idempotency{db: db, now: time.Now}
+	db *store.DB
 }
 
 type storedResponse struct {
@@ -92,7 +87,7 @@ func (i *idempotency) middleware(next http.Handler) http.Handler {
 func (i *idempotency) claim(ctx context.Context, caller, key, requestHash string) (*storedResponse, error) {
 	var stored *storedResponse
 	err := i.db.Write(ctx, func(tx *sql.Tx) error {
-		now := i.now()
+		now := time.Now()
 		if _, err := tx.ExecContext(ctx, `DELETE FROM idempotency_keys WHERE created_at < ?`, store.FormatTime(now.Add(-idempotencyTTL))); err != nil {
 			return err
 		}

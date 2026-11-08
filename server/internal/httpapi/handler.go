@@ -59,7 +59,7 @@ func NewHandler(db *store.DB, reviews *review.Service, sessionSvc *sessions.Serv
 			writeError(w, opts.StatusCode, code, err.Error(), nil)
 		},
 	})
-	return auth.Middleware(validate(newIdempotency(db).middleware(router)), healthPath), nil
+	return auth.Middleware(validate((&idempotency{db: db}).middleware(router)), healthPath), nil
 }
 
 type errorBody struct {
@@ -269,9 +269,9 @@ func expectedVersion(ifMatch *string) (int, error) {
 	if ifMatch == nil {
 		return 0, &review.Error{Code: codePreconditionRequired, Message: "If-Match with the ETag of the version you edited is required"}
 	}
-	quoted := strings.TrimSpace(*ifMatch)
-	version, err := strconv.Atoi(strings.TrimSuffix(strings.TrimPrefix(quoted, `"`), `"`))
-	if err != nil || !strings.HasPrefix(quoted, `"`) || !strings.HasSuffix(quoted, `"`) || len(quoted) < 3 {
+	unquoted, err := strconv.Unquote(strings.TrimSpace(*ifMatch))
+	version, atoiErr := strconv.Atoi(unquoted)
+	if err != nil || atoiErr != nil {
 		return 0, &review.Error{Code: review.CodePreconditionFailed, Message: fmt.Sprintf("If-Match %s is not an ETag of this server", *ifMatch)}
 	}
 	return version, nil
