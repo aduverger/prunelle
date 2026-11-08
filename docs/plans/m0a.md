@@ -104,3 +104,32 @@ GitHub Actions on Linux: `gofmt` check, `go vet`, `go test ./...`, generated-cod
 ## Out of scope
 
 Mutations (topic edit, discussions, decisions), idempotency keys, ETags, SSE, Rex, client.
+
+## Implementation notes
+
+- Route for capture is `POST /v1/reviews/{id}/revisions` (creates a revision) rather than the spec's illustrative `/capture`.
+- `GET /v1/reviews/{id}/imports` was added so clients can show who authored imported records (`import_id` on each record).
+- Go domain types are the wire types: OpenAPI schemas map to them with `x-go-type`. Requests are validated against the spec by middleware (unknown fields rejected); API tests validate every response against the spec.
+
+## Decision ledger
+
+Choices made where the spec and plan were silent, least confident first.
+
+1. **Agent claims are overridden, not rejected.** An agent manifest declaring `OBSERVED` findings or `SUPPORTED` changes is stored as `INFERRED`/`UNVERIFIED` with a warning in the import result. *Would have asked:* should the import fail instead, so the agent learns the rule?
+2. **Agent-reported evidence keeps its declared provenance.** A `TEST_RESULT` pasted by the agent can be `MEASURED`; it is marked `collection_method=REPORTED` (Prunelle did not run it). *Would have asked:* should agent-reported evidence also be capped at `INFERRED`?
+3. **Code and Evidence views are derived when not declared.** Every topic with reachable code ranges gets a Code view (`origin=DERIVED`, no ID) even if the manifest did not list one; Text and Diagram are never synthesized. *Would have asked:* is a derived view acceptable under "do not fabricate representations"? It only re-presents canonical links.
+4. **Topic → file rule.** A file belongs to a topic through CODE_RANGE evidence linked directly or via the topic's intents, changes, or findings. Parent topics do not inherit their children's files. *Would have asked:* should a parent topic's Code view include its children?
+5. **Code ranges must target changed files.** Only changed files are stored, so evidence pointing at unchanged code is rejected. *Would have asked:* is context evidence on unchanged files needed before M3?
+6. **Imports are additive.** Re-importing the same manifest duplicates records; idempotency arrives with M1's `Idempotency-Key`.
+7. **Omission is all-or-nothing per file.** If either side is binary, over 1 MB, a submodule, or not a regular file, neither side's content is stored.
+8. **The 50 MB revision cap counts bytes before blob deduplication.**
+9. **Git edge cases:** unmerged entries map to `MODIFIED`; nested repositories in the untracked list are skipped with a warning; detached `HEAD` yields an empty branch.
+10. **Tagged server machine has no owner.** Only `allowed_logins` are admitted; the owner is looked up with `tailscale status --json` (CLI, not the Tailscale Go library, to avoid a large dependency) and retried at most once a minute.
+11. **Enumerations I chose:** change kinds, finding kinds, evidence kinds, diagram node kinds (`COMPONENT`, `SERVICE`, `DATASTORE`, `QUEUE`, `ACTOR`, `STEP`, `STATE`, `OTHER`).
+12. **Mechanics:** prefixed UUIDv7 IDs (`top_…`); migrations via `PRAGMA user_version` with embedded numbered SQL files instead of a migration library; TOML config; default port 7390; `~` expansion in config paths.
+
+## Verification
+
+- `go test ./...`, `go vet`, `gofmt`, stable `go generate`, `GOOS=darwin GOARCH=arm64 go build`: pass.
+- Manual: built binary, `prunelle fixture` against a running server, restart, data intact; non-loopback listen refused; repository outside allowed roots refused; proxied request without login refused; owner login (resolved from this machine's real `tailscale status`) admitted.
+- **Not verified:** a real `tailscale serve` round trip (not enabled here, since it publishes the server on the tailnet); CI (no remote yet); running on macOS (cross-compiled only).

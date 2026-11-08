@@ -13,7 +13,7 @@ Decisions that refine or depart from the [spec](Prunelle_Architecture_Implementa
 
 **Spec:** §9 single-user API credential stored in the Keychain.
 **Decision:** the server listens on loopback only and is exposed through `tailscale serve`. The `Tailscale-User-Login` header must match the machine's Tailscale owner or a login allowed in the server config file. No bearer token.
-**Consequence:** a loopback TCP listener cannot authenticate local callers, so every local process on the server machine is trusted, and loopback requests without Tailscale headers act as the owner. If shared machines matter later, run Prunelle as its own tailnet node (embedded Tailscale with `WhoIs`).
+**Consequence:** a loopback TCP listener cannot authenticate local callers, so every local process on the server machine is trusted, and loopback requests without proxy headers act as the owner. Tailscale Serve always adds `X-Forwarded-*` headers but adds `Tailscale-User-Login` only for user identities, so a proxied request without a login (a tagged device) is rejected rather than treated as local. On a tagged server machine there is no owner; list your login in `allowed_logins`. If shared machines matter later, run Prunelle as its own tailnet node (embedded Tailscale with `WhoIs`).
 
 ## D3. SQLite via pure-Go driver
 
@@ -30,3 +30,8 @@ No LLM runs inside Prunelle before M4. Topics, intents, changes, findings, evide
 ## D6. Rex accessed through its CLI
 
 Rex documents its API methods but not a wire protocol. The Rex backend runs `rex api call` and `rex events --json` without a shell, always with `--autostart=false`.
+
+## D7. Git capture lands in M0a
+
+**Plan:** `docs/plan.md` placed capture in M1.
+**Decision:** fixtures need real snapshots for Code views and unassigned-change detection, so capture is part of M0a. M1 keeps idempotency keys, ETags, mutations, discussions, decisions, and SSE.

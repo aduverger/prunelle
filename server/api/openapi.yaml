@@ -1,0 +1,1044 @@
+openapi: 3.1.0
+info:
+  title: Prunelle Review API
+  version: 0.1.0
+  description: |
+    Review server API. All routes except `/v1/health` require a caller identity:
+    a `Tailscale-User-Login` header set by Tailscale Serve, or a loopback request without
+    Tailscale headers (the machine owner). Errors use the `Error` envelope.
+  license:
+    name: MIT
+    identifier: MIT
+servers:
+  - url: http://127.0.0.1:7390
+tags:
+  - name: system
+  - name: workspaces
+  - name: reviews
+  - name: revisions
+  - name: content
+paths:
+  /v1/health:
+    get:
+      tags: [system]
+      operationId: getHealth
+      responses:
+        "200":
+          description: Server is running.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Health" }
+  /v1/workspaces:
+    get:
+      tags: [workspaces]
+      operationId: listWorkspaces
+      responses:
+        "200":
+          description: All workspaces.
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/Workspace" } }
+        default: { $ref: "#/components/responses/Error" }
+    post:
+      tags: [workspaces]
+      operationId: createWorkspace
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateWorkspaceRequest" }
+      responses:
+        "201":
+          description: Created workspace.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Workspace" }
+        default: { $ref: "#/components/responses/Error" }
+  /v1/workspaces/{workspaceId}:
+    parameters:
+      - $ref: "#/components/parameters/WorkspaceId"
+    get:
+      tags: [workspaces]
+      operationId: getWorkspace
+      responses:
+        "200":
+          description: The workspace.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Workspace" }
+        default: { $ref: "#/components/responses/Error" }
+  /v1/reviews:
+    get:
+      tags: [reviews]
+      operationId: listReviews
+      parameters:
+        - name: workspace_id
+          in: query
+          required: false
+          schema: { type: string }
+      responses:
+        "200":
+          description: Reviews, optionally of one workspace.
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/Review" } }
+        default: { $ref: "#/components/responses/Error" }
+    post:
+      tags: [reviews]
+      operationId: createReview
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateReviewRequest" }
+      responses:
+        "201":
+          description: Created review.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Review" }
+        default: { $ref: "#/components/responses/Error" }
+  /v1/reviews/{reviewId}:
+    parameters:
+      - $ref: "#/components/parameters/ReviewId"
+    get:
+      tags: [reviews]
+      operationId: getReview
+      responses:
+        "200":
+          description: The review.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Review" }
+        default: { $ref: "#/components/responses/Error" }
+  /v1/reviews/{reviewId}/revisions:
+    parameters:
+      - $ref: "#/components/parameters/ReviewId"
+    get:
+      tags: [revisions]
+      operationId: listRevisions
+      responses:
+        "200":
+          description: Revisions ordered by ordinal.
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/Revision" } }
+        default: { $ref: "#/components/responses/Error" }
+    post:
+      tags: [revisions]
+      operationId: captureRevision
+      description: Capture every repository of the review's workspace into a new immutable revision, which becomes the current revision.
+      responses:
+        "201":
+          description: Captured revision.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Revision" }
+        default: { $ref: "#/components/responses/Error" }
+  /v1/revisions/{revisionId}:
+    parameters:
+      - $ref: "#/components/parameters/RevisionId"
+    get:
+      tags: [revisions]
+      operationId: getRevision
+      responses:
+        "200":
+          description: The revision and its repository snapshots.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Revision" }
+        default: { $ref: "#/components/responses/Error" }
+  /v1/revisions/{revisionId}/source-changes:
+    parameters:
+      - $ref: "#/components/parameters/RevisionId"
+    get:
+      tags: [revisions]
+      operationId: getSourceChanges
+      description: Every changed file of the revision with the topics it belongs to. Files belonging to no topic are flagged unassigned.
+      responses:
+        "200":
+          description: Changed files per repository.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SourceChanges" }
+        default: { $ref: "#/components/responses/Error" }
+  /v1/revisions/{revisionId}/file:
+    parameters:
+      - $ref: "#/components/parameters/RevisionId"
+    get:
+      tags: [revisions]
+      operationId: getFile
+      description: A changed file of the revision with its stored base and head text.
+      parameters:
+        - name: repository_id
+          in: query
+          required: true
+          schema: { type: string }
+        - name: path
+          in: query
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: The file.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FileContent" }
+        default: { $ref: "#/components/responses/Error" }
+  /v1/reviews/{reviewId}/imports:
+    parameters:
+      - $ref: "#/components/parameters/ReviewId"
+    get:
+      tags: [content]
+      operationId: listImports
+      responses:
+        "200":
+          description: Manifest imports with their authors.
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/Import" } }
+        default: { $ref: "#/components/responses/Error" }
+    post:
+      tags: [content]
+      operationId: importManifest
+      description: Validate a review manifest against a revision (default the current one) and store its records in one transaction.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ImportRequest" }
+      responses:
+        "201":
+          description: Import result with the IDs assigned to manifest keys.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ImportResult" }
+        default: { $ref: "#/components/responses/Error" }
+  /v1/reviews/{reviewId}/topics:
+    parameters:
+      - $ref: "#/components/parameters/ReviewId"
+    get:
+      tags: [content]
+      operationId: listTopics
+      description: Topics ordered roots first, then children by parent and position. Build the tree from parent_id.
+      responses:
+        "200":
+          description: Topics.
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/Topic" } }
+        default: { $ref: "#/components/responses/Error" }
+  /v1/topics/{topicId}:
+    parameters:
+      - $ref: "#/components/parameters/TopicId"
+    get:
+      tags: [content]
+      operationId: getTopic
+      responses:
+        "200":
+          description: The topic and its direct links.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Topic" }
+        default: { $ref: "#/components/responses/Error" }
+  /v1/topics/{topicId}/representations:
+    parameters:
+      - $ref: "#/components/parameters/TopicId"
+    get:
+      tags: [content]
+      operationId: listTopicRepresentations
+      description: |
+        Stored representations plus one entry per missing MVP type. Missing code and evidence views
+        are derived from topic links (origin DERIVED); missing text and diagram views are reported
+        unavailable (origin NONE).
+      responses:
+        "200":
+          description: Representations.
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/Representation" } }
+        default: { $ref: "#/components/responses/Error" }
+  /v1/reviews/{reviewId}/intents:
+    parameters:
+      - $ref: "#/components/parameters/ReviewId"
+    get:
+      tags: [content]
+      operationId: listIntents
+      responses:
+        "200":
+          description: Intents.
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/Intent" } }
+        default: { $ref: "#/components/responses/Error" }
+  /v1/reviews/{reviewId}/changes:
+    parameters:
+      - $ref: "#/components/parameters/ReviewId"
+    get:
+      tags: [content]
+      operationId: listChanges
+      parameters:
+        - name: revision_id
+          in: query
+          required: false
+          schema: { type: string }
+      responses:
+        "200":
+          description: Observed changes.
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/ObservedChange" } }
+        default: { $ref: "#/components/responses/Error" }
+  /v1/reviews/{reviewId}/findings:
+    parameters:
+      - $ref: "#/components/parameters/ReviewId"
+    get:
+      tags: [content]
+      operationId: listFindings
+      responses:
+        "200":
+          description: Findings ordered by severity.
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/Finding" } }
+        default: { $ref: "#/components/responses/Error" }
+  /v1/reviews/{reviewId}/evidence:
+    parameters:
+      - $ref: "#/components/parameters/ReviewId"
+    get:
+      tags: [content]
+      operationId: listEvidence
+      responses:
+        "200":
+          description: Evidence.
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/Evidence" } }
+        default: { $ref: "#/components/responses/Error" }
+  /v1/reviews/{reviewId}/attention:
+    parameters:
+      - $ref: "#/components/parameters/ReviewId"
+    get:
+      tags: [content]
+      operationId: listAttention
+      responses:
+        "200":
+          description: Attention signals. A priority is a reason to look, not a defect probability.
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/AttentionSignal" } }
+        default: { $ref: "#/components/responses/Error" }
+  /v1/evidence/{evidenceId}:
+    parameters:
+      - name: evidenceId
+        in: path
+        required: true
+        schema: { type: string }
+    get:
+      tags: [content]
+      operationId: getEvidence
+      responses:
+        "200":
+          description: The evidence.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Evidence" }
+        default: { $ref: "#/components/responses/Error" }
+
+components:
+  parameters:
+    WorkspaceId:
+      name: workspaceId
+      in: path
+      required: true
+      schema: { type: string }
+    ReviewId:
+      name: reviewId
+      in: path
+      required: true
+      schema: { type: string }
+    RevisionId:
+      name: revisionId
+      in: path
+      required: true
+      schema: { type: string }
+    TopicId:
+      name: topicId
+      in: path
+      required: true
+      schema: { type: string }
+
+  responses:
+    Error:
+      description: Error.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+
+  schemas:
+    Error:
+      type: object
+      required: [error]
+      additionalProperties: false
+      properties:
+        error:
+          type: object
+          required: [code, message, details]
+          additionalProperties: false
+          properties:
+            code:
+              type: string
+              enum: [NOT_FOUND, INVALID_ARGUMENT, CONFLICT, CAPTURE_FAILED, UNAUTHENTICATED, PERMISSION_DENIED, INTERNAL]
+            message: { type: string }
+            details: { type: array, items: { type: string } }
+
+    Health:
+      type: object
+      required: [status, version]
+      properties:
+        status: { type: string, enum: [ok] }
+        version: { type: string }
+
+    Provenance:
+      type: string
+      enum: [MEASURED, OBSERVED, INFERRED, UNKNOWN]
+
+    Workspace:
+      x-go-type: review.Workspace
+      x-go-type-import: { path: github.com/aduverger/prunelle/server/internal/review }
+      type: object
+      required: [id, name, repositories, created_at, updated_at]
+      additionalProperties: false
+      properties:
+        id: { type: string }
+        name: { type: string }
+        repositories: { type: array, items: { $ref: "#/components/schemas/Repository" } }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    Repository:
+      x-go-type: review.Repository
+      x-go-type-import: { path: github.com/aduverger/prunelle/server/internal/review }
+      type: object
+      required: [id, workspace_id, label, root_path, base_ref, include_untracked]
+      additionalProperties: false
+      properties:
+        id: { type: string }
+        workspace_id: { type: string }
+        label: { type: string }
+        root_path: { type: string, description: Canonical repository root on the server. }
+        base_ref: { type: string }
+        include_untracked: { type: boolean }
+
+    CreateWorkspaceRequest:
+      x-go-type: review.CreateWorkspaceRequest
+      x-go-type-import: { path: github.com/aduverger/prunelle/server/internal/review }
+      type: object
+      required: [name, repositories]
+      additionalProperties: false
+      properties:
+        name: { type: string, minLength: 1 }
+        repositories:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            required: [label, path, base_ref]
+            additionalProperties: false
+            properties:
+              label: { type: string, minLength: 1 }
+              path: { type: string, description: Path on the server; must lie inside the configured allowed roots. }
+              base_ref: { type: string, minLength: 1 }
+              include_untracked: { type: boolean, default: true }
+
+    Review:
+      x-go-type: review.Review
+      x-go-type-import: { path: github.com/aduverger/prunelle/server/internal/review }
+      type: object
+      required: [id, workspace_id, title, description, status, current_revision_id, created_at, updated_at]
+      additionalProperties: false
+      properties:
+        id: { type: string }
+        workspace_id: { type: string }
+        title: { type: string }
+        description: { type: string }
+        status: { type: string, enum: [OPEN, CLOSED] }
+        current_revision_id: { type: [string, "null"] }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    CreateReviewRequest:
+      x-go-type: review.CreateReviewRequest
+      x-go-type-import: { path: github.com/aduverger/prunelle/server/internal/review }
+      type: object
+      required: [workspace_id, title]
+      additionalProperties: false
+      properties:
+        workspace_id: { type: string }
+        title: { type: string, minLength: 1 }
+        description: { type: string }
+
+    Revision:
+      x-go-type: review.Revision
+      x-go-type-import: { path: github.com/aduverger/prunelle/server/internal/review }
+      type: object
+      required: [id, review_id, ordinal, captured_at, fingerprint, status, snapshots]
+      additionalProperties: false
+      properties:
+        id: { type: string }
+        review_id: { type: string }
+        ordinal: { type: integer, minimum: 1 }
+        captured_at: { type: string, format: date-time }
+        fingerprint: { type: string }
+        status:
+          type: string
+          enum: [CONSISTENT, INCONSISTENT]
+          description: INCONSISTENT when a repository kept changing during capture; snapshots may mix states.
+        snapshots: { type: array, items: { $ref: "#/components/schemas/RepoSnapshot" } }
+
+    RepoSnapshot:
+      x-go-type: review.RepoSnapshot
+      x-go-type-import: { path: github.com/aduverger/prunelle/server/internal/review }
+      type: object
+      required: [repository_id, repository_label, base_ref, base_sha, head_sha, branch, staged_count, unstaged_count, untracked_count, file_count, status, warnings]
+      additionalProperties: false
+      properties:
+        repository_id: { type: string }
+        repository_label: { type: string }
+        base_ref: { type: string }
+        base_sha: { type: string, description: "merge-base(HEAD, base_ref)" }
+        head_sha: { type: string }
+        branch: { type: string, description: Empty when HEAD is detached. }
+        staged_count: { type: integer }
+        unstaged_count: { type: integer }
+        untracked_count: { type: integer }
+        file_count: { type: integer }
+        status: { type: string, enum: [CONSISTENT, INCONSISTENT] }
+        warnings: { type: array, items: { type: string } }
+
+    FileStatus:
+      type: string
+      enum: [ADDED, MODIFIED, DELETED, RENAMED, TYPE_CHANGED, UNTRACKED]
+
+    ContentOmitted:
+      type: [string, "null"]
+      enum: [BINARY, TOO_LARGE, SUBMODULE, NOT_A_REGULAR_FILE, null]
+      description: Why the file is listed without contents.
+
+    SourceChanges:
+      x-go-type: review.SourceChanges
+      x-go-type-import: { path: github.com/aduverger/prunelle/server/internal/review }
+      type: object
+      required: [revision_id, repositories, unassigned_count]
+      additionalProperties: false
+      properties:
+        revision_id: { type: string }
+        unassigned_count: { type: integer }
+        repositories:
+          type: array
+          items:
+            type: object
+            required: [repository_id, repository_label, files]
+            additionalProperties: false
+            properties:
+              repository_id: { type: string }
+              repository_label: { type: string }
+              files:
+                type: array
+                items:
+                  type: object
+                  required: [path, old_path, status, binary, content_omitted, topic_ids, unassigned]
+                  additionalProperties: false
+                  properties:
+                    path: { type: string }
+                    old_path: { type: [string, "null"] }
+                    status: { $ref: "#/components/schemas/FileStatus" }
+                    binary: { type: boolean }
+                    content_omitted: { $ref: "#/components/schemas/ContentOmitted" }
+                    topic_ids: { type: array, items: { type: string } }
+                    unassigned: { type: boolean }
+
+    FileContent:
+      x-go-type: review.FileContent
+      x-go-type-import: { path: github.com/aduverger/prunelle/server/internal/review }
+      type: object
+      required: [revision_id, repository_id, path, old_path, status, base_mode, head_mode, base_oid, head_oid, binary, content_omitted, base_text, head_text]
+      additionalProperties: false
+      properties:
+        revision_id: { type: string }
+        repository_id: { type: string }
+        path: { type: string }
+        old_path: { type: [string, "null"] }
+        status: { $ref: "#/components/schemas/FileStatus" }
+        base_mode: { type: [string, "null"] }
+        head_mode: { type: [string, "null"] }
+        base_oid: { type: [string, "null"] }
+        head_oid: { type: [string, "null"] }
+        binary: { type: boolean }
+        content_omitted: { $ref: "#/components/schemas/ContentOmitted" }
+        base_text: { type: [string, "null"], description: Null for added files and omitted content. }
+        head_text: { type: [string, "null"], description: Null for deleted files and omitted content. }
+
+    Author:
+      x-go-type: review.Author
+      x-go-type-import: { path: github.com/aduverger/prunelle/server/internal/review }
+      type: object
+      required: [kind, id]
+      additionalProperties: false
+      properties:
+        kind: { type: string, enum: [HUMAN, AGENT] }
+        id: { type: string, minLength: 1, description: "Free-form author identity, e.g. a login or pi:<session>." }
+
+    Import:
+      x-go-type: review.Import
+      x-go-type-import: { path: github.com/aduverger/prunelle/server/internal/review }
+      type: object
+      required: [id, review_id, revision_id, author, imported_at]
+      additionalProperties: false
+      properties:
+        id: { type: string }
+        review_id: { type: string }
+        revision_id: { type: string }
+        author: { $ref: "#/components/schemas/Author" }
+        imported_at: { type: string, format: date-time }
+
+    Topic:
+      x-go-type: review.Topic
+      x-go-type-import: { path: github.com/aduverger/prunelle/server/internal/review }
+      type: object
+      required: [id, review_id, parent_id, title, summary, origin, state, position, import_id, intent_ids, change_ids, finding_ids, evidence_ids, created_at, updated_at]
+      additionalProperties: false
+      properties:
+        id: { type: string }
+        review_id: { type: string }
+        parent_id: { type: [string, "null"] }
+        title: { type: string }
+        summary: { type: string }
+        origin: { type: string, enum: [MANUAL, IMPORTED, GENERATED] }
+        state: { type: string, enum: [ACTIVE, OBSOLETE] }
+        position: { type: integer, description: Order among siblings. }
+        import_id: { type: [string, "null"] }
+        intent_ids: { type: array, items: { type: string } }
+        change_ids: { type: array, items: { type: string } }
+        finding_ids: { type: array, items: { type: string } }
+        evidence_ids: { type: array, items: { type: string }, description: Directly linked evidence only. }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    Intent:
+      x-go-type: review.Intent
+      x-go-type-import: { path: github.com/aduverger/prunelle/server/internal/review }
+      type: object
+      required: [id, review_id, kind, statement, source, acceptance_criteria, provenance, import_id, evidence_ids]
+      additionalProperties: false
+      properties:
+        id: { type: string }
+        review_id: { type: string }
+        kind: { type: string, enum: [BEHAVIOR, CONSTRAINT] }
+        statement: { type: string }
+        source: { type: string }
+        acceptance_criteria: { type: [string, "null"] }
+        provenance: { $ref: "#/components/schemas/Provenance" }
+        import_id: { type: [string, "null"] }
+        evidence_ids: { type: array, items: { type: string } }
+
+    ObservedChange:
+      x-go-type: review.ObservedChange
+      x-go-type-import: { path: github.com/aduverger/prunelle/server/internal/review }
+      type: object
+      required: [id, revision_id, kind, summary, before, after, components, verification_status, provenance, import_id, evidence_ids]
+      additionalProperties: false
+      properties:
+        id: { type: string }
+        revision_id: { type: string }
+        kind: { type: string, enum: [BEHAVIOR, INTERFACE, DATA, DEPENDENCY, CONFIGURATION, UI, OTHER] }
+        summary: { type: string }
+        before: { type: string }
+        after: { type: string }
+        components: { type: array, items: { type: string } }
+        verification_status: { type: string, enum: [UNVERIFIED, SUPPORTED, CONTRADICTED] }
+        provenance: { $ref: "#/components/schemas/Provenance" }
+        import_id: { type: [string, "null"] }
+        evidence_ids: { type: array, items: { type: string } }
+
+    Finding:
+      x-go-type: review.Finding
+      x-go-type-import: { path: github.com/aduverger/prunelle/server/internal/review }
+      type: object
+      required: [id, review_id, first_seen_revision_id, kind, severity, status, title, rationale, provenance, import_id, evidence_ids]
+      additionalProperties: false
+      properties:
+        id: { type: string }
+        review_id: { type: string }
+        first_seen_revision_id: { type: string }
+        kind: { type: string, enum: [CORRECTNESS, DESIGN, SECURITY, PERFORMANCE, TEST_GAP, OTHER] }
+        severity: { type: string, enum: [HIGH, MEDIUM, LOW, INFO] }
+        status: { type: string, enum: [OPEN, DISMISSED, RESOLVED] }
+        title: { type: string }
+        rationale: { type: string }
+        provenance: { $ref: "#/components/schemas/Provenance" }
+        import_id: { type: [string, "null"] }
+        evidence_ids: { type: array, items: { type: string } }
+
+    Evidence:
+      x-go-type: review.Evidence
+      x-go-type-import: { path: github.com/aduverger/prunelle/server/internal/review }
+      type: object
+      required: [id, revision_id, kind, title, content, source, collection_method, provenance, import_id, code_range]
+      additionalProperties: false
+      properties:
+        id: { type: string }
+        revision_id: { type: string }
+        kind: { type: string, enum: [CODE_RANGE, TEST_RESULT, SPECIFICATION, ANALYSIS_OUTPUT, ARTIFACT] }
+        title: { type: string }
+        content: { type: [string, "null"] }
+        source: { type: string }
+        collection_method:
+          type: string
+          enum: [CAPTURED, REPORTED]
+          description: CAPTURED when Prunelle resolved it from a snapshot; REPORTED when an author supplied it.
+        provenance: { $ref: "#/components/schemas/Provenance" }
+        import_id: { type: [string, "null"] }
+        code_range:
+          oneOf:
+            - type: "null"
+            - $ref: "#/components/schemas/CodeRange"
+
+    CodeRange:
+      x-go-type: review.CodeRange
+      x-go-type-import: { path: github.com/aduverger/prunelle/server/internal/review }
+      type: object
+      required: [repository_id, path, side, start_line, end_line, blob_hash, selected_text]
+      additionalProperties: false
+      properties:
+        repository_id: { type: string }
+        path: { type: string }
+        side: { type: string, enum: [BASE, HEAD] }
+        start_line: { type: integer, minimum: 1 }
+        end_line: { type: integer, minimum: 1 }
+        blob_hash: { type: string, description: SHA-256 of the stored file content. }
+        selected_text: { type: string }
+
+    AttentionSignal:
+      x-go-type: review.AttentionSignal
+      x-go-type-import: { path: github.com/aduverger/prunelle/server/internal/review }
+      type: object
+      required: [id, revision_id, target, priority, rationale, uncertainty, source, provenance, import_id, evidence_ids]
+      additionalProperties: false
+      properties:
+        id: { type: string }
+        revision_id: { type: string }
+        target:
+          type: object
+          required: [type, id]
+          additionalProperties: false
+          properties:
+            type: { type: string, enum: [TOPIC, FINDING, CHANGE] }
+            id: { type: string }
+        priority: { type: string, enum: [HIGH, MEDIUM, LOW, UNKNOWN] }
+        rationale: { type: string }
+        uncertainty: { type: string }
+        source: { type: string }
+        provenance: { $ref: "#/components/schemas/Provenance" }
+        import_id: { type: [string, "null"] }
+        evidence_ids: { type: array, items: { type: string } }
+
+    EntityRef:
+      x-go-type: review.EntityRef
+      x-go-type-import: { path: github.com/aduverger/prunelle/server/internal/review }
+      type: object
+      required: [type, id]
+      additionalProperties: false
+      properties:
+        type: { type: string, enum: [TOPIC, INTENT, CHANGE, FINDING, EVIDENCE] }
+        id: { type: string }
+
+    EvidenceListConfig:
+      x-go-type: review.EvidenceListConfig
+      x-go-type-import: { path: github.com/aduverger/prunelle/server/internal/review }
+      type: object
+      required: [evidence_ids]
+      additionalProperties: false
+      properties:
+        evidence_ids: { type: array, items: { type: string } }
+
+    Representation:
+      x-go-type: review.Representation
+      x-go-type-import: { path: github.com/aduverger/prunelle/server/internal/review }
+      type: object
+      required: [id, topic_id, type, title, origin, available, unavailable_reason, revision_id]
+      additionalProperties: false
+      properties:
+        id: { type: [string, "null"], description: Null for derived and unavailable entries. }
+        topic_id: { type: string }
+        type: { type: string, enum: [TEXT, DIAGRAM, CODE_DIFF, EVIDENCE_LIST] }
+        title: { type: string }
+        origin: { type: string, enum: [MANUAL, IMPORTED, GENERATED, DERIVED, NONE] }
+        available: { type: boolean }
+        unavailable_reason: { type: [string, "null"] }
+        revision_id: { type: [string, "null"] }
+        text:
+          type: object
+          required: [sections]
+          additionalProperties: false
+          properties:
+            sections:
+              type: array
+              items:
+                type: object
+                required: [heading, body, evidence_ids]
+                additionalProperties: false
+                properties:
+                  heading: { type: string }
+                  body: { type: string, description: Markdown; render without raw HTML. }
+                  evidence_ids: { type: array, items: { type: string } }
+        diagram:
+          type: object
+          required: [nodes, edges]
+          additionalProperties: false
+          properties:
+            nodes:
+              type: array
+              items:
+                type: object
+                required: [id, label, kind, ref, evidence_ids]
+                additionalProperties: false
+                properties:
+                  id: { type: string }
+                  label: { type: string }
+                  kind: { type: string, enum: [COMPONENT, SERVICE, DATASTORE, QUEUE, ACTOR, STEP, STATE, OTHER] }
+                  ref:
+                    oneOf:
+                      - type: "null"
+                      - $ref: "#/components/schemas/EntityRef"
+                  evidence_ids: { type: array, items: { type: string } }
+            edges:
+              type: array
+              items: { $ref: "#/components/schemas/DiagramEdge" }
+        code_diff:
+          $ref: "#/components/schemas/EvidenceListConfig"
+          description: Evidence IDs of the code ranges to show.
+        evidence_list:
+          $ref: "#/components/schemas/EvidenceListConfig"
+
+    DiagramEdge:
+      x-go-type: review.DiagramEdge
+      x-go-type-import: { path: github.com/aduverger/prunelle/server/internal/review }
+      type: object
+      required: [from, to, label]
+      additionalProperties: false
+      properties:
+        from: { type: string }
+        to: { type: string }
+        label: { type: string }
+
+    ImportRequest:
+      x-go-type: review.ImportRequest
+      x-go-type-import: { path: github.com/aduverger/prunelle/server/internal/review }
+      type: object
+      required: [manifest]
+      additionalProperties: false
+      properties:
+        revision_id: { type: string, description: Defaults to the review's current revision. }
+        manifest: { $ref: "#/components/schemas/Manifest" }
+
+    ImportResult:
+      x-go-type: review.ImportResult
+      x-go-type-import: { path: github.com/aduverger/prunelle/server/internal/review }
+      type: object
+      required: [import_id, revision_id, ids, warnings]
+      additionalProperties: false
+      properties:
+        import_id: { type: string }
+        revision_id: { type: string }
+        ids:
+          type: object
+          description: "Entity kind (intents, evidence, changes, findings, topics, attention) → manifest key → assigned ID."
+          additionalProperties:
+            type: object
+            additionalProperties: { type: string }
+        warnings: { type: array, items: { type: string } }
+
+    Manifest:
+      x-go-type: review.Manifest
+      x-go-type-import: { path: github.com/aduverger/prunelle/server/internal/review }
+      description: |
+        Review content written by an author (typically the implementing agent). Entities reference
+        each other by keys unique per entity kind. Agent-authored intents, changes, findings and
+        attention are stored as INFERRED and changes as UNVERIFIED. CODE_RANGE evidence must point
+        at a changed file of the revision; Prunelle resolves its text from the snapshot.
+      type: object
+      required: [author]
+      additionalProperties: false
+      properties:
+        author: { $ref: "#/components/schemas/Author" }
+        intents:
+          type: array
+          items:
+            type: object
+            required: [key, kind, statement, source]
+            additionalProperties: false
+            properties:
+              key: { type: string }
+              kind: { type: string, enum: [BEHAVIOR, CONSTRAINT] }
+              statement: { type: string }
+              source: { type: string }
+              acceptance_criteria: { type: string }
+              provenance: { $ref: "#/components/schemas/Provenance" }
+              evidence: { $ref: "#/components/schemas/KeyList" }
+        evidence:
+          type: array
+          items:
+            type: object
+            required: [key, kind, title]
+            additionalProperties: false
+            properties:
+              key: { type: string }
+              kind: { type: string, enum: [CODE_RANGE, TEST_RESULT, SPECIFICATION, ANALYSIS_OUTPUT, ARTIFACT] }
+              title: { type: string }
+              content: { type: string }
+              source: { type: string }
+              provenance: { $ref: "#/components/schemas/Provenance" }
+              code_range:
+                type: object
+                required: [repository, path, side, start_line, end_line]
+                additionalProperties: false
+                properties:
+                  repository: { type: string, description: Repository label. }
+                  path: { type: string }
+                  side: { type: string, enum: [BASE, HEAD] }
+                  start_line: { type: integer, minimum: 1 }
+                  end_line: { type: integer, minimum: 1 }
+        changes:
+          type: array
+          items:
+            type: object
+            required: [key, kind, summary, before, after]
+            additionalProperties: false
+            properties:
+              key: { type: string }
+              kind: { type: string, enum: [BEHAVIOR, INTERFACE, DATA, DEPENDENCY, CONFIGURATION, UI, OTHER] }
+              summary: { type: string }
+              before: { type: string }
+              after: { type: string }
+              components: { type: array, items: { type: string } }
+              verification_status: { type: string, enum: [UNVERIFIED, SUPPORTED, CONTRADICTED] }
+              provenance: { $ref: "#/components/schemas/Provenance" }
+              evidence: { $ref: "#/components/schemas/KeyList" }
+        findings:
+          type: array
+          items:
+            type: object
+            required: [key, kind, severity, title, rationale]
+            additionalProperties: false
+            properties:
+              key: { type: string }
+              kind: { type: string, enum: [CORRECTNESS, DESIGN, SECURITY, PERFORMANCE, TEST_GAP, OTHER] }
+              severity: { type: string, enum: [HIGH, MEDIUM, LOW, INFO] }
+              title: { type: string }
+              rationale: { type: string }
+              provenance: { $ref: "#/components/schemas/Provenance" }
+              evidence: { $ref: "#/components/schemas/KeyList" }
+        topics:
+          type: array
+          description: A parent must be listed before its children.
+          items:
+            type: object
+            required: [key, title, summary]
+            additionalProperties: false
+            properties:
+              key: { type: string }
+              parent: { type: string }
+              title: { type: string }
+              summary: { type: string }
+              intents: { $ref: "#/components/schemas/KeyList" }
+              changes: { $ref: "#/components/schemas/KeyList" }
+              findings: { $ref: "#/components/schemas/KeyList" }
+              evidence: { $ref: "#/components/schemas/KeyList" }
+              representations:
+                type: array
+                items:
+                  type: object
+                  required: [type]
+                  additionalProperties: false
+                  properties:
+                    type: { type: string, enum: [TEXT, DIAGRAM, CODE_DIFF, EVIDENCE_LIST] }
+                    title: { type: string }
+                    text:
+                      type: object
+                      required: [sections]
+                      additionalProperties: false
+                      properties:
+                        sections:
+                          type: array
+                          items:
+                            type: object
+                            required: [heading, body]
+                            additionalProperties: false
+                            properties:
+                              heading: { type: string }
+                              body: { type: string }
+                              evidence: { $ref: "#/components/schemas/KeyList" }
+                    diagram:
+                      type: object
+                      required: [nodes]
+                      additionalProperties: false
+                      properties:
+                        nodes:
+                          type: array
+                          items:
+                            type: object
+                            required: [id, label, kind]
+                            additionalProperties: false
+                            properties:
+                              id: { type: string }
+                              label: { type: string }
+                              kind: { type: string, enum: [COMPONENT, SERVICE, DATASTORE, QUEUE, ACTOR, STEP, STATE, OTHER] }
+                              ref: { $ref: "#/components/schemas/ManifestRef" }
+                              evidence: { $ref: "#/components/schemas/KeyList" }
+                        edges:
+                          type: array
+                          items: { $ref: "#/components/schemas/DiagramEdge" }
+                    code_diff:
+                      type: object
+                      additionalProperties: false
+                      properties:
+                        evidence: { $ref: "#/components/schemas/KeyList" }
+                    evidence_list:
+                      type: object
+                      additionalProperties: false
+                      properties:
+                        evidence: { $ref: "#/components/schemas/KeyList" }
+        attention:
+          type: array
+          items:
+            type: object
+            required: [target, priority, rationale, uncertainty]
+            additionalProperties: false
+            properties:
+              key: { type: string }
+              target:
+                type: object
+                required: [type, key]
+                additionalProperties: false
+                properties:
+                  type: { type: string, enum: [TOPIC, CHANGE, FINDING] }
+                  key: { type: string }
+              priority: { type: string, enum: [HIGH, MEDIUM, LOW, UNKNOWN] }
+              rationale: { type: string }
+              uncertainty: { type: string }
+              evidence: { $ref: "#/components/schemas/KeyList" }
+
+    ManifestRef:
+      x-go-type: review.ManifestRef
+      x-go-type-import: { path: github.com/aduverger/prunelle/server/internal/review }
+      type: object
+      required: [type, key]
+      additionalProperties: false
+      properties:
+        type: { type: string, enum: [TOPIC, INTENT, CHANGE, FINDING, EVIDENCE] }
+        key: { type: string }
+
+    KeyList:
+      type: array
+      items: { type: string }

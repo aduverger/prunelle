@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 
 	"github.com/BurntSushi/toml"
 )
@@ -37,6 +38,11 @@ func Load(path string) (Config, error) {
 	if err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return Config{}, fmt.Errorf("read config %s: %w", path, err)
 	}
+	home, _ := os.UserHomeDir()
+	cfg.DataDir = expandHome(cfg.DataDir, home)
+	for i, root := range cfg.AllowedRoots {
+		cfg.AllowedRoots[i] = expandHome(root, home)
+	}
 	if cfg.Listen == "" {
 		cfg.Listen = DefaultListen
 	}
@@ -60,4 +66,14 @@ func defaultDataDir() (string, error) {
 		return filepath.Join(xdg, "prunelle"), nil
 	}
 	return filepath.Join(home, ".local", "share", "prunelle"), nil
+}
+
+func expandHome(path, home string) string {
+	if path == "~" {
+		return home
+	}
+	if rest, ok := strings.CutPrefix(path, "~/"); ok {
+		return filepath.Join(home, rest)
+	}
+	return path
 }
