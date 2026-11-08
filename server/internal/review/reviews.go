@@ -23,7 +23,7 @@ func (s *Service) CreateReview(ctx context.Context, req CreateReviewRequest) (Re
 	now := s.now()
 	r := Review{ID: newID("rvw"), WorkspaceID: req.WorkspaceID, Title: title, Description: req.Description,
 		Status: "OPEN", CreatedAt: now, UpdatedAt: now}
-	err := s.write(ctx, func(tx *sql.Tx) error {
+	err := s.db.Write(ctx, func(tx *sql.Tx) error {
 		_, err := tx.ExecContext(ctx, `INSERT INTO reviews (id, workspace_id, title, description, status, created_at, updated_at)
 			VALUES (?, ?, ?, ?, ?, ?, ?)`, r.ID, r.WorkspaceID, r.Title, r.Description, r.Status, formatTime(now), formatTime(now))
 		return err
@@ -46,7 +46,7 @@ func scanReview(scan func(...any) error) (Review, error) {
 }
 
 func (s *Service) ListReviews(ctx context.Context, workspaceID *string) ([]Review, error) {
-	rows, err := s.reader().QueryContext(ctx, `SELECT `+reviewColumns+` FROM reviews
+	rows, err := s.db.Reader().QueryContext(ctx, `SELECT `+reviewColumns+` FROM reviews
 		WHERE ?1 IS NULL OR workspace_id = ?1 ORDER BY created_at, id`, nullString(workspaceID))
 	if err != nil {
 		return nil, err
@@ -64,7 +64,7 @@ func (s *Service) ListReviews(ctx context.Context, workspaceID *string) ([]Revie
 }
 
 func (s *Service) GetReview(ctx context.Context, id string) (Review, error) {
-	row := s.reader().QueryRowContext(ctx, `SELECT `+reviewColumns+` FROM reviews WHERE id = ?`, id)
+	row := s.db.Reader().QueryRowContext(ctx, `SELECT `+reviewColumns+` FROM reviews WHERE id = ?`, id)
 	r, err := scanReview(row.Scan)
 	if err == sql.ErrNoRows {
 		return Review{}, notFound("review", id)
@@ -79,7 +79,7 @@ func (s *Service) CaptureRevision(ctx context.Context, reviewID string) (Revisio
 	if err != nil {
 		return Revision{}, err
 	}
-	repos, err := s.repositories(ctx, s.reader(), rv.WorkspaceID)
+	repos, err := s.repositories(ctx, rv.WorkspaceID)
 	if err != nil {
 		return Revision{}, err
 	}
@@ -108,7 +108,7 @@ func (s *Service) CaptureRevision(ctx context.Context, reviewID string) (Revisio
 	}
 	revision.Fingerprint = hex.EncodeToString(fingerprint.Sum(nil))
 
-	err = s.write(ctx, func(tx *sql.Tx) error {
+	err = s.db.Write(ctx, func(tx *sql.Tx) error {
 		if err := tx.QueryRowContext(ctx, `SELECT COALESCE(MAX(ordinal), 0) + 1 FROM revisions WHERE review_id = ?`,
 			reviewID).Scan(&revision.Ordinal); err != nil {
 			return err
@@ -186,7 +186,7 @@ func (s *Service) ListRevisions(ctx context.Context, reviewID string) ([]Revisio
 	if _, err := s.GetReview(ctx, reviewID); err != nil {
 		return nil, err
 	}
-	ids, err := queryStrings(ctx, s.reader(), `SELECT id FROM revisions WHERE review_id = ? ORDER BY ordinal`, reviewID)
+	ids, err := queryStrings(ctx, s.db.Reader(), `SELECT id FROM revisions WHERE review_id = ? ORDER BY ordinal`, reviewID)
 	if err != nil {
 		return nil, err
 	}
@@ -204,13 +204,13 @@ func (s *Service) ListRevisions(ctx context.Context, reviewID string) ([]Revisio
 func (s *Service) GetRevision(ctx context.Context, id string) (Revision, error) {
 	r := Revision{ID: id}
 	var captured string
-	err := scanOne(s.reader().QueryRowContext(ctx, `SELECT review_id, ordinal, captured_at, fingerprint, status FROM revisions WHERE id = ?`, id),
+	err := scanOne(s.db.Reader().QueryRowContext(ctx, `SELECT review_id, ordinal, captured_at, fingerprint, status FROM revisions WHERE id = ?`, id),
 		"revision", id, &r.ReviewID, &r.Ordinal, &captured, &r.Fingerprint, &r.Status)
 	if err != nil {
 		return Revision{}, err
 	}
 	r.CapturedAt = parseTime(captured)
-	rows, err := s.reader().QueryContext(ctx, `SELECT s.repository_id, p.label, s.base_ref, s.base_sha, s.head_sha, s.branch,
+	rows, err := s.db.Reader().QueryContext(ctx, `SELECT s.repository_id, p.label, s.base_ref, s.base_sha, s.head_sha, s.branch,
 			s.staged_count, s.unstaged_count, s.untracked_count, s.status, s.warnings,
 			(SELECT COUNT(*) FROM snapshot_files f WHERE f.snapshot_id = s.id)
 		FROM repo_snapshots s JOIN repositories p ON p.id = s.repository_id
@@ -247,7 +247,7 @@ func (s *Service) SourceChanges(ctx context.Context, revisionID string) (SourceC
 	}
 	result := SourceChanges{RevisionID: revisionID, Repositories: []RepositoryChange{}}
 	for _, snap := range revision.Snapshots {
-		rows, err := s.reader().QueryContext(ctx, `SELECT f.path, f.old_path, f.status, f.binary, f.content_omitted
+		rows, err := s.db.Reader().QueryContext(ctx, `SELECT f.path, f.old_path, f.status, f.binary, f.content_omitted
 			FROM snapshot_files f JOIN repo_snapshots s ON s.id = f.snapshot_id
 			WHERE s.revision_id = ? AND s.repository_id = ? ORDER BY f.path`, revisionID, snap.RepositoryID)
 		if err != nil {
@@ -284,7 +284,7 @@ type fileKey struct{ repositoryID, path string }
 // topicsByFile applies the canonical topic→file rule: a file belongs to a topic when a code-range
 // evidence reachable from the topic points at it.
 func (s *Service) topicsByFile(ctx context.Context, revisionID string) (map[fileKey][]string, error) {
-	rows, err := s.reader().QueryContext(ctx, `WITH `+topicEvidenceCTE+`
+	rows, err := s.db.Reader().QueryContext(ctx, `WITH `+topicEvidenceCTE+`
 		SELECT DISTINCT r.repository_id, r.path, te.topic_id
 		FROM topic_reachable_evidence te
 		JOIN evidence e ON e.id = te.evidence_id
@@ -320,7 +320,7 @@ func (s *Service) GetFile(ctx context.Context, revisionID, repositoryID, path st
 	f := FileContent{RevisionID: revisionID, RepositoryID: repositoryID, Path: path}
 	var oldPath, baseMode, headMode, baseOID, headOID, omitted, baseBlob, headBlob sql.NullString
 	var baseText, headText []byte
-	err := scanOne(s.reader().QueryRowContext(ctx, `SELECT f.old_path, f.status, f.base_mode, f.head_mode, f.base_oid, f.head_oid,
+	err := scanOne(s.db.Reader().QueryRowContext(ctx, `SELECT f.old_path, f.status, f.base_mode, f.head_mode, f.base_oid, f.head_oid,
 			f.binary, f.content_omitted, f.base_blob, f.head_blob, b.content, h.content
 		FROM snapshot_files f
 		JOIN repo_snapshots s ON s.id = f.snapshot_id

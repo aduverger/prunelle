@@ -73,7 +73,7 @@ func parseTime(s string) time.Time {
 	return t
 }
 
-// queryRow scans a single row, translating sql.ErrNoRows into a not-found error.
+// scanOne scans a single row, translating sql.ErrNoRows into a not-found error.
 func scanOne(row *sql.Row, kind, id string, dest ...any) error {
 	err := row.Scan(dest...)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -82,15 +82,9 @@ func scanOne(row *sql.Row, kind, id string, dest ...any) error {
 	return err
 }
 
-func (s *Service) reader() *sql.DB { return s.db.Reader() }
-
-func (s *Service) write(ctx context.Context, fn func(tx *sql.Tx) error) error {
-	return s.db.Write(ctx, fn)
-}
-
 // queryStrings returns the first column of every row.
-func queryStrings(ctx context.Context, q querier, query string, args ...any) ([]string, error) {
-	rows, err := q.QueryContext(ctx, query, args...)
+func queryStrings(ctx context.Context, db *sql.DB, query string, args ...any) ([]string, error) {
+	rows, err := db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -104,11 +98,6 @@ func queryStrings(ctx context.Context, q querier, query string, args ...any) ([]
 		values = append(values, v)
 	}
 	return values, rows.Err()
-}
-
-type querier interface {
-	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
-	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
 }
 
 func nullString(p *string) sql.NullString {

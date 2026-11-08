@@ -41,7 +41,7 @@ func (s *Service) CreateWorkspace(ctx context.Context, req CreateWorkspaceReques
 			ID: newID("repo"), WorkspaceID: ws.ID, Label: label, RootPath: root, BaseRef: r.BaseRef, IncludeUntracked: includeUntracked,
 		})
 	}
-	err := s.write(ctx, func(tx *sql.Tx) error {
+	err := s.db.Write(ctx, func(tx *sql.Tx) error {
 		if _, err := tx.ExecContext(ctx, `INSERT INTO workspaces (id, name, created_at, updated_at) VALUES (?, ?, ?, ?)`,
 			ws.ID, ws.Name, formatTime(now), formatTime(now)); err != nil {
 			return err
@@ -60,7 +60,7 @@ func (s *Service) CreateWorkspace(ctx context.Context, req CreateWorkspaceReques
 }
 
 func (s *Service) ListWorkspaces(ctx context.Context) ([]Workspace, error) {
-	ids, err := queryStrings(ctx, s.reader(), `SELECT id FROM workspaces ORDER BY created_at, id`)
+	ids, err := queryStrings(ctx, s.db.Reader(), `SELECT id FROM workspaces ORDER BY created_at, id`)
 	if err != nil {
 		return nil, err
 	}
@@ -78,18 +78,18 @@ func (s *Service) ListWorkspaces(ctx context.Context) ([]Workspace, error) {
 func (s *Service) GetWorkspace(ctx context.Context, id string) (Workspace, error) {
 	ws := Workspace{ID: id}
 	var created, updated string
-	err := scanOne(s.reader().QueryRowContext(ctx, `SELECT name, created_at, updated_at FROM workspaces WHERE id = ?`, id),
+	err := scanOne(s.db.Reader().QueryRowContext(ctx, `SELECT name, created_at, updated_at FROM workspaces WHERE id = ?`, id),
 		"workspace", id, &ws.Name, &created, &updated)
 	if err != nil {
 		return Workspace{}, err
 	}
 	ws.CreatedAt, ws.UpdatedAt = parseTime(created), parseTime(updated)
-	ws.Repositories, err = s.repositories(ctx, s.reader(), id)
+	ws.Repositories, err = s.repositories(ctx, id)
 	return ws, err
 }
 
-func (s *Service) repositories(ctx context.Context, q querier, workspaceID string) ([]Repository, error) {
-	rows, err := q.QueryContext(ctx, `SELECT id, label, root_path, base_ref, include_untracked
+func (s *Service) repositories(ctx context.Context, workspaceID string) ([]Repository, error) {
+	rows, err := s.db.Reader().QueryContext(ctx, `SELECT id, label, root_path, base_ref, include_untracked
 		FROM repositories WHERE workspace_id = ? ORDER BY label`, workspaceID)
 	if err != nil {
 		return nil, err
