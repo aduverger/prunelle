@@ -1,8 +1,10 @@
 package review_test
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
@@ -369,5 +371,67 @@ func TestCreateWorkspaceRejectsRepositoryOutsideAllowedRoots(t *testing.T) {
 	var reviewErr *review.Error
 	if !errors.As(err, &reviewErr) || reviewErr.Code != review.CodeInvalidArgument || !strings.Contains(err.Error(), "allowed roots") {
 		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestImportRequiresARevisionOfTheSameReview(t *testing.T) {
+	e := newEnv(t)
+	other, err := e.svc.CreateReview(e.ctx, review.CreateReviewRequest{WorkspaceID: e.review.WorkspaceID, Title: "Other"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var reviewErr *review.Error
+	_, err = e.svc.Import(e.ctx, other.ID, review.ImportRequest{Manifest: fixture.Manifest()})
+	if !errors.As(err, &reviewErr) || reviewErr.Code != review.CodeInvalidArgument || !strings.Contains(err.Error(), "no revision") {
+		t.Fatalf("import before capture: %v", err)
+	}
+	_, err = e.svc.Import(e.ctx, other.ID, review.ImportRequest{RevisionID: &e.revision.ID, Manifest: fixture.Manifest()})
+	if !errors.As(err, &reviewErr) || reviewErr.Code != review.CodeInvalidArgument || !strings.Contains(err.Error(), "does not belong") {
+		t.Fatalf("import into another review's revision: %v", err)
+	}
+}
+
+func TestEmptyFileHasEmptyContentNotMissingContent(t *testing.T) {
+	e := newEnv(t)
+	if err := os.WriteFile(filepath.Join(e.repos.Worker, "worker", "__init__.py"), nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	revision, err := e.svc.CaptureRevision(e.ctx, e.review.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	workerID := revision.Snapshots[1].RepositoryID
+	file, err := e.svc.GetFile(e.ctx, revision.ID, workerID, "worker/__init__.py")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if file.HeadText == nil || *file.HeadText != "" || file.BaseText != nil {
+		t.Fatalf("empty added file: base=%v head=%v", file.BaseText, file.HeadText)
+	}
+}
+
+func TestCaptureOverRevisionLimitFailsWithoutStoringARevision(t *testing.T) {
+	e := newEnv(t)
+	chunk := bytes.Repeat([]byte("0123456789abcde\n"), (1<<20)/16) // exactly 1 MiB of text
+	for i := 0; i*len(chunk) <= review.MaxRevisionContentBytes; i++ {
+		if err := os.WriteFile(filepath.Join(e.repos.Worker, fmt.Sprintf("bulk-%02d.txt", i)), chunk, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	_, err := e.svc.CaptureRevision(e.ctx, e.review.ID)
+	var reviewErr *review.Error
+	if !errors.As(err, &reviewErr) || reviewErr.Code != review.CodeCaptureFailed {
+		t.Fatalf("err = %v", err)
+	}
+	revisions, err := e.svc.ListRevisions(e.ctx, e.review.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rv, err := e.svc.GetReview(e.ctx, e.review.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(revisions) != 1 || *rv.CurrentRevisionID != e.revision.ID {
+		t.Errorf("revisions = %d, current = %s", len(revisions), *rv.CurrentRevisionID)
 	}
 }

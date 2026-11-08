@@ -288,3 +288,20 @@ func TestNonLoopbackConnectionsAreRejected(t *testing.T) {
 		t.Fatalf("status = %d", rec.Code)
 	}
 }
+
+// Without a known owner (Tailscale unavailable or a tagged machine), only allowed logins get in.
+func TestUnknownOwnerAdmitsOnlyAllowedLogins(t *testing.T) {
+	auth := httpapi.NewAuthorizer([]string{"friend@example.com"}, func(context.Context) (string, error) { return "", errors.New("no tailscale") })
+	handler := auth.Middleware(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) }))
+	for login, want := range map[string]int{ownerLogin: http.StatusForbidden, "friend@example.com": http.StatusOK} {
+		req := httptest.NewRequest(http.MethodGet, "/v1/workspaces", nil)
+		req.RemoteAddr = "127.0.0.1:4567"
+		req.Header.Set("X-Forwarded-For", "100.101.1.2")
+		req.Header.Set("Tailscale-User-Login", login)
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		if rec.Code != want {
+			t.Errorf("%s: status = %d, want %d", login, rec.Code, want)
+		}
+	}
+}
