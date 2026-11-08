@@ -46,11 +46,22 @@ func TestUpdatesRequireTheETagOfTheEditedVersion(t *testing.T) {
 	}
 	stale := must(s.client.UpdateTopicWithResponse(ctx, topicID, &api.UpdateTopicParams{IfMatch: &etag}, edit))
 	expectErrorCode(t, stale.StatusCode(), http.StatusPreconditionFailed, stale.Body, "PRECONDITION_FAILED")
+	unquoted := "2"
+	malformed := must(s.client.UpdateTopicWithResponse(ctx, topicID, &api.UpdateTopicParams{IfMatch: &unquoted}, edit))
+	expectErrorCode(t, malformed.StatusCode(), http.StatusPreconditionFailed, malformed.Body, "PRECONDITION_FAILED")
+}
+
+// throughServe makes a request arrive through Tailscale Serve from friend@example.com.
+func throughServe(_ context.Context, req *http.Request) error {
+	req.Host = "devbox.tail1234.ts.net"
+	req.Header.Set("X-Forwarded-For", "100.101.1.2")
+	req.Header.Set("Tailscale-User-Login", "friend@example.com")
+	return nil
 }
 
 func TestIdempotencyKeyMakesRetriesSafe(t *testing.T) {
 	ctx := context.Background()
-	s := newTestServer(t, nil)
+	s := newTestServer(t, []string{"friend@example.com"})
 	rv, _, _ := s.seed(t)
 	key := "comment-1"
 	params := &api.CreateDiscussionParams{IdempotencyKey: &key}
@@ -68,12 +79,18 @@ func TestIdempotencyKeyMakesRetriesSafe(t *testing.T) {
 	if retry.HTTPResponse.Header.Get("Idempotent-Replayed") != "true" || string(retry.Body) != string(first.Body) {
 		t.Errorf("retry = %s (replayed %q)", retry.Body, retry.HTTPResponse.Header.Get("Idempotent-Replayed"))
 	}
+	// Keys belong to their caller: another reviewer's identical request is not answered with this one's response.
+	otherCaller := must(s.client.CreateDiscussionWithResponse(ctx, rv.ID, params, comment, throughServe))
+	expectStatus(t, otherCaller.StatusCode(), http.StatusCreated, otherCaller.Body)
+	if otherCaller.HTTPResponse.Header.Get("Idempotent-Replayed") != "" || otherCaller.JSON201.ID == first.JSON201.ID {
+		t.Errorf("another caller got the stored response: %s", otherCaller.Body)
+	}
 	comment.Body = "Something else"
 	reused := must(s.client.CreateDiscussionWithResponse(ctx, rv.ID, params, comment))
 	expectErrorCode(t, reused.StatusCode(), http.StatusConflict, reused.Body, "CONFLICT")
 
 	discussions := must(s.client.ListDiscussionsWithResponse(ctx, rv.ID))
-	if len(*discussions.JSON200) != 1 {
+	if len(*discussions.JSON200) != 2 {
 		t.Errorf("discussions = %s", discussions.Body)
 	}
 }
@@ -82,12 +99,6 @@ func TestChangesAreAttributedToTheCaller(t *testing.T) {
 	ctx := context.Background()
 	s := newTestServer(t, []string{"friend@example.com"})
 	rv, _, _ := s.seed(t)
-	throughServe := func(_ context.Context, req *http.Request) error {
-		req.Host = "devbox.tail1234.ts.net"
-		req.Header.Set("X-Forwarded-For", "100.101.1.2")
-		req.Header.Set("Tailscale-User-Login", "friend@example.com")
-		return nil
-	}
 	comment := review.CreateDiscussionRequest{Anchor: review.AnchorInput{Type: "REVIEW"}, Body: "Looks good."}
 	remote := must(s.client.CreateDiscussionWithResponse(ctx, rv.ID, nil, comment, throughServe))
 	expectStatus(t, remote.StatusCode(), http.StatusCreated, remote.Body)
