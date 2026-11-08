@@ -3,14 +3,13 @@ package review
 import (
 	"context"
 	"database/sql"
-	"errors"
 	"strings"
 
 	"github.com/aduverger/prunelle/server/internal/git"
 	"github.com/aduverger/prunelle/server/internal/store"
 )
 
-func (s *Service) CreateWorkspace(ctx context.Context, req CreateWorkspaceRequest) (Workspace, error) {
+func (s *Service) CreateWorkspace(ctx context.Context, req CreateWorkspaceRequest, actor Actor) (Workspace, error) {
 	name := strings.TrimSpace(req.Name)
 	if name == "" {
 		return Workspace{}, invalid("workspace name is required")
@@ -55,7 +54,7 @@ func (s *Service) CreateWorkspace(ctx context.Context, req CreateWorkspaceReques
 				return err
 			}
 		}
-		return nil
+		return recordEvent(ctx, tx, "workspace.created", ws.ID, "", actor, now)
 	})
 	return ws, err
 }
@@ -105,9 +104,4 @@ func (s *Service) repositories(ctx context.Context, workspaceID string) ([]Repos
 		repos = append(repos, r)
 	}
 	return repos, rows.Err()
-}
-
-func isNotFound(err error) bool {
-	var e *Error
-	return errors.As(err, &e) && e.Code == CodeNotFound
 }

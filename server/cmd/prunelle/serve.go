@@ -57,7 +57,7 @@ func serve(ctx context.Context, cfg config.Config, args []string) error {
 	if err != nil {
 		return err
 	}
-	handler, err := httpapi.NewHandler(reviews, sessionSvc, httpapi.NewAuthorizer(cfg.AllowedLogins, httpapi.TailscaleOwner), version)
+	handler, err := httpapi.NewHandler(ctx, db, reviews, sessionSvc, httpapi.NewAuthorizer(cfg.AllowedLogins, httpapi.TailscaleOwner), version)
 	if err != nil {
 		return err
 	}

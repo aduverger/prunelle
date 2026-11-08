@@ -13,6 +13,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 
 	_ "modernc.org/sqlite"
 )
@@ -25,6 +26,9 @@ var migrationFiles embed.FS
 type DB struct {
 	writer *sql.DB
 	reader *sql.DB
+
+	mu      sync.Mutex
+	changed chan struct{}
 }
 
 const fileName = "prunelle.db"
@@ -32,7 +36,7 @@ const fileName = "prunelle.db"
 // Open opens (creating if needed) the database in dataDir and applies pending migrations.
 func Open(ctx context.Context, dataDir string) (*DB, error) {
 	path := filepath.Join(dataDir, fileName)
-	writer, err := sql.Open("sqlite", dsn(path, "_pragma=journal_mode(WAL)", "_pragma=synchronous(NORMAL)", "_txlock=immediate"))
+	writer, err := sql.Open("sqlite", dsn(path, "_pragma=journal_mode(WAL)", "_pragma=synchronous(FULL)", "_txlock=immediate"))
 	if err != nil {
 		return nil, err
 	}
@@ -42,7 +46,7 @@ func Open(ctx context.Context, dataDir string) (*DB, error) {
 		writer.Close()
 		return nil, err
 	}
-	db := &DB{writer: writer, reader: reader}
+	db := &DB{writer: writer, reader: reader, changed: make(chan struct{})}
 	if err := db.migrate(ctx); err != nil {
 		db.Close()
 		return nil, err
@@ -73,7 +77,22 @@ func (db *DB) Write(ctx context.Context, fn func(tx *sql.Tx) error) error {
 		tx.Rollback()
 		return err
 	}
-	return tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	db.mu.Lock()
+	close(db.changed)
+	db.changed = make(chan struct{})
+	db.mu.Unlock()
+	return nil
+}
+
+// Changed returns a channel closed by the next committed write. Take it before reading, so a
+// write committed after the read is never missed.
+func (db *DB) Changed() <-chan struct{} {
+	db.mu.Lock()
+	defer db.mu.Unlock()
+	return db.changed
 }
 
 func (db *DB) migrate(ctx context.Context) error {

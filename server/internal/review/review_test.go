@@ -16,8 +16,11 @@ import (
 	"github.com/aduverger/prunelle/server/internal/store"
 )
 
+var reviewer = review.Actor{Author: review.Author{Kind: "HUMAN", ID: "reviewer@example.com"}, Login: "reviewer@example.com"}
+
 type env struct {
 	ctx      context.Context
+	db       *store.DB
 	svc      *review.Service
 	repos    fixture.Repos
 	review   review.Review
@@ -42,24 +45,24 @@ func newEnv(t *testing.T) *env {
 		t.Fatal(err)
 	}
 	svc := review.NewService(db, []string{reposDir})
-	ws, err := svc.CreateWorkspace(ctx, fixture.WorkspaceRequest(repos))
+	ws, err := svc.CreateWorkspace(ctx, fixture.WorkspaceRequest(repos), reviewer)
 	if err != nil {
 		t.Fatal(err)
 	}
-	rv, err := svc.CreateReview(ctx, review.CreateReviewRequest{WorkspaceID: ws.ID, Title: fixture.ReviewTitle})
+	rv, err := svc.CreateReview(ctx, review.CreateReviewRequest{WorkspaceID: ws.ID, Title: fixture.ReviewTitle}, reviewer)
 	if err != nil {
 		t.Fatal(err)
 	}
-	revision, err := svc.CaptureRevision(ctx, rv.ID)
+	revision, err := svc.CaptureRevision(ctx, rv.ID, reviewer)
 	if err != nil {
 		t.Fatal(err)
 	}
-	return &env{ctx: ctx, svc: svc, repos: repos, review: rv, revision: revision}
+	return &env{ctx: ctx, db: db, svc: svc, repos: repos, review: rv, revision: revision}
 }
 
 func (e *env) importFixture(t *testing.T) review.ImportResult {
 	t.Helper()
-	result, err := e.svc.Import(e.ctx, e.review.ID, review.ImportRequest{Manifest: fixture.Manifest()})
+	result, err := e.svc.Import(e.ctx, e.review.ID, review.ImportRequest{Manifest: fixture.Manifest()}, reviewer)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -288,7 +291,7 @@ func TestOldRevisionKeepsItsContentAfterWorktreeChanges(t *testing.T) {
 	if err := os.WriteFile(upload, []byte("// rewritten\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	second, err := e.svc.CaptureRevision(e.ctx, e.review.ID)
+	second, err := e.svc.CaptureRevision(e.ctx, e.review.ID, reviewer)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -335,7 +338,7 @@ func TestImportRejectsInvalidManifestWithoutWriting(t *testing.T) {
 	m.Findings[1].Provenance = "GUESSED"
 	m.Topics = append([]review.ManifestTopic{{Key: "T-orphan", Parent: "T-later", Title: "Orphan"}}, m.Topics...)
 
-	_, err := e.svc.Import(e.ctx, e.review.ID, review.ImportRequest{Manifest: m})
+	_, err := e.svc.Import(e.ctx, e.review.ID, review.ImportRequest{Manifest: m}, reviewer)
 	var reviewErr *review.Error
 	if !errors.As(err, &reviewErr) || reviewErr.Code != review.CodeInvalidArgument {
 		t.Fatalf("err = %v", err)
@@ -367,7 +370,7 @@ func TestCreateWorkspaceRejectsRepositoryOutsideAllowedRoots(t *testing.T) {
 	e := newEnv(t)
 	req := fixture.WorkspaceRequest(e.repos)
 	req.Repositories[0].Path = t.TempDir()
-	_, err := e.svc.CreateWorkspace(e.ctx, req)
+	_, err := e.svc.CreateWorkspace(e.ctx, req, reviewer)
 	var reviewErr *review.Error
 	if !errors.As(err, &reviewErr) || reviewErr.Code != review.CodeInvalidArgument || !strings.Contains(err.Error(), "allowed roots") {
 		t.Fatalf("err = %v", err)
@@ -376,16 +379,16 @@ func TestCreateWorkspaceRejectsRepositoryOutsideAllowedRoots(t *testing.T) {
 
 func TestImportRequiresARevisionOfTheSameReview(t *testing.T) {
 	e := newEnv(t)
-	other, err := e.svc.CreateReview(e.ctx, review.CreateReviewRequest{WorkspaceID: e.review.WorkspaceID, Title: "Other"})
+	other, err := e.svc.CreateReview(e.ctx, review.CreateReviewRequest{WorkspaceID: e.review.WorkspaceID, Title: "Other"}, reviewer)
 	if err != nil {
 		t.Fatal(err)
 	}
 	var reviewErr *review.Error
-	_, err = e.svc.Import(e.ctx, other.ID, review.ImportRequest{Manifest: fixture.Manifest()})
+	_, err = e.svc.Import(e.ctx, other.ID, review.ImportRequest{Manifest: fixture.Manifest()}, reviewer)
 	if !errors.As(err, &reviewErr) || reviewErr.Code != review.CodeInvalidArgument || !strings.Contains(err.Error(), "no revision") {
 		t.Fatalf("import before capture: %v", err)
 	}
-	_, err = e.svc.Import(e.ctx, other.ID, review.ImportRequest{RevisionID: &e.revision.ID, Manifest: fixture.Manifest()})
+	_, err = e.svc.Import(e.ctx, other.ID, review.ImportRequest{RevisionID: &e.revision.ID, Manifest: fixture.Manifest()}, reviewer)
 	if !errors.As(err, &reviewErr) || reviewErr.Code != review.CodeInvalidArgument || !strings.Contains(err.Error(), "does not belong") {
 		t.Fatalf("import into another review's revision: %v", err)
 	}
@@ -396,7 +399,7 @@ func TestEmptyFileHasEmptyContentNotMissingContent(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(e.repos.Worker, "worker", "__init__.py"), nil, 0o644); err != nil {
 		t.Fatal(err)
 	}
-	revision, err := e.svc.CaptureRevision(e.ctx, e.review.ID)
+	revision, err := e.svc.CaptureRevision(e.ctx, e.review.ID, reviewer)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -418,7 +421,7 @@ func TestCaptureOverRevisionLimitFailsWithoutStoringARevision(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	_, err := e.svc.CaptureRevision(e.ctx, e.review.ID)
+	_, err := e.svc.CaptureRevision(e.ctx, e.review.ID, reviewer)
 	var reviewErr *review.Error
 	if !errors.As(err, &reviewErr) || reviewErr.Code != review.CodeCaptureFailed {
 		t.Fatalf("err = %v", err)

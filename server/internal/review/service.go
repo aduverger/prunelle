@@ -7,9 +7,11 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
+	"github.com/aduverger/prunelle/server/internal/events"
 	"github.com/aduverger/prunelle/server/internal/store"
 )
 
@@ -32,6 +34,9 @@ const (
 	CodeInvalidArgument = "INVALID_ARGUMENT"
 	CodeConflict        = "CONFLICT"
 	CodeCaptureFailed   = "CAPTURE_FAILED"
+	// CodePreconditionFailed reports an update based on a stale version of the resource.
+	CodePreconditionFailed = "PRECONDITION_FAILED"
+	CodePermissionDenied   = "PERMISSION_DENIED"
 )
 
 type Error struct {
@@ -53,6 +58,50 @@ func notFound(kind, id string) error {
 
 func invalid(format string, args ...any) error {
 	return &Error{Code: CodeInvalidArgument, Message: fmt.Sprintf(format, args...)}
+}
+
+// problems collects validation failures, each prefixed with the path of the offending field.
+type problems []string
+
+func (p *problems) add(path, format string, args ...any) {
+	*p = append(*p, path+": "+fmt.Sprintf(format, args...))
+}
+
+func (p *problems) oneOf(path, value string, allowed []string) {
+	if !slices.Contains(allowed, value) {
+		p.add(path, "%q is not one of %s", value, strings.Join(allowed, ", "))
+	}
+}
+
+func (p *problems) required(path, value string) {
+	if strings.TrimSpace(value) == "" {
+		p.add(path, "is required")
+	}
+}
+
+// err returns nil when nothing was reported.
+func (p problems) err(message string) error {
+	if len(p) == 0 {
+		return nil
+	}
+	return &Error{Code: CodeInvalidArgument, Message: message, Details: p}
+}
+
+// checkVersion compares the stored version of a resource with the one the caller last read.
+func checkVersion(kind, id string, stored, expected int) error {
+	if stored != expected {
+		return &Error{Code: CodePreconditionFailed, Message: fmt.Sprintf("%s %s is at version %d, not %d; reload it and retry", kind, id, stored, expected)}
+	}
+	return nil
+}
+
+// recordEvent appends the event announcing a change, in the change's transaction.
+func recordEvent(ctx context.Context, tx *sql.Tx, typ, entityID, reviewID string, actor Actor, at time.Time) error {
+	var review *string
+	if reviewID != "" {
+		review = &reviewID
+	}
+	return events.Append(ctx, tx, typ, entityID, review, events.Actor(actor.Author), actor.Login, at)
 }
 
 // scanOne scans a single row, translating sql.ErrNoRows into a not-found error.

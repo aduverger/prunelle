@@ -13,7 +13,7 @@ import (
 	"github.com/aduverger/prunelle/server/internal/store"
 )
 
-func (s *Service) CreateReview(ctx context.Context, req CreateReviewRequest) (Review, error) {
+func (s *Service) CreateReview(ctx context.Context, req CreateReviewRequest, actor Actor) (Review, error) {
 	title := strings.TrimSpace(req.Title)
 	if title == "" {
 		return Review{}, invalid("review title is required")
@@ -27,9 +27,35 @@ func (s *Service) CreateReview(ctx context.Context, req CreateReviewRequest) (Re
 	err := s.db.Write(ctx, func(tx *sql.Tx) error {
 		_, err := tx.ExecContext(ctx, `INSERT INTO reviews (id, workspace_id, title, description, status, created_at, updated_at)
 			VALUES (?, ?, ?, ?, ?, ?, ?)`, r.ID, r.WorkspaceID, r.Title, r.Description, r.Status, store.FormatTime(now), store.FormatTime(now))
-		return err
+		if err != nil {
+			return err
+		}
+		return recordEvent(ctx, tx, "review.created", r.ID, r.ID, actor, now)
 	})
 	return r, err
+}
+
+// reviewRevision returns the requested revision, which must belong to the review, or by default the
+// review's current revision.
+func (s *Service) reviewRevision(ctx context.Context, reviewID string, revisionID *string) (Revision, error) {
+	rv, err := s.GetReview(ctx, reviewID)
+	if err != nil {
+		return Revision{}, err
+	}
+	if revisionID == nil {
+		revisionID = rv.CurrentRevisionID
+	}
+	if revisionID == nil {
+		return Revision{}, invalid("review %s has no revision; capture one first", reviewID)
+	}
+	revision, err := s.GetRevision(ctx, *revisionID)
+	if err != nil {
+		return Revision{}, err
+	}
+	if revision.ReviewID != reviewID {
+		return Revision{}, invalid("revision %s does not belong to review %s", revision.ID, reviewID)
+	}
+	return revision, nil
 }
 
 const reviewColumns = `id, workspace_id, title, description, status, current_revision_id, created_at, updated_at`
@@ -75,7 +101,7 @@ func (s *Service) GetReview(ctx context.Context, id string) (Review, error) {
 
 // CaptureRevision snapshots every repository of the review's workspace into a new revision.
 // Git runs outside the write transaction; the transaction only inserts the captured rows.
-func (s *Service) CaptureRevision(ctx context.Context, reviewID string) (Revision, error) {
+func (s *Service) CaptureRevision(ctx context.Context, reviewID string, actor Actor) (Revision, error) {
 	rv, err := s.GetReview(ctx, reviewID)
 	if err != nil {
 		return Revision{}, err
@@ -123,9 +149,11 @@ func (s *Service) CaptureRevision(ctx context.Context, reviewID string) (Revisio
 				return err
 			}
 		}
-		_, err := tx.ExecContext(ctx, `UPDATE reviews SET current_revision_id = ?, updated_at = ? WHERE id = ?`,
-			revision.ID, store.FormatTime(now), reviewID)
-		return err
+		if _, err := tx.ExecContext(ctx, `UPDATE reviews SET current_revision_id = ?, updated_at = ? WHERE id = ?`,
+			revision.ID, store.FormatTime(now), reviewID); err != nil {
+			return err
+		}
+		return recordEvent(ctx, tx, "revision.created", revision.ID, reviewID, actor, now)
 	})
 	if err != nil {
 		return Revision{}, err
@@ -282,15 +310,17 @@ func (s *Service) SourceChanges(ctx context.Context, revisionID string) (SourceC
 
 type fileKey struct{ repositoryID, path string }
 
-// topicsByFile applies the canonical topic→file rule: a file belongs to a topic when a code-range
-// evidence reachable from the topic points at it.
+// topicsByFile applies the canonical topic→file rule: a file belongs to an active topic when a
+// code-range evidence reachable from the topic points at it. Obsolete topics claim no files, so
+// their code is listed as unassigned rather than hidden.
 func (s *Service) topicsByFile(ctx context.Context, revisionID string) (map[fileKey][]string, error) {
 	rows, err := s.db.Reader().QueryContext(ctx, `WITH `+topicEvidenceCTE+`
 		SELECT DISTINCT r.repository_id, r.path, te.topic_id
 		FROM topic_reachable_evidence te
+		JOIN topics t ON t.id = te.topic_id
 		JOIN evidence e ON e.id = te.evidence_id
 		JOIN evidence_code_ranges r ON r.evidence_id = e.id
-		WHERE e.revision_id = ?
+		WHERE e.revision_id = ? AND t.state = 'ACTIVE'
 		ORDER BY te.topic_id`, revisionID)
 	if err != nil {
 		return nil, err

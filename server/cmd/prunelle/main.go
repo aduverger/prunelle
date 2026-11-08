@@ -27,10 +27,12 @@ Commands:
   sessions ls                             list runtime sessions (--workspace ID)
   sessions link RUNTIME_ID WORKSPACE_ID   associate a runtime session with a workspace
   sessions unlink RUNTIME_ID WORKSPACE_ID remove that association
+  events                                  print review changes as they happen (--after SEQUENCE)
   fixture DIR                             build the demo repositories in DIR and seed a review
   fixture --print-manifest                print the demo review manifest
 
 Client commands reach the server at --server (default: the configured listen address).
+An agent sets PRUNELLE_AGENT (e.g. pi:<session-id>) so its changes are attributed to it.
 `
 
 func main() {
@@ -69,6 +71,8 @@ func run(ctx context.Context, args []string) error {
 		return reviewCommand(ctx, cfg, rest[1:])
 	case "sessions":
 		return sessionsCommand(ctx, cfg, rest[1:])
+	case "events":
+		return eventsCommand(ctx, cfg, rest[1:])
 	case "fixture":
 		return fixtureCommand(ctx, cfg, rest[1:])
 	case "version":

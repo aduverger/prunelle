@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"slices"
 	"strconv"
@@ -166,33 +167,17 @@ type importPlan struct {
 	ids                            map[string]map[string]string // entity kind → key → ID
 	codeRanges                     map[string]CodeRange         // evidence key → resolved range
 	evidenceKinds                  map[string]string            // evidence key → kind
-	problems                       []string
-}
-
-func (p *importPlan) problem(path, format string, args ...any) {
-	p.problems = append(p.problems, path+": "+fmt.Sprintf(format, args...))
-}
-
-func (p *importPlan) oneOf(path, value string, allowed []string) {
-	if !slices.Contains(allowed, value) {
-		p.problem(path, "%q is not one of %s", value, strings.Join(allowed, ", "))
-	}
-}
-
-func (p *importPlan) required(path, value string) {
-	if strings.TrimSpace(value) == "" {
-		p.problem(path, "is required")
-	}
+	problems
 }
 
 // assign registers a new key of kind, returning its ID.
 func (p *importPlan) assign(kind, prefix, key, path string) string {
 	if key == "" {
-		p.problem(path+".key", "is required")
+		p.add(path+".key", "is required")
 		return ""
 	}
 	if _, dup := p.ids[kind][key]; dup {
-		p.problem(path+".key", "duplicate %s key %q", kind, key)
+		p.add(path+".key", "duplicate %s key %q", kind, key)
 		return ""
 	}
 	id := store.NewID(prefix)
@@ -206,7 +191,7 @@ func (p *importPlan) refs(kind, path string, keys []string) []string {
 	for i, key := range keys {
 		id, ok := p.ids[kind][key]
 		if !ok {
-			p.problem(fmt.Sprintf("%s[%d]", path, i), "unknown %s key %q", kind, key)
+			p.add(fmt.Sprintf("%s[%d]", path, i), "unknown %s key %q", kind, key)
 			continue
 		}
 		if !slices.Contains(ids, id) {
@@ -226,24 +211,11 @@ func (p *importPlan) provenance(path, declared, fallback string) string {
 }
 
 // Import validates manifest against a revision of the review and stores its records in one transaction.
-func (s *Service) Import(ctx context.Context, reviewID string, req ImportRequest) (ImportResult, error) {
-	rv, err := s.GetReview(ctx, reviewID)
+// Records are attributed to the manifest author; the import event, to the actor who submitted it.
+func (s *Service) Import(ctx context.Context, reviewID string, req ImportRequest, actor Actor) (ImportResult, error) {
+	revision, err := s.reviewRevision(ctx, reviewID, req.RevisionID)
 	if err != nil {
 		return ImportResult{}, err
-	}
-	revisionID := rv.CurrentRevisionID
-	if req.RevisionID != nil {
-		revisionID = req.RevisionID
-	}
-	if revisionID == nil {
-		return ImportResult{}, invalid("review %s has no revision; capture one before importing", reviewID)
-	}
-	revision, err := s.GetRevision(ctx, *revisionID)
-	if err != nil {
-		return ImportResult{}, err
-	}
-	if revision.ReviewID != reviewID {
-		return ImportResult{}, invalid("revision %s does not belong to review %s", revision.ID, reviewID)
 	}
 
 	m := req.Manifest
@@ -271,7 +243,7 @@ func (s *Service) Import(ctx context.Context, reviewID string, req ImportRequest
 		path := fmt.Sprintf("topics[%d]", i)
 		if t.Parent != "" {
 			if _, ok := plan.ids["topics"][t.Parent]; !ok {
-				plan.problem(path+".parent", "parent %q must be a topic listed earlier", t.Parent)
+				plan.add(path+".parent", "parent %q must be a topic listed earlier", t.Parent)
 			}
 		}
 		plan.assign("topics", "top", t.Key, path)
@@ -285,8 +257,9 @@ func (s *Service) Import(ctx context.Context, reviewID string, req ImportRequest
 	}
 
 	var result ImportResult
+	now := s.now()
 	err = s.db.Write(ctx, func(tx *sql.Tx) error {
-		w := &importWriter{ctx: ctx, tx: tx, plan: plan, now: store.FormatTime(s.now())}
+		w := &importWriter{ctx: ctx, tx: tx, plan: plan, now: store.FormatTime(now)}
 		w.exec(`INSERT INTO imports (id, review_id, revision_id, author_kind, author_id, imported_at) VALUES (?, ?, ?, ?, ?, ?)`,
 			plan.importID, reviewID, revision.ID, m.Author.Kind, m.Author.ID, w.now)
 		w.evidence(m.Evidence)
@@ -300,11 +273,11 @@ func (s *Service) Import(ctx context.Context, reviewID string, req ImportRequest
 		if w.err != nil {
 			return w.err
 		}
-		if len(plan.problems) > 0 {
-			return &Error{Code: CodeInvalidArgument, Message: "manifest is invalid", Details: plan.problems}
+		if err := plan.problems.err("manifest is invalid"); err != nil {
+			return err
 		}
 		result = ImportResult{ImportID: plan.importID, RevisionID: revision.ID, IDs: plan.ids}
-		return nil
+		return recordEvent(ctx, tx, "import.created", plan.importID, reviewID, actor, now)
 	})
 	return result, err
 }
@@ -323,40 +296,50 @@ func (s *Service) planEvidence(ctx context.Context, plan *importPlan, revision R
 		plan.evidenceKinds[e.Key] = e.Kind
 		if e.Kind != "CODE_RANGE" {
 			if e.CodeRange != nil {
-				plan.problem(path+".code_range", "only CODE_RANGE evidence has a code range")
+				plan.add(path+".code_range", "only CODE_RANGE evidence has a code range")
 			}
 			continue
 		}
 		if e.CodeRange == nil {
-			plan.problem(path+".code_range", "is required for CODE_RANGE evidence")
+			plan.add(path+".code_range", "is required for CODE_RANGE evidence")
 			continue
 		}
 		r := e.CodeRange
 		repoID, ok := repoIDs[r.Repository]
 		if !ok {
-			plan.problem(path+".code_range.repository", "unknown repository %q", r.Repository)
+			plan.add(path+".code_range.repository", "unknown repository %q", r.Repository)
 			continue
 		}
 		plan.oneOf(path+".code_range.side", r.Side, sides)
-		content, blobHash, err := s.snapshotContent(ctx, revision.ID, repoID, r.Path, r.Side)
-		if err != nil {
-			if isNotFound(err) {
-				plan.problem(path+".code_range", "%s: %v", r.Repository, err)
-				continue
-			}
-			return err
-		}
-		lines := splitLines(content)
-		if r.StartLine < 1 || r.EndLine < r.StartLine || r.EndLine > len(lines) {
-			plan.problem(path+".code_range", "lines %d-%d are outside %s (%d lines on %s side)", r.StartLine, r.EndLine, r.Path, len(lines), r.Side)
+		resolved, err := s.resolveCodeRange(ctx, revision.ID, CodeRangeInput{RepositoryID: repoID, Path: r.Path, Side: r.Side, StartLine: r.StartLine, EndLine: r.EndLine})
+		var rangeErr *Error
+		if errors.As(err, &rangeErr) {
+			plan.add(path+".code_range", "%s: %s", r.Repository, rangeErr.Message)
 			continue
 		}
-		plan.codeRanges[e.Key] = CodeRange{
-			RepositoryID: repoID, Path: r.Path, Side: r.Side, StartLine: r.StartLine, EndLine: r.EndLine,
-			BlobHash: blobHash, SelectedText: strings.Join(lines[r.StartLine-1:r.EndLine], "\n"),
+		if err != nil {
+			return err
 		}
+		plan.codeRanges[e.Key] = resolved
 	}
 	return nil
+}
+
+// resolveCodeRange checks a line range against the stored content of a changed file of the revision
+// and returns it with its blob hash and selected text.
+func (s *Service) resolveCodeRange(ctx context.Context, revisionID string, r CodeRangeInput) (CodeRange, error) {
+	content, blobHash, err := s.snapshotContent(ctx, revisionID, r.RepositoryID, r.Path, r.Side)
+	if err != nil {
+		return CodeRange{}, err
+	}
+	lines := splitLines(content)
+	if r.StartLine < 1 || r.EndLine < r.StartLine || r.EndLine > len(lines) {
+		return CodeRange{}, invalid("lines %d-%d are outside %s (%d lines on %s side)", r.StartLine, r.EndLine, r.Path, len(lines), r.Side)
+	}
+	return CodeRange{
+		RepositoryID: r.RepositoryID, Path: r.Path, Side: r.Side, StartLine: r.StartLine, EndLine: r.EndLine,
+		BlobHash: blobHash, SelectedText: strings.Join(lines[r.StartLine-1:r.EndLine], "\n"),
+	}, nil
 }
 
 // snapshotContent returns the stored text of one side of a changed file.
@@ -527,10 +510,10 @@ func (w *importWriter) representations(topicID, topicPath string, reps []Manifes
 		path := fmt.Sprintf("%s.representations[%d]", topicPath, i)
 		p.oneOf(path+".type", rep.Type, representationTypes)
 		if seen[rep.Type] {
-			p.problem(path+".type", "topic already has a %s representation", rep.Type)
+			p.add(path+".type", "topic already has a %s representation", rep.Type)
 		}
 		seen[rep.Type] = true
-		config, ok := w.representationConfig(path, rep)
+		config, ok := checkRepresentationConfig(&p.problems, path, rep.Type, w.representationConfig(path, rep))
 		if !ok {
 			continue
 		}
@@ -549,82 +532,38 @@ func (w *importWriter) representations(topicID, topicPath string, reps []Manifes
 	}
 }
 
-// representationConfig resolves the manifest config of rep into its stored form.
-func (w *importWriter) representationConfig(path string, rep ManifestRepresentation) (any, bool) {
+// representationConfig resolves the manifest keys of rep into record IDs.
+func (w *importWriter) representationConfig(path string, rep ManifestRepresentation) RepresentationConfig {
 	p := w.plan
-	configs := 0
-	for _, present := range []bool{rep.Text != nil, rep.Diagram != nil, rep.CodeDiff != nil, rep.EvidenceList != nil} {
-		if present {
-			configs++
-		}
-	}
-	if configs > 1 {
-		p.problem(path, "has more than one config")
-		return nil, false
-	}
-	switch rep.Type {
-	case "TEXT":
-		if rep.Text == nil || len(rep.Text.Sections) == 0 {
-			p.problem(path+".text", "needs at least one section")
-			return nil, false
-		}
-		config := TextConfig{Sections: []TextSection{}}
+	var config RepresentationConfig
+	if rep.Text != nil {
+		config.Text = &TextConfig{Sections: []TextSection{}}
 		for i, s := range rep.Text.Sections {
-			config.Sections = append(config.Sections, TextSection{Heading: s.Heading, Body: s.Body,
+			config.Text.Sections = append(config.Text.Sections, TextSection{Heading: s.Heading, Body: s.Body,
 				EvidenceIDs: p.refs("evidence", fmt.Sprintf("%s.text.sections[%d].evidence", path, i), s.Evidence)})
 		}
-		return config, true
-	case "DIAGRAM":
-		if rep.Diagram == nil || len(rep.Diagram.Nodes) == 0 {
-			p.problem(path+".diagram", "needs at least one node")
-			return nil, false
-		}
-		return w.diagramConfig(path+".diagram", *rep.Diagram), true
-	case "CODE_DIFF":
-		config := EvidenceListConfig{EvidenceIDs: []string{}}
-		if rep.CodeDiff != nil {
-			for i, key := range rep.CodeDiff.Evidence {
-				if p.evidenceKinds[key] != "CODE_RANGE" {
-					p.problem(fmt.Sprintf("%s.code_diff.evidence[%d]", path, i), "%q is not CODE_RANGE evidence", key)
-				}
+	}
+	if rep.Diagram != nil {
+		config.Diagram = &DiagramConfig{Edges: rep.Diagram.Edges}
+		for i, n := range rep.Diagram.Nodes {
+			nodePath := fmt.Sprintf("%s.diagram.nodes[%d]", path, i)
+			node := DiagramNode{ID: n.ID, Label: n.Label, Kind: n.Kind, EvidenceIDs: p.refs("evidence", nodePath+".evidence", n.Evidence)}
+			if n.Ref != nil {
+				node.Ref = p.entityRef(nodePath+".ref", *n.Ref, entityTypes)
 			}
-			config.EvidenceIDs = p.refs("evidence", path+".code_diff.evidence", rep.CodeDiff.Evidence)
+			config.Diagram.Nodes = append(config.Diagram.Nodes, node)
 		}
-		return config, true
-	case "EVIDENCE_LIST":
-		config := EvidenceListConfig{EvidenceIDs: []string{}}
-		if rep.EvidenceList != nil {
-			config.EvidenceIDs = p.refs("evidence", path+".evidence_list.evidence", rep.EvidenceList.Evidence)
-		}
-		return config, true
 	}
-	return nil, false
-}
-
-func (w *importWriter) diagramConfig(path string, d ManifestDiagram) DiagramConfig {
-	p := w.plan
-	config := DiagramConfig{Nodes: []DiagramNode{}, Edges: []DiagramEdge{}}
-	nodeIDs := map[string]bool{}
-	for i, n := range d.Nodes {
-		nodePath := fmt.Sprintf("%s.nodes[%d]", path, i)
-		p.required(nodePath+".id", n.ID)
-		p.required(nodePath+".label", n.Label)
-		p.oneOf(nodePath+".kind", n.Kind, diagramNodeKinds)
-		if nodeIDs[n.ID] {
-			p.problem(nodePath+".id", "duplicate node id %q", n.ID)
+	if rep.CodeDiff != nil {
+		for i, key := range rep.CodeDiff.Evidence {
+			if p.evidenceKinds[key] != "CODE_RANGE" {
+				p.add(fmt.Sprintf("%s.code_diff.evidence[%d]", path, i), "%q is not CODE_RANGE evidence", key)
+			}
 		}
-		nodeIDs[n.ID] = true
-		node := DiagramNode{ID: n.ID, Label: n.Label, Kind: n.Kind, EvidenceIDs: p.refs("evidence", nodePath+".evidence", n.Evidence)}
-		if n.Ref != nil {
-			node.Ref = p.entityRef(nodePath+".ref", *n.Ref, entityTypes)
-		}
-		config.Nodes = append(config.Nodes, node)
+		config.CodeDiff = &EvidenceListConfig{EvidenceIDs: p.refs("evidence", path+".code_diff.evidence", rep.CodeDiff.Evidence)}
 	}
-	for i, e := range d.Edges {
-		if !nodeIDs[e.From] || !nodeIDs[e.To] {
-			p.problem(fmt.Sprintf("%s.edges[%d]", path, i), "edge %q → %q references an unknown node", e.From, e.To)
-		}
-		config.Edges = append(config.Edges, e)
+	if rep.EvidenceList != nil {
+		config.EvidenceList = &EvidenceListConfig{EvidenceIDs: p.refs("evidence", path+".evidence_list.evidence", rep.EvidenceList.Evidence)}
 	}
 	return config
 }
@@ -635,12 +574,12 @@ var entityKindByType = map[string]string{
 
 func (p *importPlan) entityRef(path string, ref ManifestRef, allowed []string) *EntityRef {
 	if !slices.Contains(allowed, ref.Type) {
-		p.problem(path+".type", "%q is not one of %s", ref.Type, strings.Join(allowed, ", "))
+		p.add(path+".type", "%q is not one of %s", ref.Type, strings.Join(allowed, ", "))
 		return nil
 	}
 	id, ok := p.ids[entityKindByType[ref.Type]][ref.Key]
 	if !ok {
-		p.problem(path+".key", "unknown %s key %q", strings.ToLower(ref.Type), ref.Key)
+		p.add(path+".key", "unknown %s key %q", strings.ToLower(ref.Type), ref.Key)
 		return nil
 	}
 	return &EntityRef{Type: ref.Type, ID: id}

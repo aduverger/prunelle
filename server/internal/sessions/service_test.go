@@ -44,7 +44,7 @@ func newEnv(t *testing.T, runtimes ...sessions.Observed) *env {
 		t.Fatal(err)
 	}
 	reviews := review.NewService(db, []string{reposDir})
-	ws, err := reviews.CreateWorkspace(ctx, fixture.WorkspaceRequest(repos))
+	ws, err := reviews.CreateWorkspace(ctx, fixture.WorkspaceRequest(repos), review.Actor{Author: review.Author{Kind: "HUMAN", ID: "owner"}, Login: "owner"})
 	if err != nil {
 		t.Fatal(err)
 	}

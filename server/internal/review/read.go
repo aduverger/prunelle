@@ -33,7 +33,7 @@ func (s *Service) ListImports(ctx context.Context, reviewID string) ([]Import, e
 	return imports, rows.Err()
 }
 
-const topicColumns = `id, review_id, parent_id, title, summary, origin, state, position, author_kind, author_id, import_id, created_at, updated_at`
+const topicColumns = `id, review_id, parent_id, title, summary, origin, state, position, author_kind, author_id, import_id, version, created_at, updated_at`
 
 // ListTopics returns the review's topics ordered parent-first by position; clients build the tree from parent_id.
 func (s *Service) ListTopics(ctx context.Context, reviewID string) ([]Topic, error) {
@@ -61,7 +61,7 @@ func (s *Service) GetTopic(ctx context.Context, id string) (Topic, error) {
 	var parent, importID sql.NullString
 	var created, updated string
 	err := scanOne(s.db.Reader().QueryRowContext(ctx, `SELECT `+topicColumns+` FROM topics WHERE id = ?`, id), "topic", id,
-		&t.ID, &t.ReviewID, &parent, &t.Title, &t.Summary, &t.Origin, &t.State, &t.Position, &t.Author.Kind, &t.Author.ID, &importID, &created, &updated)
+		&t.ID, &t.ReviewID, &parent, &t.Title, &t.Summary, &t.Origin, &t.State, &t.Position, &t.Author.Kind, &t.Author.ID, &importID, &t.Version, &created, &updated)
 	if err != nil {
 		return Topic{}, err
 	}
@@ -120,7 +120,7 @@ func (s *Service) TopicRepresentations(ctx context.Context, topicID string) ([]R
 	if err != nil {
 		return nil, err
 	}
-	rows, err := s.db.Reader().QueryContext(ctx, `SELECT id, type, title, origin, revision_id, author_kind, author_id, config
+	rows, err := s.db.Reader().QueryContext(ctx, `SELECT id, type, title, origin, revision_id, author_kind, author_id, config, version
 		FROM representations WHERE topic_id = ? ORDER BY position, id`, topicID)
 	if err != nil {
 		return nil, err
@@ -130,12 +130,13 @@ func (s *Service) TopicRepresentations(ctx context.Context, topicID string) ([]R
 	stored := map[string]bool{}
 	for rows.Next() {
 		var id, revisionID, config string
+		var version int
 		var author Author
 		rep := Representation{TopicID: topicID}
-		if err := rows.Scan(&id, &rep.Type, &rep.Title, &rep.Origin, &revisionID, &author.Kind, &author.ID, &config); err != nil {
+		if err := rows.Scan(&id, &rep.Type, &rep.Title, &rep.Origin, &revisionID, &author.Kind, &author.ID, &config, &version); err != nil {
 			return nil, err
 		}
-		rep.ID, rep.RevisionID, rep.Author = &id, &revisionID, &author
+		rep.ID, rep.RevisionID, rep.Author, rep.Version = &id, &revisionID, &author, &version
 		if err := decodeRepresentationConfig(&rep, []byte(config), codeEvidence, allEvidence); err != nil {
 			return nil, err
 		}
