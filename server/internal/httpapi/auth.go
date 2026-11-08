@@ -17,9 +17,10 @@ import (
 // Access policy (docs/decisions.md D2): the server listens on loopback and is exposed through
 // Tailscale Serve, which adds X-Forwarded-* headers and, for user identities, Tailscale-User-Login.
 // A proxied request must carry a login that is the machine's Tailscale owner or explicitly allowed.
-// A direct loopback request without proxy headers comes from a local process, which is trusted as the owner,
-// provided it addresses the server by a loopback host: a browser page that rebinds its own domain to
-// 127.0.0.1 sends its own Host and must not pass as a local process.
+// A direct loopback request without proxy headers comes from a local process, which is trusted as the owner.
+// Every request must also name a host that DNS rebinding cannot produce: a browser page that points its own
+// domain at 127.0.0.1 sends that domain as Host, and may add proxy headers itself. Direct requests must use
+// localhost or a loopback IP; proxied ones an IP or a Tailscale MagicDNS name (*.ts.net).
 
 const loginHeader = "Tailscale-User-Login"
 
@@ -71,11 +72,15 @@ func (a *Authorizer) check(r *http.Request) (code, message string) {
 	if ip := net.ParseIP(host); err != nil || ip == nil || !ip.IsLoopback() {
 		return "PERMISSION_DENIED", "only loopback connections are accepted"
 	}
+	hostname := hostOnly(r.Host)
 	if !proxied(r) {
-		if !loopbackHost(r.Host) {
+		if !loopbackHost(hostname) {
 			return "PERMISSION_DENIED", "direct requests must address the server as localhost or a loopback IP"
 		}
 		return "", ""
+	}
+	if !tailnetHost(hostname) {
+		return "PERMISSION_DENIED", "proxied requests must address the server by its Tailscale name or an IP"
 	}
 	login := r.Header.Get(loginHeader)
 	if login == "" {
@@ -96,16 +101,26 @@ func proxied(r *http.Request) bool {
 	return false
 }
 
-func loopbackHost(hostport string) bool {
+func hostOnly(hostport string) string {
 	host, _, err := net.SplitHostPort(hostport)
 	if err != nil {
 		host = strings.Trim(hostport, "[]")
 	}
+	return strings.TrimSuffix(strings.ToLower(host), ".")
+}
+
+func loopbackHost(host string) bool {
 	if host == "localhost" {
 		return true
 	}
 	ip := net.ParseIP(host)
 	return ip != nil && ip.IsLoopback()
+}
+
+// tailnetHost accepts names that cannot be rebound to 127.0.0.1: IP literals and MagicDNS names,
+// whose DNS Tailscale controls.
+func tailnetHost(host string) bool {
+	return net.ParseIP(host) != nil || strings.HasSuffix(host, ".ts.net")
 }
 
 // ownerLogin returns the cached owner, retrying a failed or empty lookup at most once a minute.

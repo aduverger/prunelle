@@ -246,6 +246,8 @@ func TestAccessPolicy(t *testing.T) {
 	}{
 		{name: "local process", path: "/v1/workspaces", want: http.StatusOK},
 		{name: "rebound foreign host", path: "/v1/workspaces", headers: map[string]string{"Host": "evil.example:7390"}, want: http.StatusForbidden},
+		{name: "rebound foreign host with spoofed proxy headers", path: "/v1/workspaces", headers: map[string]string{"Host": "evil.example:7390", "X-Forwarded-For": "100.101.1.2", "Tailscale-User-Login": ownerLogin}, want: http.StatusForbidden},
+		{name: "owner through serve by MagicDNS name", path: "/v1/workspaces", headers: map[string]string{"Host": "devbox.tail1234.ts.net", "X-Forwarded-For": "100.101.1.2", "Tailscale-User-Login": ownerLogin}, want: http.StatusOK},
 		{name: "owner through serve", path: "/v1/workspaces", headers: map[string]string{"X-Forwarded-For": "100.101.1.2", "Tailscale-User-Login": ownerLogin}, want: http.StatusOK},
 		{name: "allowed login", path: "/v1/workspaces", headers: map[string]string{"X-Forwarded-For": "100.101.1.2", "Tailscale-User-Login": "friend@example.com"}, want: http.StatusOK},
 		{name: "other login", path: "/v1/workspaces", headers: map[string]string{"X-Forwarded-For": "100.101.1.2", "Tailscale-User-Login": "stranger@example.com"}, want: http.StatusForbidden},
@@ -300,6 +302,7 @@ func TestUnknownOwnerAdmitsOnlyAllowedLogins(t *testing.T) {
 	for login, want := range map[string]int{ownerLogin: http.StatusForbidden, "friend@example.com": http.StatusOK} {
 		req := httptest.NewRequest(http.MethodGet, "/v1/workspaces", nil)
 		req.RemoteAddr = "127.0.0.1:4567"
+		req.Host = "devbox.tail1234.ts.net"
 		req.Header.Set("X-Forwarded-For", "100.101.1.2")
 		req.Header.Set("Tailscale-User-Login", login)
 		rec := httptest.NewRecorder()
