@@ -16,7 +16,7 @@ import (
 	"github.com/aduverger/prunelle/server/internal/store"
 )
 
-var reviewer = review.Author{Kind: "HUMAN", ID: "reviewer@example.com"}
+var reviewer = review.Actor{Author: review.Author{Kind: "HUMAN", ID: "reviewer@example.com"}, Login: "reviewer@example.com"}
 
 type env struct {
 	ctx      context.Context

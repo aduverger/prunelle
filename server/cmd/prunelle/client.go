@@ -20,11 +20,25 @@ import (
 	"github.com/aduverger/prunelle/server/internal/review"
 )
 
+// agentEnv names the agent running the CLI, e.g. pi:<session-id>; requests then act as that agent.
+const agentEnv = "PRUNELLE_AGENT"
+
 // clientFlags adds --server to a subcommand and returns a constructor for the API client.
 func clientFlags(name string, cfg config.Config) (*flag.FlagSet, func() (*api.ClientWithResponses, error)) {
 	flags := flag.NewFlagSet(name, flag.ContinueOnError)
 	server := flags.String("server", "http://"+cfg.Listen, "server URL")
-	return flags, func() (*api.ClientWithResponses, error) { return api.NewClientWithResponses(*server) }
+	return flags, func() (*api.ClientWithResponses, error) {
+		return api.NewClientWithResponses(*server, api.WithRequestEditorFn(func(_ context.Context, req *http.Request) error {
+			setAgent(req)
+			return nil
+		}))
+	}
+}
+
+func setAgent(req *http.Request) {
+	if agent := os.Getenv(agentEnv); agent != "" {
+		req.Header.Set("Prunelle-Agent", agent)
+	}
 }
 
 type apiResponse interface {
@@ -255,6 +269,7 @@ func eventsCommand(ctx context.Context, cfg config.Config, args []string) error 
 	if err != nil {
 		return err
 	}
+	setAgent(req)
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return err

@@ -212,7 +212,7 @@ func (p *importPlan) provenance(path, declared, fallback string) string {
 
 // Import validates manifest against a revision of the review and stores its records in one transaction.
 // Records are attributed to the manifest author; the import event, to the actor who submitted it.
-func (s *Service) Import(ctx context.Context, reviewID string, req ImportRequest, actor Author) (ImportResult, error) {
+func (s *Service) Import(ctx context.Context, reviewID string, req ImportRequest, actor Actor) (ImportResult, error) {
 	revision, err := s.reviewRevision(ctx, reviewID, req.RevisionID)
 	if err != nil {
 		return ImportResult{}, err

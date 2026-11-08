@@ -126,6 +126,13 @@ type Author struct {
 	ID   string `json:"id"`
 }
 
+// Actor makes a change: its author (the authenticated human, or an agent the request names) and the
+// login that authenticated the request.
+type Actor struct {
+	Author
+	Login string
+}
+
 type Topic struct {
 	ID          string    `json:"id"`
 	ReviewID    string    `json:"review_id"`

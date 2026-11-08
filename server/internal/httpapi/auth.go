@@ -24,7 +24,11 @@ import (
 // domain at 127.0.0.1 sends that domain as Host, and may add proxy headers itself. Direct requests must use
 // localhost or a loopback IP; proxied ones an IP or a Tailscale MagicDNS name (*.ts.net).
 
-const loginHeader = "Tailscale-User-Login"
+const (
+	loginHeader = "Tailscale-User-Login"
+	// agentHeader names the agent acting through an authenticated login, e.g. pi:<session-id>.
+	agentHeader = "Prunelle-Agent"
+)
 
 var proxyHeaders = []string{"X-Forwarded-For", "X-Forwarded-Proto", "X-Forwarded-Host", "Forwarded", loginHeader}
 
@@ -66,7 +70,15 @@ func (a *Authorizer) Middleware(next http.Handler, publicPaths ...string) http.H
 			writeError(w, statusByCode[code], code, message, nil)
 			return
 		}
-		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), callerKey{}, caller)))
+		actor := review.Actor{Author: review.Author{Kind: "HUMAN", ID: caller}, Login: caller}
+		if agent := strings.TrimSpace(r.Header.Get(agentHeader)); agent != "" {
+			if len(agent) > 200 {
+				writeError(w, http.StatusBadRequest, review.CodeInvalidArgument, agentHeader+" is longer than 200 characters", nil)
+				return
+			}
+			actor.Author = review.Author{Kind: "AGENT", ID: agent}
+		}
+		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), callerKey{}, actor)))
 	})
 }
 
@@ -104,10 +116,12 @@ const localCaller = "local"
 
 type callerKey struct{}
 
-// callerFrom returns the author of the changes a request makes: the human the access check admitted.
-func callerFrom(ctx context.Context) review.Author {
-	login, _ := ctx.Value(callerKey{}).(string)
-	return review.Author{Kind: "HUMAN", ID: login}
+// callerFrom returns who makes the request's changes: the human the access check admitted, or the
+// agent named by Prunelle-Agent acting through that human's login. Tailscale authenticates the login;
+// the agent name is declared.
+func callerFrom(ctx context.Context) review.Actor {
+	actor, _ := ctx.Value(callerKey{}).(review.Actor)
+	return actor
 }
 
 func proxied(r *http.Request) bool {

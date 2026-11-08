@@ -36,6 +36,7 @@ const (
 	CodeCaptureFailed   = "CAPTURE_FAILED"
 	// CodePreconditionFailed reports an update based on a stale version of the resource.
 	CodePreconditionFailed = "PRECONDITION_FAILED"
+	CodePermissionDenied   = "PERMISSION_DENIED"
 )
 
 type Error struct {
@@ -95,12 +96,12 @@ func checkVersion(kind, id string, stored, expected int) error {
 }
 
 // recordEvent appends the event announcing a change, in the change's transaction.
-func recordEvent(ctx context.Context, tx *sql.Tx, typ, entityID, reviewID string, actor Author, at time.Time) error {
+func recordEvent(ctx context.Context, tx *sql.Tx, typ, entityID, reviewID string, actor Actor, at time.Time) error {
 	var review *string
 	if reviewID != "" {
 		review = &reviewID
 	}
-	return events.Append(ctx, tx, typ, entityID, review, events.Actor(actor), at)
+	return events.Append(ctx, tx, typ, entityID, review, events.Actor(actor.Author), actor.Login, at)
 }
 
 // scanOne scans a single row, translating sql.ErrNoRows into a not-found error.

@@ -31,7 +31,7 @@ var anchorTargets = []anchorTarget{
 
 // CreateDiscussion opens a thread on an anchor with its first message. The anchor refers to the
 // requested revision, by default the review's current one.
-func (s *Service) CreateDiscussion(ctx context.Context, reviewID string, req CreateDiscussionRequest, actor Author) (Discussion, error) {
+func (s *Service) CreateDiscussion(ctx context.Context, reviewID string, req CreateDiscussionRequest, actor Actor) (Discussion, error) {
 	revision, err := s.reviewRevision(ctx, reviewID, req.RevisionID)
 	if err != nil {
 		return Discussion{}, err
@@ -94,7 +94,7 @@ func (s *Service) CreateDiscussion(ctx context.Context, reviewID string, req Cre
 				return err
 			}
 		}
-		if err := insertMessage(ctx, tx, store.NewID("msg"), id, req.Body, actor, at); err != nil {
+		if err := insertMessage(ctx, tx, store.NewID("msg"), id, req.Body, actor.Author, at); err != nil {
 			return err
 		}
 		return recordEvent(ctx, tx, "discussion.created", id, reviewID, actor, now)
@@ -142,11 +142,11 @@ func insertMessage(ctx context.Context, tx *sql.Tx, id, discussionID, body strin
 
 // Reply adds a message to a discussion. It changes the discussion's version, so a reviewer
 // resolving a thread they read before the reply is asked to reload it.
-func (s *Service) Reply(ctx context.Context, discussionID string, req CreateMessageRequest, actor Author) (Message, error) {
+func (s *Service) Reply(ctx context.Context, discussionID string, req CreateMessageRequest, actor Actor) (Message, error) {
 	if strings.TrimSpace(req.Body) == "" {
 		return Message{}, invalid("body is required")
 	}
-	message := Message{ID: store.NewID("msg"), DiscussionID: discussionID, Author: actor, Body: req.Body, CreatedAt: s.now()}
+	message := Message{ID: store.NewID("msg"), DiscussionID: discussionID, Author: actor.Author, Body: req.Body, CreatedAt: s.now()}
 	err := s.db.Write(ctx, func(tx *sql.Tx) error {
 		var reviewID string
 		if err := scanOne(tx.QueryRowContext(ctx, `SELECT review_id FROM discussions WHERE id = ?`, discussionID),
@@ -154,7 +154,7 @@ func (s *Service) Reply(ctx context.Context, discussionID string, req CreateMess
 			return err
 		}
 		at := store.FormatTime(message.CreatedAt)
-		if err := insertMessage(ctx, tx, message.ID, discussionID, req.Body, actor, at); err != nil {
+		if err := insertMessage(ctx, tx, message.ID, discussionID, req.Body, actor.Author, at); err != nil {
 			return err
 		}
 		if _, err := tx.ExecContext(ctx, `UPDATE discussions SET version = version + 1, updated_at = ? WHERE id = ?`, at, discussionID); err != nil {
@@ -169,7 +169,7 @@ func (s *Service) Reply(ctx context.Context, discussionID string, req CreateMess
 }
 
 // UpdateDiscussion resolves or reopens a discussion last read at version.
-func (s *Service) UpdateDiscussion(ctx context.Context, id string, version int, req UpdateDiscussionRequest, actor Author) (Discussion, error) {
+func (s *Service) UpdateDiscussion(ctx context.Context, id string, version int, req UpdateDiscussionRequest, actor Actor) (Discussion, error) {
 	var p problems
 	p.oneOf("status", req.Status, discussionStatuses)
 	if err := p.err("discussion update is invalid"); err != nil {

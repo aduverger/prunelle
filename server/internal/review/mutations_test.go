@@ -57,7 +57,7 @@ func TestTopicEditsRequireTheCurrentVersion(t *testing.T) {
 		ParentID: &[]string{ids["topics"]["T-async"]}[0], Title: " Upload limits ", Summary: "Size limits on upload.",
 		IntentIDs: []string{ids["intents"]["I-1"]}, FindingIDs: []string{ids["findings"]["F-1"], ids["findings"]["F-1"]},
 	}, reviewer))
-	if created.Origin != "MANUAL" || created.Author != reviewer || created.Title != "Upload limits" || created.Position != 1 ||
+	if created.Origin != "MANUAL" || created.Author != reviewer.Author || created.Title != "Upload limits" || created.Position != 1 ||
 		created.Version != 1 || !slices.Equal(created.FindingIDs, []string{ids["findings"]["F-1"]}) {
 		t.Fatalf("created = %+v", created)
 	}
@@ -230,7 +230,7 @@ func TestDiscussionAnchorsReachTheirTopics(t *testing.T) {
 			if !slices.Equal(d.TopicIDs, want) {
 				t.Errorf("topic_ids = %v, want %v", d.TopicIDs, want)
 			}
-			if d.RevisionID != e.revision.ID || d.Status != "OPEN" || d.Author != reviewer || len(d.Messages) != 1 || d.Messages[0].Body != "Why?" {
+			if d.RevisionID != e.revision.ID || d.Status != "OPEN" || d.Author != reviewer.Author || len(d.Messages) != 1 || d.Messages[0].Body != "Why?" {
 				t.Errorf("discussion = %+v", d)
 			}
 		})
@@ -277,9 +277,9 @@ func TestInvalidAnchorsAreRejected(t *testing.T) {
 func TestReplyInvalidatesTheVersionUsedToResolve(t *testing.T) {
 	e := newEnv(t)
 	d := must[review.Discussion](t)(e.svc.CreateDiscussion(e.ctx, e.review.ID, review.CreateDiscussionRequest{Anchor: review.AnchorInput{Type: "REVIEW"}, Body: "Ship it?"}, reviewer))
-	agentOwner := review.Author{Kind: "HUMAN", ID: "author@example.com"}
+	agentOwner := review.Actor{Author: review.Author{Kind: "HUMAN", ID: "author@example.com"}, Login: "author@example.com"}
 	reply := must[review.Message](t)(e.svc.Reply(e.ctx, d.ID, review.CreateMessageRequest{Body: "Not yet, see F-1."}, agentOwner))
-	if reply.DiscussionID != d.ID || reply.Author != agentOwner {
+	if reply.DiscussionID != d.ID || reply.Author != agentOwner.Author {
 		t.Errorf("reply = %+v", reply)
 	}
 
@@ -326,7 +326,7 @@ func TestDecisionsStayTiedToTheirRevision(t *testing.T) {
 
 func TestEveryChangeAppendsOneEventWithItsActor(t *testing.T) {
 	e := newEnv(t)
-	importer := review.Author{Kind: "HUMAN", ID: "importer@example.com"}
+	importer := review.Actor{Author: review.Author{Kind: "HUMAN", ID: "importer@example.com"}, Login: "importer@example.com"}
 	must[review.ImportResult](t)(e.svc.Import(e.ctx, e.review.ID, review.ImportRequest{Manifest: fixture.Manifest()}, importer))
 	topic := must[review.Topic](t)(e.svc.CreateTopic(e.ctx, e.review.ID, review.CreateTopicRequest{Title: "Notes"}, reviewer))
 	_, err := e.svc.CreateTopic(e.ctx, e.review.ID, review.CreateTopicRequest{Title: " "}, reviewer)
@@ -347,10 +347,10 @@ func TestEveryChangeAppendsOneEventWithItsActor(t *testing.T) {
 	if !slices.Equal(got, want) {
 		t.Fatalf("events = %v, want %v", got, want)
 	}
-	if imported := log[3]; imported.Actor != events.Actor(importer) || *imported.ReviewID != e.review.ID {
+	if imported := log[3]; imported.Actor != events.Actor(importer.Author) || *imported.ReviewID != e.review.ID {
 		t.Errorf("import event = %+v", imported)
 	}
-	if reply := log[6]; reply.EntityID != d.ID || reply.Actor != events.Actor(reviewer) {
+	if reply := log[6]; reply.EntityID != d.ID || reply.Actor != events.Actor(reviewer.Author) {
 		t.Errorf("reply event = %+v", reply)
 	}
 }

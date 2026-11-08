@@ -13,7 +13,7 @@ import (
 	"github.com/aduverger/prunelle/server/internal/store"
 )
 
-func (s *Service) CreateReview(ctx context.Context, req CreateReviewRequest, actor Author) (Review, error) {
+func (s *Service) CreateReview(ctx context.Context, req CreateReviewRequest, actor Actor) (Review, error) {
 	title := strings.TrimSpace(req.Title)
 	if title == "" {
 		return Review{}, invalid("review title is required")
@@ -101,7 +101,7 @@ func (s *Service) GetReview(ctx context.Context, id string) (Review, error) {
 
 // CaptureRevision snapshots every repository of the review's workspace into a new revision.
 // Git runs outside the write transaction; the transaction only inserts the captured rows.
-func (s *Service) CaptureRevision(ctx context.Context, reviewID string, actor Author) (Revision, error) {
+func (s *Service) CaptureRevision(ctx context.Context, reviewID string, actor Actor) (Revision, error) {
 	rv, err := s.GetReview(ctx, reviewID)
 	if err != nil {
 		return Revision{}, err

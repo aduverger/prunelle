@@ -6,6 +6,9 @@ info:
     Review server API. All routes except `/v1/health` require a caller identity:
     a `Tailscale-User-Login` header set by Tailscale Serve, or a loopback request without
     Tailscale headers (the machine owner). The caller is the author of every change it makes.
+    An agent acting through that login names itself with a `Prunelle-Agent` header (e.g.
+    `pi:<session-id>`): its changes are authored by that AGENT, and events keep the login.
+    The agent name is declared, not verified. Only humans submit decisions.
     Errors use the `Error` envelope.
 
     Mutable resources carry a `version`; single-resource responses return it as `ETag: "<version>"`,
@@ -1456,7 +1459,7 @@ components:
         representation.created, representation.updated, discussion.created, discussion.updated
         (status change or reply), decision.created.
       type: object
-      required: [sequence, type, entity_id, review_id, actor, occurred_at]
+      required: [sequence, type, entity_id, review_id, actor, login, occurred_at]
       additionalProperties: false
       properties:
         sequence: { type: integer, format: int64, minimum: 1 }
@@ -1464,6 +1467,7 @@ components:
         entity_id: { type: string }
         review_id: { type: [string, "null"] }
         actor: { $ref: "#/components/schemas/Author" }
+        login: { type: string, description: The login that authenticated the request; for an AGENT actor, the human it acted through. }
         occurred_at: { type: string, format: date-time }
 
     DiagramEdge:

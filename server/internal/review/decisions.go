@@ -10,9 +10,12 @@ import (
 var decisionKinds = []string{"COMMENT", "APPROVE", "REQUEST_CHANGES"}
 
 // CreateDecision records a reviewer's verdict on a revision of the review, by default the current one.
-// COMMENT needs a body; REQUEST_CHANGES selects the actionable findings and discussions, which no
-// other verdict does.
-func (s *Service) CreateDecision(ctx context.Context, reviewID string, req CreateDecisionRequest, actor Author) (Decision, error) {
+// Only humans decide. COMMENT needs a body; REQUEST_CHANGES selects the actionable findings and
+// discussions, which no other verdict does.
+func (s *Service) CreateDecision(ctx context.Context, reviewID string, req CreateDecisionRequest, actor Actor) (Decision, error) {
+	if actor.Kind != "HUMAN" {
+		return Decision{}, &Error{Code: CodePermissionDenied, Message: "decisions are made by humans; agent " + actor.ID + " cannot submit one"}
+	}
 	revision, err := s.reviewRevision(ctx, reviewID, req.RevisionID)
 	if err != nil {
 		return Decision{}, err

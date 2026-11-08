@@ -17,6 +17,7 @@ type Event struct {
 	EntityID   string    `json:"entity_id"`
 	ReviewID   *string   `json:"review_id"`
 	Actor      Actor     `json:"actor"`
+	Login      string    `json:"login"`
 	OccurredAt time.Time `json:"occurred_at"`
 }
 
@@ -26,10 +27,11 @@ type Actor struct {
 	ID   string `json:"id"`
 }
 
-// Append records an event inside the transaction that makes the change.
-func Append(ctx context.Context, tx *sql.Tx, typ, entityID string, reviewID *string, actor Actor, at time.Time) error {
-	_, err := tx.ExecContext(ctx, `INSERT INTO events (type, entity_id, review_id, actor_kind, actor_id, occurred_at)
-		VALUES (?, ?, ?, ?, ?, ?)`, typ, entityID, reviewID, actor.Kind, actor.ID, store.FormatTime(at))
+// Append records an event inside the transaction that makes the change. login is who authenticated
+// the request; it differs from the actor when an agent acts.
+func Append(ctx context.Context, tx *sql.Tx, typ, entityID string, reviewID *string, actor Actor, login string, at time.Time) error {
+	_, err := tx.ExecContext(ctx, `INSERT INTO events (type, entity_id, review_id, actor_kind, actor_id, login, occurred_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?)`, typ, entityID, reviewID, actor.Kind, actor.ID, login, store.FormatTime(at))
 	return err
 }
 
@@ -42,7 +44,7 @@ func Head(ctx context.Context, db *store.DB) (int64, error) {
 
 // After returns up to limit events following sequence after, in order.
 func After(ctx context.Context, db *store.DB, after int64, limit int) ([]Event, error) {
-	rows, err := db.Reader().QueryContext(ctx, `SELECT sequence, type, entity_id, review_id, actor_kind, actor_id, occurred_at
+	rows, err := db.Reader().QueryContext(ctx, `SELECT sequence, type, entity_id, review_id, actor_kind, actor_id, login, occurred_at
 		FROM events WHERE sequence > ? ORDER BY sequence LIMIT ?`, after, limit)
 	if err != nil {
 		return nil, err
@@ -53,7 +55,7 @@ func After(ctx context.Context, db *store.DB, after int64, limit int) ([]Event, 
 		var e Event
 		var reviewID sql.NullString
 		var at string
-		if err := rows.Scan(&e.Sequence, &e.Type, &e.EntityID, &reviewID, &e.Actor.Kind, &e.Actor.ID, &at); err != nil {
+		if err := rows.Scan(&e.Sequence, &e.Type, &e.EntityID, &reviewID, &e.Actor.Kind, &e.Actor.ID, &e.Login, &at); err != nil {
 			return nil, err
 		}
 		if reviewID.Valid {

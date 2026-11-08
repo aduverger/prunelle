@@ -104,7 +104,7 @@ func (c RepresentationConfig) empty() bool {
 }
 
 // CreateRepresentation adds a manual representation to a topic, authored against the review's current revision.
-func (s *Service) CreateRepresentation(ctx context.Context, topicID string, req CreateRepresentationRequest, actor Author) (Representation, error) {
+func (s *Service) CreateRepresentation(ctx context.Context, topicID string, req CreateRepresentationRequest, actor Actor) (Representation, error) {
 	topic, err := s.GetTopic(ctx, topicID)
 	if err != nil {
 		return Representation{}, err
@@ -154,7 +154,7 @@ func (s *Service) CreateRepresentation(ctx context.Context, topicID string, req 
 }
 
 // UpdateRepresentation edits a representation last read at version. A config replaces the stored one.
-func (s *Service) UpdateRepresentation(ctx context.Context, id string, version int, req UpdateRepresentationRequest, actor Author) (Representation, error) {
+func (s *Service) UpdateRepresentation(ctx context.Context, id string, version int, req UpdateRepresentationRequest, actor Actor) (Representation, error) {
 	var p problems
 	if req.Title != nil {
 		p.required("title", *req.Title)

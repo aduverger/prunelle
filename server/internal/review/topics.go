@@ -19,7 +19,7 @@ var topicLinkKinds = []struct{ field, entityType, table, column string }{
 }
 
 // CreateTopic adds a manual topic as the last child of its parent (or last root topic).
-func (s *Service) CreateTopic(ctx context.Context, reviewID string, req CreateTopicRequest, actor Author) (Topic, error) {
+func (s *Service) CreateTopic(ctx context.Context, reviewID string, req CreateTopicRequest, actor Actor) (Topic, error) {
 	if _, err := s.GetReview(ctx, reviewID); err != nil {
 		return Topic{}, err
 	}
@@ -63,7 +63,7 @@ func (s *Service) CreateTopic(ctx context.Context, reviewID string, req CreateTo
 }
 
 // UpdateTopic edits a topic last read at version. Imported topics are editable; their origin and author stay.
-func (s *Service) UpdateTopic(ctx context.Context, id string, version int, req UpdateTopicRequest, actor Author) (Topic, error) {
+func (s *Service) UpdateTopic(ctx context.Context, id string, version int, req UpdateTopicRequest, actor Actor) (Topic, error) {
 	var p problems
 	if req.Title != nil {
 		p.required("title", *req.Title)
@@ -118,7 +118,7 @@ func (s *Service) UpdateTopic(ctx context.Context, id string, version int, req U
 // MoveTopic places a topic last read at version under a new parent (nil for the root) at a position
 // among its new siblings, clamped to the end. Sibling positions stay dense; every topic whose
 // position changes gets a new version.
-func (s *Service) MoveTopic(ctx context.Context, id string, version int, req MoveTopicRequest, actor Author) (Topic, error) {
+func (s *Service) MoveTopic(ctx context.Context, id string, version int, req MoveTopicRequest, actor Actor) (Topic, error) {
 	if req.Position < 0 {
 		return Topic{}, invalid("position must be 0 or more")
 	}

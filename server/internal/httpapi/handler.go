@@ -28,7 +28,7 @@ var statusByCode = map[string]int{
 	review.CodePreconditionFailed: http.StatusPreconditionFailed,
 	codePreconditionRequired:      http.StatusPreconditionRequired,
 	"UNAUTHENTICATED":             http.StatusUnauthorized,
-	"PERMISSION_DENIED":           http.StatusForbidden,
+	review.CodePermissionDenied:   http.StatusForbidden,
 	"INTERNAL":                    http.StatusInternalServerError,
 }
 

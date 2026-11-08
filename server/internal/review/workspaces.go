@@ -9,7 +9,7 @@ import (
 	"github.com/aduverger/prunelle/server/internal/store"
 )
 
-func (s *Service) CreateWorkspace(ctx context.Context, req CreateWorkspaceRequest, actor Author) (Workspace, error) {
+func (s *Service) CreateWorkspace(ctx context.Context, req CreateWorkspaceRequest, actor Actor) (Workspace, error) {
 	name := strings.TrimSpace(req.Name)
 	if name == "" {
 		return Workspace{}, invalid("workspace name is required")

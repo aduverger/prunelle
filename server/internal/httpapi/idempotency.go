@@ -56,7 +56,8 @@ func (i *idempotency) middleware(next http.Handler) http.Handler {
 			return
 		}
 		r.Body = io.NopCloser(bytes.NewReader(body))
-		caller := callerFrom(r.Context()).ID
+		actor := callerFrom(r.Context())
+		caller := actor.Login + " " + actor.ID
 		hash := sha256.Sum256([]byte(r.Method + "\n" + r.URL.RequestURI() + "\n" + string(body)))
 
 		stored, err := i.claim(r.Context(), caller, key, hex.EncodeToString(hash[:]))

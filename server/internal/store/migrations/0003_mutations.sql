@@ -78,6 +78,7 @@ CREATE TABLE events (
     review_id   TEXT,
     actor_kind  TEXT NOT NULL,
     actor_id    TEXT NOT NULL,
+    login       TEXT NOT NULL,
     occurred_at TEXT NOT NULL
 );
 

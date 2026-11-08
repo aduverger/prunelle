@@ -109,6 +109,24 @@ func TestChangesAreAttributedToTheCaller(t *testing.T) {
 		local.JSON201.Author != (review.Author{Kind: "HUMAN", ID: ownerLogin}) {
 		t.Errorf("authors: remote %+v, local %+v", remote.JSON201.Author, local.JSON201.Author)
 	}
+
+	// An agent names itself; its changes are its own, tied to the login it acts through, and it cannot decide.
+	asAgent := func(ctx context.Context, req *http.Request) error {
+		req.Header.Set("Prunelle-Agent", "pi:session-42")
+		return throughServe(ctx, req)
+	}
+	stream := s.openEvents(t, "")
+	stream.next(t) // ready
+	reply := must(s.client.CreateMessageWithResponse(ctx, remote.JSON201.ID, nil, review.CreateMessageRequest{Body: "Fixed in the next revision."}, asAgent))
+	expectStatus(t, reply.StatusCode(), http.StatusCreated, reply.Body)
+	if reply.JSON201.Author != (review.Author{Kind: "AGENT", ID: "pi:session-42"}) {
+		t.Errorf("agent reply author = %+v", reply.JSON201.Author)
+	}
+	if e := stream.next(t).decode(t); e.Actor != (events.Actor{Kind: "AGENT", ID: "pi:session-42"}) || e.Login != "friend@example.com" {
+		t.Errorf("agent event = %+v", e)
+	}
+	decision := must(s.client.CreateDecisionWithResponse(ctx, rv.ID, nil, review.CreateDecisionRequest{Decision: "APPROVE"}, asAgent))
+	expectErrorCode(t, decision.StatusCode(), http.StatusForbidden, decision.Body, "PERMISSION_DENIED")
 }
 
 type sseEvent struct {

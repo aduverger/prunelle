@@ -32,6 +32,7 @@ Commands:
   fixture --print-manifest                print the demo review manifest
 
 Client commands reach the server at --server (default: the configured listen address).
+An agent sets PRUNELLE_AGENT (e.g. pi:<session-id>) so its changes are attributed to it.
 `
 
 func main() {
