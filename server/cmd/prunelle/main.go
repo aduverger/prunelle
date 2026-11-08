@@ -23,6 +23,10 @@ Commands:
   review ls                               list reviews
   review capture REVIEW_ID                capture a new revision
   review import REVIEW_ID MANIFEST.json   import a review manifest ("-" reads stdin; --revision)
+  sessions backends                       list session backends and their health
+  sessions ls                             list runtime sessions (--workspace ID)
+  sessions link RUNTIME_ID WORKSPACE_ID   associate a runtime session with a workspace
+  sessions unlink RUNTIME_ID WORKSPACE_ID remove that association
   fixture DIR                             build the demo repositories in DIR and seed a review
   fixture --print-manifest                print the demo review manifest
 
@@ -63,6 +67,8 @@ func run(ctx context.Context, args []string) error {
 		return workspaceCommand(ctx, cfg, rest[1:])
 	case "review":
 		return reviewCommand(ctx, cfg, rest[1:])
+	case "sessions":
+		return sessionsCommand(ctx, cfg, rest[1:])
 	case "fixture":
 		return fixtureCommand(ctx, cfg, rest[1:])
 	case "version":

@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -14,6 +15,8 @@ import (
 	"github.com/aduverger/prunelle/server/internal/config"
 	"github.com/aduverger/prunelle/server/internal/httpapi"
 	"github.com/aduverger/prunelle/server/internal/review"
+	"github.com/aduverger/prunelle/server/internal/sessions"
+	"github.com/aduverger/prunelle/server/internal/sessions/rex"
 	"github.com/aduverger/prunelle/server/internal/store"
 )
 
@@ -49,11 +52,19 @@ func serve(ctx context.Context, cfg config.Config, args []string) error {
 	}
 	defer db.Close()
 
-	handler, err := httpapi.NewHandler(review.NewService(db, cfg.AllowedRoots),
-		httpapi.NewAuthorizer(cfg.AllowedLogins, httpapi.TailscaleOwner), version)
+	reviews := review.NewService(db, cfg.AllowedRoots)
+	sessionSvc, err := sessions.NewService(ctx, db, reviews, sessionRegistrations(cfg.SessionBackends))
 	if err != nil {
 		return err
 	}
+	handler, err := httpapi.NewHandler(reviews, sessionSvc, httpapi.NewAuthorizer(cfg.AllowedLogins, httpapi.TailscaleOwner), version)
+	if err != nil {
+		return err
+	}
+	observeCtx, stopObserving := context.WithCancel(ctx)
+	observing := make(chan struct{})
+	go func() { sessionSvc.Run(observeCtx); close(observing) }()
+	defer func() { stopObserving(); <-observing }() // observers stop before the database closes
 	listener, err := net.Listen("tcp", cfg.Listen)
 	if err != nil {
 		return err
@@ -74,6 +85,16 @@ func serve(ctx context.Context, cfg config.Config, args []string) error {
 		return err
 	}
 	return nil
+}
+
+func sessionRegistrations(backends []config.SessionBackend) []sessions.Registration {
+	var regs []sessions.Registration
+	for _, b := range backends {
+		rexCfg := rex.Config{Path: b.RexPath, Server: b.Server}
+		encoded, _ := json.Marshal(rexCfg)
+		regs = append(regs, sessions.Registration{Name: b.Name, Config: encoded, Backend: rex.New(rexCfg)})
+	}
+	return regs
 }
 
 // requireLoopback enforces the access model: the server is reached remotely only through Tailscale Serve.

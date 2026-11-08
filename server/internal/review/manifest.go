@@ -8,6 +8,8 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+
+	"github.com/aduverger/prunelle/server/internal/store"
 )
 
 // Manifest is the import format for review content. Entities reference each other by
@@ -193,7 +195,7 @@ func (p *importPlan) assign(kind, prefix, key, path string) string {
 		p.problem(path+".key", "duplicate %s key %q", kind, key)
 		return ""
 	}
-	id := newID(prefix)
+	id := store.NewID(prefix)
 	p.ids[kind][key] = id
 	return id
 }
@@ -246,7 +248,7 @@ func (s *Service) Import(ctx context.Context, reviewID string, req ImportRequest
 
 	m := req.Manifest
 	plan := &importPlan{
-		importID: newID("imp"), reviewID: reviewID, revisionID: revision.ID, author: m.Author,
+		importID: store.NewID("imp"), reviewID: reviewID, revisionID: revision.ID, author: m.Author,
 		ids:           map[string]map[string]string{"intents": {}, "evidence": {}, "changes": {}, "findings": {}, "topics": {}, "attention": {}},
 		codeRanges:    map[string]CodeRange{},
 		evidenceKinds: map[string]string{},
@@ -284,7 +286,7 @@ func (s *Service) Import(ctx context.Context, reviewID string, req ImportRequest
 
 	var result ImportResult
 	err = s.db.Write(ctx, func(tx *sql.Tx) error {
-		w := &importWriter{ctx: ctx, tx: tx, plan: plan, now: formatTime(s.now())}
+		w := &importWriter{ctx: ctx, tx: tx, plan: plan, now: store.FormatTime(s.now())}
 		w.exec(`INSERT INTO imports (id, review_id, revision_id, author_kind, author_id, imported_at) VALUES (?, ?, ?, ?, ?, ?)`,
 			plan.importID, reviewID, revision.ID, m.Author.Kind, m.Author.ID, w.now)
 		w.evidence(m.Evidence)
@@ -542,7 +544,7 @@ func (w *importWriter) representations(topicID, topicPath string, reps []Manifes
 			title = defaultRepresentationTitles[rep.Type]
 		}
 		w.exec(`INSERT INTO representations (id, topic_id, revision_id, type, title, config, origin, position, author_kind, author_id, import_id, created_at, updated_at)
-			VALUES (?, ?, ?, ?, ?, ?, 'IMPORTED', ?, ?, ?, ?, ?, ?)`, newID("rep"), topicID, p.revisionID, rep.Type, title, string(encoded), i,
+			VALUES (?, ?, ?, ?, ?, ?, 'IMPORTED', ?, ?, ?, ?, ?, ?)`, store.NewID("rep"), topicID, p.revisionID, rep.Type, title, string(encoded), i,
 			p.author.Kind, p.author.ID, p.importID, w.now, w.now)
 	}
 }

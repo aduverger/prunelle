@@ -10,8 +10,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/google/uuid"
-
 	"github.com/aduverger/prunelle/server/internal/store"
 )
 
@@ -55,22 +53,6 @@ func notFound(kind, id string) error {
 
 func invalid(format string, args ...any) error {
 	return &Error{Code: CodeInvalidArgument, Message: fmt.Sprintf(format, args...)}
-}
-
-func newID(prefix string) string {
-	return prefix + "_" + strings.ReplaceAll(uuid.Must(uuid.NewV7()).String(), "-", "")
-}
-
-const timeLayout = time.RFC3339Nano
-
-func formatTime(t time.Time) string { return t.UTC().Format(timeLayout) }
-
-func parseTime(s string) time.Time {
-	t, err := time.Parse(timeLayout, s)
-	if err != nil {
-		panic(fmt.Sprintf("corrupt timestamp %q: %v", s, err))
-	}
-	return t
 }
 
 // scanOne scans a single row, translating sql.ErrNoRows into a not-found error.

@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+
+	"github.com/aduverger/prunelle/server/internal/store"
 )
 
 func (s *Service) ListImports(ctx context.Context, reviewID string) ([]Import, error) {
@@ -25,7 +27,7 @@ func (s *Service) ListImports(ctx context.Context, reviewID string) ([]Import, e
 		if err := rows.Scan(&im.ID, &im.RevisionID, &im.Author.Kind, &im.Author.ID, &at); err != nil {
 			return nil, err
 		}
-		im.ImportedAt = parseTime(at)
+		im.ImportedAt = store.ParseTime(at)
 		imports = append(imports, im)
 	}
 	return imports, rows.Err()
@@ -64,7 +66,7 @@ func (s *Service) GetTopic(ctx context.Context, id string) (Topic, error) {
 		return Topic{}, err
 	}
 	t.ParentID, t.ImportID = stringPtr(parent), stringPtr(importID)
-	t.CreatedAt, t.UpdatedAt = parseTime(created), parseTime(updated)
+	t.CreatedAt, t.UpdatedAt = store.ParseTime(created), store.ParseTime(updated)
 	links := []struct {
 		dest  *[]string
 		query string

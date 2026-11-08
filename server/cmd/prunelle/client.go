@@ -201,3 +201,38 @@ func fixtureCommand(ctx context.Context, cfg config.Config, args []string) error
 	}
 	return output(c.ImportManifestWithResponse(ctx, rv.JSON201.ID, review.ImportRequest{Manifest: fixture.Manifest()}))
 }
+
+func sessionsCommand(ctx context.Context, cfg config.Config, args []string) error {
+	if len(args) == 0 {
+		return errors.New("usage: prunelle sessions backends|ls|link|unlink")
+	}
+	flags, client := clientFlags("sessions "+args[0], cfg)
+	workspace := flags.String("workspace", "", "only sessions associated with this workspace (ls)")
+	if err := flags.Parse(args[1:]); err != nil {
+		return err
+	}
+	c, err := client()
+	if err != nil {
+		return err
+	}
+	rest := flags.Args()
+	switch {
+	case args[0] == "backends":
+		return output(c.ListSessionBackendsWithResponse(ctx))
+	case args[0] == "ls":
+		params := &api.ListRuntimeSessionsParams{}
+		if *workspace != "" {
+			params.WorkspaceId = workspace
+		}
+		return output(c.ListRuntimeSessionsWithResponse(ctx, params))
+	case args[0] == "link" && len(rest) == 2:
+		return output(c.AssociateRuntimeSessionWithResponse(ctx, rest[1], rest[0]))
+	case args[0] == "unlink" && len(rest) == 2:
+		resp, err := c.DissociateRuntimeSessionWithResponse(ctx, rest[1], rest[0])
+		if err != nil {
+			return err
+		}
+		return apiError(resp)
+	}
+	return fmt.Errorf("unknown or incomplete sessions command %q", strings.Join(args, " "))
+}
