@@ -114,6 +114,9 @@ func TestSyncAssignsStableIDsAndStopsVanishedRuntimes(t *testing.T) {
 	if len(first) != 2 || first["s/pi"].State != sessions.StateOnline || *first["s/pi"].HarnessHint != "pi" {
 		t.Fatalf("runtimes = %+v", first)
 	}
+	if !slices.Equal(first["s/pi"].Capabilities, e.fake.Capabilities()) {
+		t.Errorf("capabilities = %v, want the backend's", first["s/pi"].Capabilities)
+	}
 
 	e.fake.Remove("s/shell")
 	if err := e.svc.Sync(e.ctx, backendID); err != nil {
@@ -169,8 +172,8 @@ func TestRestartMarksRuntimesUnknownAndDisablesRemovedBackends(t *testing.T) {
 		t.Fatal(err)
 	}
 	e.svc = e.newService(t) // restart with no backend configured
-	if got := e.runtimes(t)["s/pi"].State; got != sessions.StateUnknown {
-		t.Errorf("state after restart = %s", got)
+	if got := e.runtimes(t)["s/pi"]; got.State != sessions.StateUnknown || len(got.Capabilities) != 0 {
+		t.Errorf("after restart without its backend: state %s, capabilities %v", got.State, got.Capabilities)
 	}
 	backends, err := e.svc.ListBackends(e.ctx)
 	if err != nil {

@@ -147,14 +147,17 @@ func TestCLIFailures(t *testing.T) {
 	}
 }
 
-func TestServerFlagIsPassed(t *testing.T) {
+// A configured server must reach every call; otherwise Prunelle silently observes the local Rex instead.
+func TestEveryCallTargetsConfiguredServer(t *testing.T) {
 	calls := &[]string{}
 	b := NewWithCLI(Config{Server: "https://rex.example.ts.net"}, replay(recorded, calls), nil)
 	if _, err := b.Discover(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.HasPrefix((*calls)[0], "--autostart=false -S https://rex.example.ts.net --timeout 5s api call") {
-		t.Errorf("call = %s", (*calls)[0])
+	for _, call := range *calls {
+		if !strings.Contains(call, " -S https://rex.example.ts.net ") {
+			t.Errorf("call without the configured server: %s", call)
+		}
 	}
 }
 
