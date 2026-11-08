@@ -62,6 +62,5 @@ M3+ (revision-aware review, analysis, Pi adapter) get separate plans.
 
 ## Open questions
 
-- How the UI reaches the server (shell proxy vs direct fetch with CORS): decide in M2.
-- MyGo maturity: re-check at the start of M2; Electron is the fallback shell.
+- M2 transport/maturity check completed: MyGo v0.8.3 Go-backed streaming fetch; Vite proxy for browser development, no server CORS change (D9). Native macOS launch and signing remain to verify.
 - Deferred by the spec: live vs forked agent conversations (M4), analyzer/grouping strategy, collaboration/permissions, external PR sync.

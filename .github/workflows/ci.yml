@@ -27,3 +27,46 @@ jobs:
         run: go test -race ./...
       - name: build for macOS
         run: GOOS=darwin GOARCH=arm64 go build ./...
+
+  client:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: client
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: client/go.mod
+          cache-dependency-path: |
+            client/go.sum
+            server/go.sum
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 26
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 12.16.1
+      - run: pnpm install --frozen-lockfile
+      - name: generated API types are up to date
+        run: pnpm generate && git diff --exit-code -- src/api/schema.d.ts
+      - name: frontend checks
+        run: pnpm format:check && pnpm lint && pnpm test && pnpm build
+      - name: desktop checks
+        run: test -z "$(gofmt -l .)" && go vet ./... && go test -race ./... && GOOS=darwin GOARCH=arm64 go build -o build/prunelle-macos .
+      - name: install browser and desktop runtime
+        run: |
+          pnpm exec playwright install --with-deps chromium
+          sudo apt-get update -qq
+          sudo apt-get install -y libgtk-3-0t64 libwebkit2gtk-4.1-0 xvfb xauth
+      - name: real-server browser flows
+        run: pnpm test:e2e
+      - name: bundled MyGo WebKit smoke test
+        run: pnpm test:native
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: client-test-artifacts
+          path: |
+            client/test-results/
+            client/native-smoke.png

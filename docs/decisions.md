@@ -41,3 +41,9 @@ Rex documents its API methods but not a wire protocol. The Rex backend runs `rex
 
 **Spec:** §4 lists `collection method` on evidence; §9 asks for `MEASURED`/`OBSERVED`/`INFERRED`/`UNKNOWN` labels.
 **Decision:** every review record carries its author (`HUMAN`/`AGENT` + ID) and the provenance the author declares. Prunelle does not rewrite provenance by author kind and keeps no collection method: it never runs tests or tools itself, so evidence always comes from an author, which the author field already states. "Who says it" (author) and "how they know" (provenance) are independent.
+
+## D9. Desktop requests go through MyGo; browser development uses a Vite proxy
+
+**Decision:** M2 keeps MyGo, pinned at v0.8.3 with matching runtime/fetch packages. Its official Go-backed fetch plugin supports both REST and streamed SSE, including cancellation. The shell restricts API requests to loopback HTTP(S) or `https://*.ts.net`, refuses redirects, and adds no authentication headers. Tailscale Serve still authenticates the user; the human-facing UI never sends `Prunelle-Agent`.
+**Why:** reuse the existing API and Tailscale access policy without adding server CORS settings, a new credential, or a second review server. Development/Playwright browser requests go through a fixed Vite proxy target instead. Both use generated OpenAPI types and the same UI.
+**Cost:** MyGo is pre-1.0. The bundled Linux/WebKit path is tested; macOS builds are cross-built but native launch/signing/notarization require a Mac. The frontend targets Safari 16.4+, so packaged macOS builds declare macOS 13.3+. No Electron fallback is needed for this slice.
