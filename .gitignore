@@ -1,0 +1,7 @@
+/server/bin/
+*.db
+*.db-wal
+*.db-shm
+node_modules/
+dist/
+.DS_Store
