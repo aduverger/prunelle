@@ -168,6 +168,26 @@ func TestCaptureCoversCommittedStagedUnstagedAndUntrackedChanges(t *testing.T) {
 	}
 }
 
+func TestCaptureTreatsUntrackedFileStillOnDiskAsModified(t *testing.T) {
+	r := newTestRepo(t)
+	r.write("a.txt", "a1\n")
+	r.commitAll("base")
+	r.git("rm", "-q", "--cached", "a.txt")
+	r.write("a.txt", "a2\n")
+
+	s, err := Capture(context.Background(), r.root, Options{BaseRef: "main", IncludeUntracked: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(s.Files) != 1 {
+		t.Fatalf("files = %+v", s.Files)
+	}
+	f := s.Files[0]
+	if f.Path != "a.txt" || f.Status != StatusModified || string(f.Base.Data) != "a1\n" || string(f.Head.Data) != "a2\n" || !s.Consistent {
+		t.Fatalf("file = %+v, consistent = %v", f, s.Consistent)
+	}
+}
+
 func TestCaptureOmitsLargeFiles(t *testing.T) {
 	r := newTestRepo(t)
 	r.write("big.txt", "small\n")

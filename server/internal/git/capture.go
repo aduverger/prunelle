@@ -289,9 +289,20 @@ func list(ctx context.Context, root string, opts Options) (listing, error) {
 		if err != nil {
 			return l, err
 		}
+		deleted := map[string]int{}
+		for i, e := range l.entries {
+			if e.status == StatusDeleted {
+				deleted[e.path] = i
+			}
+		}
 		for _, path := range splitNUL(out) {
 			if strings.HasSuffix(path, "/") {
 				l.warnings = append(l.warnings, fmt.Sprintf("%s: nested repository not captured", path))
+				continue
+			}
+			if i, ok := deleted[path]; ok {
+				// Removed from the index but still on disk: compared with the base it was modified, not deleted.
+				l.entries[i].status = StatusModified
 				continue
 			}
 			l.entries = append(l.entries, entry{path: path, status: StatusUntracked})

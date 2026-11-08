@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os/exec"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 )
@@ -16,7 +17,9 @@ import (
 // Access policy (docs/decisions.md D2): the server listens on loopback and is exposed through
 // Tailscale Serve, which adds X-Forwarded-* headers and, for user identities, Tailscale-User-Login.
 // A proxied request must carry a login that is the machine's Tailscale owner or explicitly allowed.
-// A direct loopback request without proxy headers comes from a local process, which is trusted as the owner.
+// A direct loopback request without proxy headers comes from a local process, which is trusted as the owner,
+// provided it addresses the server by a loopback host: a browser page that rebinds its own domain to
+// 127.0.0.1 sends its own Host and must not pass as a local process.
 
 const loginHeader = "Tailscale-User-Login"
 
@@ -69,6 +72,9 @@ func (a *Authorizer) check(r *http.Request) (code, message string) {
 		return "PERMISSION_DENIED", "only loopback connections are accepted"
 	}
 	if !proxied(r) {
+		if !loopbackHost(r.Host) {
+			return "PERMISSION_DENIED", "direct requests must address the server as localhost or a loopback IP"
+		}
 		return "", ""
 	}
 	login := r.Header.Get(loginHeader)
@@ -88,6 +94,18 @@ func proxied(r *http.Request) bool {
 		}
 	}
 	return false
+}
+
+func loopbackHost(hostport string) bool {
+	host, _, err := net.SplitHostPort(hostport)
+	if err != nil {
+		host = strings.Trim(hostport, "[]")
+	}
+	if host == "localhost" {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
 }
 
 // ownerLogin returns the cached owner, retrying a failed or empty lookup at most once a minute.

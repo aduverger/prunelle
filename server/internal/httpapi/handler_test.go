@@ -245,6 +245,7 @@ func TestAccessPolicy(t *testing.T) {
 		want       int
 	}{
 		{name: "local process", path: "/v1/workspaces", want: http.StatusOK},
+		{name: "rebound foreign host", path: "/v1/workspaces", headers: map[string]string{"Host": "evil.example:7390"}, want: http.StatusForbidden},
 		{name: "owner through serve", path: "/v1/workspaces", headers: map[string]string{"X-Forwarded-For": "100.101.1.2", "Tailscale-User-Login": ownerLogin}, want: http.StatusOK},
 		{name: "allowed login", path: "/v1/workspaces", headers: map[string]string{"X-Forwarded-For": "100.101.1.2", "Tailscale-User-Login": "friend@example.com"}, want: http.StatusOK},
 		{name: "other login", path: "/v1/workspaces", headers: map[string]string{"X-Forwarded-For": "100.101.1.2", "Tailscale-User-Login": "stranger@example.com"}, want: http.StatusForbidden},
@@ -259,6 +260,9 @@ func TestAccessPolicy(t *testing.T) {
 			}
 			for k, v := range tc.headers {
 				req.Header.Set(k, v)
+			}
+			if host := tc.headers["Host"]; host != "" {
+				req.Host = host
 			}
 			resp, err := http.DefaultClient.Do(req)
 			if err != nil {
