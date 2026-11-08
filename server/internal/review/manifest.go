@@ -11,7 +11,8 @@ import (
 )
 
 // Manifest is the import format for review content. Entities reference each other by
-// manifest-local keys, unique per entity kind; the import assigns Prunelle IDs.
+// manifest-local keys, unique per entity kind; the import assigns Prunelle IDs. Every imported
+// record is attributed to the manifest author; provenance is stored as declared.
 type Manifest struct {
 	Author    Author              `json:"author"`
 	Intents   []ManifestIntent    `json:"intents,omitempty"`
@@ -131,6 +132,7 @@ type ManifestAttention struct {
 	Priority    string      `json:"priority"`
 	Rationale   string      `json:"rationale"`
 	Uncertainty string      `json:"uncertainty"`
+	Provenance  string      `json:"provenance,omitempty"`
 	Evidence    []string    `json:"evidence,omitempty"`
 }
 
@@ -162,7 +164,6 @@ type importPlan struct {
 	ids                            map[string]map[string]string // entity kind → key → ID
 	codeRanges                     map[string]CodeRange         // evidence key → resolved range
 	evidenceKinds                  map[string]string            // evidence key → kind
-	warnings                       []string
 	problems                       []string
 }
 
@@ -213,16 +214,10 @@ func (p *importPlan) refs(kind, path string, keys []string) []string {
 	return ids
 }
 
-// provenance applies the rule that agent-authored claims are inferences.
-func (p *importPlan) provenance(path, declared string) string {
-	if p.author.Kind == "AGENT" {
-		if declared != "" && declared != "INFERRED" {
-			p.warnings = append(p.warnings, fmt.Sprintf("%s: provenance %s recorded as INFERRED because the author is an agent", path, declared))
-		}
-		return "INFERRED"
-	}
+// provenance validates a declared provenance, using fallback when none is declared.
+func (p *importPlan) provenance(path, declared, fallback string) string {
 	if declared == "" {
-		return "UNKNOWN"
+		return fallback
 	}
 	p.oneOf(path+".provenance", declared, provenances)
 	return declared
@@ -306,7 +301,7 @@ func (s *Service) Import(ctx context.Context, reviewID string, req ImportRequest
 		if len(plan.problems) > 0 {
 			return &Error{Code: CodeInvalidArgument, Message: "manifest is invalid", Details: plan.problems}
 		}
-		result = ImportResult{ImportID: plan.importID, RevisionID: revision.ID, IDs: plan.ids, Warnings: append([]string{}, plan.warnings...)}
+		result = ImportResult{ImportID: plan.importID, RevisionID: revision.ID, IDs: plan.ids}
 		return nil
 	})
 	return result, err
@@ -423,21 +418,13 @@ func (w *importWriter) evidence(evidence []ManifestEvidence) {
 	for i, e := range evidence {
 		path := fmt.Sprintf("evidence[%d]", i)
 		id := p.ids["evidence"][e.Key]
-		method, provenance := "REPORTED", e.Provenance
+		fallback := "UNKNOWN"
 		if e.Kind == "CODE_RANGE" {
-			// Prunelle resolves the range from the immutable snapshot itself.
-			method, provenance = "CAPTURED", "OBSERVED"
-		} else if provenance == "" {
-			provenance = "UNKNOWN"
-		} else {
-			p.oneOf(path+".provenance", provenance, provenances)
+			fallback = "OBSERVED" // a code range points at captured code
 		}
-		source := e.Source
-		if source == "" {
-			source = p.author.Kind + " " + p.author.ID
-		}
-		w.exec(`INSERT INTO evidence (id, revision_id, kind, title, content, source, collection_method, provenance, import_id, created_at)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, id, p.revisionID, e.Kind, e.Title, nullString(e.Content), source, method, provenance, p.importID, w.now)
+		w.exec(`INSERT INTO evidence (id, revision_id, kind, title, content, source, provenance, author_kind, author_id, import_id, created_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, id, p.revisionID, e.Kind, e.Title, nullString(e.Content), e.Source,
+			p.provenance(path, e.Provenance, fallback), p.author.Kind, p.author.ID, p.importID, w.now)
 		if r, ok := p.codeRanges[e.Key]; ok {
 			w.exec(`INSERT INTO evidence_code_ranges (evidence_id, repository_id, path, side, start_line, end_line, blob_hash, selected_text)
 				VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, id, r.RepositoryID, r.Path, r.Side, r.StartLine, r.EndLine, r.BlobHash, r.SelectedText)
@@ -452,9 +439,9 @@ func (w *importWriter) intents(intents []ManifestIntent) {
 		p.oneOf(path+".kind", in.Kind, intentKinds)
 		p.required(path+".statement", in.Statement)
 		id := p.ids["intents"][in.Key]
-		w.exec(`INSERT INTO intents (id, review_id, kind, statement, source, acceptance_criteria, provenance, import_id, created_at, updated_at)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, id, p.reviewID, in.Kind, in.Statement, in.Source, nullString(in.AcceptanceCriteria),
-			p.provenance(path, in.Provenance), p.importID, w.now, w.now)
+		w.exec(`INSERT INTO intents (id, review_id, kind, statement, source, acceptance_criteria, provenance, author_kind, author_id, import_id, created_at, updated_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, id, p.reviewID, in.Kind, in.Statement, in.Source, nullString(in.AcceptanceCriteria),
+			p.provenance(path, in.Provenance, "UNKNOWN"), p.author.Kind, p.author.ID, p.importID, w.now, w.now)
 		w.link("intent_evidence", "intent_id", id, "evidence_id", p.refs("evidence", path+".evidence", in.Evidence))
 	}
 }
@@ -466,26 +453,19 @@ func (w *importWriter) changes(changes []ManifestChange) {
 		p.oneOf(path+".kind", c.Kind, changeKinds)
 		p.required(path+".summary", c.Summary)
 		verification := c.VerificationStatus
-		switch {
-		case p.author.Kind == "AGENT":
-			if verification != "" && verification != "UNVERIFIED" {
-				p.warnings = append(p.warnings, fmt.Sprintf("%s: verification %s recorded as UNVERIFIED because the author is an agent", path, verification))
-			}
+		if verification == "" {
 			verification = "UNVERIFIED"
-		case verification == "":
-			verification = "UNVERIFIED"
-		default:
-			p.oneOf(path+".verification_status", verification, verificationStates)
 		}
+		p.oneOf(path+".verification_status", verification, verificationStates)
 		components, err := json.Marshal(append([]string{}, c.Components...))
 		if err != nil {
 			w.err = err
 			return
 		}
 		id := p.ids["changes"][c.Key]
-		w.exec(`INSERT INTO observed_changes (id, revision_id, kind, summary, before_claim, after_claim, components, verification_status, provenance, import_id, created_at, updated_at)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, id, p.revisionID, c.Kind, c.Summary, c.Before, c.After, string(components),
-			verification, p.provenance(path, c.Provenance), p.importID, w.now, w.now)
+		w.exec(`INSERT INTO observed_changes (id, revision_id, kind, summary, before_claim, after_claim, components, verification_status, provenance, author_kind, author_id, import_id, created_at, updated_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, id, p.revisionID, c.Kind, c.Summary, c.Before, c.After, string(components),
+			verification, p.provenance(path, c.Provenance, "UNKNOWN"), p.author.Kind, p.author.ID, p.importID, w.now, w.now)
 		w.link("change_evidence", "change_id", id, "evidence_id", p.refs("evidence", path+".evidence", c.Evidence))
 	}
 }
@@ -498,9 +478,9 @@ func (w *importWriter) findings(findings []ManifestFinding) {
 		p.oneOf(path+".severity", f.Severity, severities)
 		p.required(path+".title", f.Title)
 		id := p.ids["findings"][f.Key]
-		w.exec(`INSERT INTO findings (id, review_id, first_seen_revision_id, kind, severity, status, title, rationale, provenance, import_id, created_at, updated_at)
-			VALUES (?, ?, ?, ?, ?, 'OPEN', ?, ?, ?, ?, ?, ?)`, id, p.reviewID, p.revisionID, f.Kind, f.Severity, f.Title, f.Rationale,
-			p.provenance(path, f.Provenance), p.importID, w.now, w.now)
+		w.exec(`INSERT INTO findings (id, review_id, first_seen_revision_id, kind, severity, status, title, rationale, provenance, author_kind, author_id, import_id, created_at, updated_at)
+			VALUES (?, ?, ?, ?, ?, 'OPEN', ?, ?, ?, ?, ?, ?, ?, ?)`, id, p.reviewID, p.revisionID, f.Kind, f.Severity, f.Title, f.Rationale,
+			p.provenance(path, f.Provenance, "UNKNOWN"), p.author.Kind, p.author.ID, p.importID, w.now, w.now)
 		w.link("finding_evidence", "finding_id", id, "evidence_id", p.refs("evidence", path+".evidence", f.Evidence))
 	}
 }
@@ -526,8 +506,9 @@ func (w *importWriter) topics(topics []ManifestTopic) error {
 		} else {
 			nextRootPosition++
 		}
-		w.exec(`INSERT INTO topics (id, review_id, parent_id, title, summary, origin, state, position, import_id, created_at, updated_at)
-			VALUES (?, ?, ?, ?, ?, 'IMPORTED', 'ACTIVE', ?, ?, ?, ?)`, id, p.reviewID, parentID, t.Title, t.Summary, position, p.importID, w.now, w.now)
+		w.exec(`INSERT INTO topics (id, review_id, parent_id, title, summary, origin, state, position, author_kind, author_id, import_id, created_at, updated_at)
+			VALUES (?, ?, ?, ?, ?, 'IMPORTED', 'ACTIVE', ?, ?, ?, ?, ?, ?)`, id, p.reviewID, parentID, t.Title, t.Summary, position,
+			p.author.Kind, p.author.ID, p.importID, w.now, w.now)
 		w.link("topic_intents", "topic_id", id, "intent_id", p.refs("intents", path+".intents", t.Intents))
 		w.link("topic_changes", "topic_id", id, "change_id", p.refs("changes", path+".changes", t.Changes))
 		w.link("topic_findings", "topic_id", id, "finding_id", p.refs("findings", path+".findings", t.Findings))
@@ -560,8 +541,9 @@ func (w *importWriter) representations(topicID, topicPath string, reps []Manifes
 		if title == "" {
 			title = defaultRepresentationTitles[rep.Type]
 		}
-		w.exec(`INSERT INTO representations (id, topic_id, revision_id, type, title, config, origin, position, import_id, created_at, updated_at)
-			VALUES (?, ?, ?, ?, ?, ?, 'IMPORTED', ?, ?, ?, ?)`, newID("rep"), topicID, p.revisionID, rep.Type, title, string(encoded), i, p.importID, w.now, w.now)
+		w.exec(`INSERT INTO representations (id, topic_id, revision_id, type, title, config, origin, position, author_kind, author_id, import_id, created_at, updated_at)
+			VALUES (?, ?, ?, ?, ?, ?, 'IMPORTED', ?, ?, ?, ?, ?, ?)`, newID("rep"), topicID, p.revisionID, rep.Type, title, string(encoded), i,
+			p.author.Kind, p.author.ID, p.importID, w.now, w.now)
 	}
 }
 
@@ -686,9 +668,9 @@ func (w *importWriter) attention(signals []ManifestAttention) {
 				changeID = ref
 			}
 		}
-		w.exec(`INSERT INTO attention_signals (id, revision_id, topic_id, finding_id, change_id, priority, rationale, uncertainty, source, provenance, import_id, created_at)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, id, p.revisionID, topicID, findingID, changeID, a.Priority, a.Rationale, a.Uncertainty,
-			p.author.Kind+" "+p.author.ID, p.provenance(path, ""), p.importID, w.now)
+		w.exec(`INSERT INTO attention_signals (id, revision_id, topic_id, finding_id, change_id, priority, rationale, uncertainty, provenance, author_kind, author_id, import_id, created_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, id, p.revisionID, topicID, findingID, changeID, a.Priority, a.Rationale, a.Uncertainty,
+			p.provenance(path, a.Provenance, "UNKNOWN"), p.author.Kind, p.author.ID, p.importID, w.now)
 		w.link("attention_evidence", "attention_id", id, "evidence_id", p.refs("evidence", path+".evidence", a.Evidence))
 	}
 }

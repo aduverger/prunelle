@@ -30,7 +30,7 @@ func (s *Service) ListImports(ctx context.Context, reviewID string) ([]Import, e
 	return imports, rows.Err()
 }
 
-const topicColumns = `id, review_id, parent_id, title, summary, origin, state, position, import_id, created_at, updated_at`
+const topicColumns = `id, review_id, parent_id, title, summary, origin, state, position, author_kind, author_id, import_id, created_at, updated_at`
 
 // ListTopics returns the review's topics ordered parent-first by position; clients build the tree from parent_id.
 func (s *Service) ListTopics(ctx context.Context, reviewID string) ([]Topic, error) {
@@ -58,7 +58,7 @@ func (s *Service) GetTopic(ctx context.Context, id string) (Topic, error) {
 	var parent, importID sql.NullString
 	var created, updated string
 	err := scanOne(s.reader().QueryRowContext(ctx, `SELECT `+topicColumns+` FROM topics WHERE id = ?`, id), "topic", id,
-		&t.ID, &t.ReviewID, &parent, &t.Title, &t.Summary, &t.Origin, &t.State, &t.Position, &importID, &created, &updated)
+		&t.ID, &t.ReviewID, &parent, &t.Title, &t.Summary, &t.Origin, &t.State, &t.Position, &t.Author.Kind, &t.Author.ID, &importID, &created, &updated)
 	if err != nil {
 		return Topic{}, err
 	}
@@ -117,7 +117,7 @@ func (s *Service) TopicRepresentations(ctx context.Context, topicID string) ([]R
 	if err != nil {
 		return nil, err
 	}
-	rows, err := s.reader().QueryContext(ctx, `SELECT id, type, title, origin, revision_id, config
+	rows, err := s.reader().QueryContext(ctx, `SELECT id, type, title, origin, revision_id, author_kind, author_id, config
 		FROM representations WHERE topic_id = ? ORDER BY position, id`, topicID)
 	if err != nil {
 		return nil, err
@@ -127,11 +127,12 @@ func (s *Service) TopicRepresentations(ctx context.Context, topicID string) ([]R
 	stored := map[string]bool{}
 	for rows.Next() {
 		var id, revisionID, config string
+		var author Author
 		rep := Representation{TopicID: topicID}
-		if err := rows.Scan(&id, &rep.Type, &rep.Title, &rep.Origin, &revisionID, &config); err != nil {
+		if err := rows.Scan(&id, &rep.Type, &rep.Title, &rep.Origin, &revisionID, &author.Kind, &author.ID, &config); err != nil {
 			return nil, err
 		}
-		rep.ID, rep.RevisionID = &id, &revisionID
+		rep.ID, rep.RevisionID, rep.Author = &id, &revisionID, &author
 		if err := decodeRepresentationConfig(&rep, []byte(config), codeEvidence, allEvidence); err != nil {
 			return nil, err
 		}
@@ -216,7 +217,7 @@ func (s *Service) ListIntents(ctx context.Context, reviewID string) ([]Intent, e
 	if _, err := s.GetReview(ctx, reviewID); err != nil {
 		return nil, err
 	}
-	rows, err := s.reader().QueryContext(ctx, `SELECT id, kind, statement, source, acceptance_criteria, provenance, import_id
+	rows, err := s.reader().QueryContext(ctx, `SELECT id, kind, statement, source, acceptance_criteria, provenance, author_kind, author_id, import_id
 		FROM intents WHERE review_id = ? ORDER BY created_at, id`, reviewID)
 	if err != nil {
 		return nil, err
@@ -226,7 +227,7 @@ func (s *Service) ListIntents(ctx context.Context, reviewID string) ([]Intent, e
 	for rows.Next() {
 		in := Intent{ReviewID: reviewID}
 		var criteria, importID sql.NullString
-		if err := rows.Scan(&in.ID, &in.Kind, &in.Statement, &in.Source, &criteria, &in.Provenance, &importID); err != nil {
+		if err := rows.Scan(&in.ID, &in.Kind, &in.Statement, &in.Source, &criteria, &in.Provenance, &in.Author.Kind, &in.Author.ID, &importID); err != nil {
 			return nil, err
 		}
 		in.AcceptanceCriteria, in.ImportID = stringPtr(criteria), stringPtr(importID)
@@ -250,7 +251,7 @@ func (s *Service) ListChanges(ctx context.Context, reviewID string, revisionID *
 		return nil, err
 	}
 	rows, err := s.reader().QueryContext(ctx, `SELECT c.id, c.revision_id, c.kind, c.summary, c.before_claim, c.after_claim,
-			c.components, c.verification_status, c.provenance, c.import_id
+			c.components, c.verification_status, c.provenance, c.author_kind, c.author_id, c.import_id
 		FROM observed_changes c JOIN revisions r ON r.id = c.revision_id
 		WHERE r.review_id = ?1 AND (?2 IS NULL OR c.revision_id = ?2)
 		ORDER BY r.ordinal, c.created_at, c.id`, reviewID, nullString(revisionID))
@@ -264,7 +265,7 @@ func (s *Service) ListChanges(ctx context.Context, reviewID string, revisionID *
 		var components string
 		var importID sql.NullString
 		if err := rows.Scan(&c.ID, &c.RevisionID, &c.Kind, &c.Summary, &c.Before, &c.After, &components,
-			&c.VerificationStatus, &c.Provenance, &importID); err != nil {
+			&c.VerificationStatus, &c.Provenance, &c.Author.Kind, &c.Author.ID, &importID); err != nil {
 			return nil, err
 		}
 		c.ImportID = stringPtr(importID)
@@ -289,7 +290,7 @@ func (s *Service) ListFindings(ctx context.Context, reviewID string) ([]Finding,
 	if _, err := s.GetReview(ctx, reviewID); err != nil {
 		return nil, err
 	}
-	rows, err := s.reader().QueryContext(ctx, `SELECT id, first_seen_revision_id, kind, severity, status, title, rationale, provenance, import_id
+	rows, err := s.reader().QueryContext(ctx, `SELECT id, first_seen_revision_id, kind, severity, status, title, rationale, provenance, author_kind, author_id, import_id
 		FROM findings WHERE review_id = ?
 		ORDER BY CASE severity WHEN 'HIGH' THEN 0 WHEN 'MEDIUM' THEN 1 WHEN 'LOW' THEN 2 ELSE 3 END, created_at, id`, reviewID)
 	if err != nil {
@@ -300,7 +301,7 @@ func (s *Service) ListFindings(ctx context.Context, reviewID string) ([]Finding,
 	for rows.Next() {
 		f := Finding{ReviewID: reviewID}
 		var importID sql.NullString
-		if err := rows.Scan(&f.ID, &f.FirstSeenRevisionID, &f.Kind, &f.Severity, &f.Status, &f.Title, &f.Rationale, &f.Provenance, &importID); err != nil {
+		if err := rows.Scan(&f.ID, &f.FirstSeenRevisionID, &f.Kind, &f.Severity, &f.Status, &f.Title, &f.Rationale, &f.Provenance, &f.Author.Kind, &f.Author.ID, &importID); err != nil {
 			return nil, err
 		}
 		f.ImportID = stringPtr(importID)
@@ -318,7 +319,7 @@ func (s *Service) ListFindings(ctx context.Context, reviewID string) ([]Finding,
 	return findings, nil
 }
 
-const evidenceSelect = `SELECT e.id, e.revision_id, e.kind, e.title, e.content, e.source, e.collection_method, e.provenance, e.import_id,
+const evidenceSelect = `SELECT e.id, e.revision_id, e.kind, e.title, e.content, e.source, e.provenance, e.author_kind, e.author_id, e.import_id,
 		r.repository_id, r.path, r.side, r.start_line, r.end_line, r.blob_hash, r.selected_text
 	FROM evidence e LEFT JOIN evidence_code_ranges r ON r.evidence_id = e.id`
 
@@ -326,7 +327,7 @@ func scanEvidence(scan func(...any) error) (Evidence, error) {
 	var e Evidence
 	var content, importID, repoID, path, side, blobHash, selected sql.NullString
 	var start, end sql.NullInt64
-	if err := scan(&e.ID, &e.RevisionID, &e.Kind, &e.Title, &content, &e.Source, &e.CollectionMethod, &e.Provenance, &importID,
+	if err := scan(&e.ID, &e.RevisionID, &e.Kind, &e.Title, &content, &e.Source, &e.Provenance, &e.Author.Kind, &e.Author.ID, &importID,
 		&repoID, &path, &side, &start, &end, &blobHash, &selected); err != nil {
 		return Evidence{}, err
 	}
@@ -372,7 +373,7 @@ func (s *Service) ListAttention(ctx context.Context, reviewID string) ([]Attenti
 		return nil, err
 	}
 	rows, err := s.reader().QueryContext(ctx, `SELECT a.id, a.revision_id, a.topic_id, a.finding_id, a.change_id,
-			a.priority, a.rationale, a.uncertainty, a.source, a.provenance, a.import_id
+			a.priority, a.rationale, a.uncertainty, a.provenance, a.author_kind, a.author_id, a.import_id
 		FROM attention_signals a JOIN revisions r ON r.id = a.revision_id
 		WHERE r.review_id = ?
 		ORDER BY r.ordinal, CASE a.priority WHEN 'HIGH' THEN 0 WHEN 'MEDIUM' THEN 1 WHEN 'LOW' THEN 2 ELSE 3 END, a.id`, reviewID)
@@ -385,7 +386,7 @@ func (s *Service) ListAttention(ctx context.Context, reviewID string) ([]Attenti
 		var a AttentionSignal
 		var topicID, findingID, changeID, importID sql.NullString
 		if err := rows.Scan(&a.ID, &a.RevisionID, &topicID, &findingID, &changeID, &a.Priority, &a.Rationale,
-			&a.Uncertainty, &a.Source, &a.Provenance, &importID); err != nil {
+			&a.Uncertainty, &a.Provenance, &a.Author.Kind, &a.Author.ID, &importID); err != nil {
 			return nil, err
 		}
 		a.ImportID = stringPtr(importID)

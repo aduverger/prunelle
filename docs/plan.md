@@ -38,7 +38,7 @@ M3+ (revision-aware review, analysis, Pi adapter) get separate plans.
 ### Workspaces and review content
 
 - A workspace is a named list of canonical repository roots inside configured `allowed_roots`.
-- Review content (topics, intents, changes, findings, evidence, representations, attention) enters through a JSON review manifest: `prunelle review import` or the API, `origin=IMPORTED`, author recorded. Claims authored by an agent are `INFERRED`.
+- Review content (topics, intents, changes, findings, evidence, representations, attention) enters through a JSON review manifest: `prunelle review import` or the API, `origin=IMPORTED`. Every record carries its author (actor) and the provenance the author declares (`MEASURED`/`OBSERVED`/`INFERRED`/`UNKNOWN`).
 - Until M4 the coding agent pushes manifests to Prunelle; from M4 Prunelle also calls the agent through `PiAgentAdapter`.
 
 ### Rex

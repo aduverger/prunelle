@@ -44,7 +44,7 @@ Discussions, decisions, events, and session tables arrive in later migrations.
 
 - **Topic → files:** a changed file belongs to a topic iff a `CODE_RANGE` evidence reachable from the topic (direct link, or through a linked change, finding, or intent) points at it. **Unassigned changes** = changed files of the revision belonging to no topic. One predicate serves Source Changes, Unassigned, and default Code views.
 - **Representations:** `TEXT`, `DIAGRAM`, `CODE_DIFF`, `EVIDENCE_LIST` are stored rows. `CODE_DIFF`/`EVIDENCE_LIST` configs optionally narrow to listed evidence; empty means everything reachable from the topic. Availability is computed on read; MVP types without a row are returned as unavailable with a reason.
-- **Provenance:** records carry `MEASURED`/`OBSERVED`/`INFERRED`/`UNKNOWN`. If the manifest author is an agent, intents, changes, findings and attention are stored `INFERRED`. `CODE_RANGE` evidence is resolved by Prunelle from the snapshot (`OBSERVED`, collected `CAPTURED`); other evidence is collected `REPORTED` with its declared provenance.
+- **Author and provenance:** every record stores its author (the manifest author) and the provenance the author declares (`MEASURED`/`OBSERVED`/`INFERRED`/`UNKNOWN`; `UNKNOWN` when omitted, `OBSERVED` for code ranges). No rewriting by author kind (D8).
 
 ## Git capture
 
@@ -115,18 +115,17 @@ Mutations (topic edit, discussions, decisions), idempotency keys, ETags, SSE, Re
 
 Choices made where the spec and plan were silent, least confident first.
 
-1. **Agent claims are overridden, not rejected.** An agent manifest declaring `OBSERVED` findings or `SUPPORTED` changes is stored as `INFERRED`/`UNVERIFIED` with a warning in the import result. *Would have asked:* should the import fail instead, so the agent learns the rule?
-2. **Agent-reported evidence keeps its declared provenance.** A `TEST_RESULT` pasted by the agent can be `MEASURED`; it is marked `collection_method=REPORTED` (Prunelle did not run it). *Would have asked:* should agent-reported evidence also be capped at `INFERRED`?
-3. **Code and Evidence views are derived when not declared.** Every topic with reachable code ranges gets a Code view (`origin=DERIVED`, no ID) even if the manifest did not list one; Text and Diagram are never synthesized. *Would have asked:* is a derived view acceptable under "do not fabricate representations"? It only re-presents canonical links.
-4. **Topic → file rule.** A file belongs to a topic through CODE_RANGE evidence linked directly or via the topic's intents, changes, or findings. Parent topics do not inherit their children's files. *Would have asked:* should a parent topic's Code view include its children?
-5. **Code ranges must target changed files.** Only changed files are stored, so evidence pointing at unchanged code is rejected. *Would have asked:* is context evidence on unchanged files needed before M3?
-6. **Imports are additive.** Re-importing the same manifest duplicates records; idempotency arrives with M1's `Idempotency-Key`.
-7. **Omission is all-or-nothing per file.** If either side is binary, over 1 MB, a submodule, or not a regular file, neither side's content is stored.
-8. **The 50 MB revision cap counts bytes before blob deduplication.**
-9. **Git edge cases:** unmerged entries map to `MODIFIED`; nested repositories in the untracked list are skipped with a warning; detached `HEAD` yields an empty branch.
-10. **Tagged server machine has no owner.** Only `allowed_logins` are admitted; the owner is looked up with `tailscale status --json` (CLI, not the Tailscale Go library, to avoid a large dependency) and retried at most once a minute.
-11. **Enumerations I chose:** change kinds, finding kinds, evidence kinds, diagram node kinds (`COMPONENT`, `SERVICE`, `DATASTORE`, `QUEUE`, `ACTOR`, `STEP`, `STATE`, `OTHER`).
-12. **Mechanics:** prefixed UUIDv7 IDs (`top_…`); migrations via `PRAGMA user_version` with embedded numbered SQL files instead of a migration library; TOML config; default port 7390; `~` expansion in config paths.
+1. **Provenance defaults:** `UNKNOWN` when omitted, except `OBSERVED` for code ranges, which point at captured code.
+2. **Code and Evidence views are derived when not declared.** Every topic with reachable code ranges gets a Code view (`origin=DERIVED`, no ID) even if the manifest did not list one; Text and Diagram are never synthesized. *Would have asked:* is a derived view acceptable under "do not fabricate representations"? It only re-presents canonical links.
+3. **Topic → file rule.** A file belongs to a topic through CODE_RANGE evidence linked directly or via the topic's intents, changes, or findings. Parent topics do not inherit their children's files. *Would have asked:* should a parent topic's Code view include its children?
+4. **Code ranges must target changed files.** Only changed files are stored, so evidence pointing at unchanged code is rejected. *Would have asked:* is context evidence on unchanged files needed before M3?
+5. **Imports are additive.** Re-importing the same manifest duplicates records; idempotency arrives with M1's `Idempotency-Key`.
+6. **Omission is all-or-nothing per file.** If either side is binary, over 1 MB, a submodule, or not a regular file, neither side's content is stored.
+7. **The 50 MB revision cap counts bytes before blob deduplication.**
+8. **Git edge cases:** unmerged entries map to `MODIFIED`; nested repositories in the untracked list are skipped with a warning; detached `HEAD` yields an empty branch.
+9. **Tagged server machine has no owner.** Only `allowed_logins` are admitted; the owner is looked up with `tailscale status --json` (CLI, not the Tailscale Go library, to avoid a large dependency) and retried at most once a minute.
+10. **Enumerations I chose:** change kinds, finding kinds, evidence kinds, diagram node kinds (`COMPONENT`, `SERVICE`, `DATASTORE`, `QUEUE`, `ACTOR`, `STEP`, `STATE`, `OTHER`).
+11. **Mechanics:** prefixed UUIDv7 IDs (`top_…`); migrations via `PRAGMA user_version` with embedded numbered SQL files instead of a migration library; TOML config; default port 7390; `~` expansion in config paths.
 
 ## Verification
 

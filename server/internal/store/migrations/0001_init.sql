@@ -88,17 +88,19 @@ CREATE TABLE imports (
 );
 
 CREATE TABLE topics (
-    id         TEXT PRIMARY KEY,
-    review_id  TEXT NOT NULL REFERENCES reviews(id),
-    parent_id  TEXT REFERENCES topics(id),
-    title      TEXT NOT NULL,
-    summary    TEXT NOT NULL,
-    origin     TEXT NOT NULL CHECK (origin IN ('MANUAL', 'IMPORTED', 'GENERATED')),
-    state      TEXT NOT NULL CHECK (state IN ('ACTIVE', 'OBSOLETE')),
-    position   INTEGER NOT NULL,
-    import_id  TEXT REFERENCES imports(id),
-    created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL
+    id          TEXT PRIMARY KEY,
+    review_id   TEXT NOT NULL REFERENCES reviews(id),
+    parent_id   TEXT REFERENCES topics(id),
+    title       TEXT NOT NULL,
+    summary     TEXT NOT NULL,
+    origin      TEXT NOT NULL CHECK (origin IN ('MANUAL', 'IMPORTED', 'GENERATED')),
+    state       TEXT NOT NULL CHECK (state IN ('ACTIVE', 'OBSOLETE')),
+    position    INTEGER NOT NULL,
+    author_kind TEXT NOT NULL CHECK (author_kind IN ('HUMAN', 'AGENT')),
+    author_id   TEXT NOT NULL,
+    import_id   TEXT REFERENCES imports(id),
+    created_at  TEXT NOT NULL,
+    updated_at  TEXT NOT NULL
 );
 
 CREATE TABLE intents (
@@ -109,6 +111,8 @@ CREATE TABLE intents (
     source              TEXT NOT NULL,
     acceptance_criteria TEXT,
     provenance          TEXT NOT NULL CHECK (provenance IN ('MEASURED', 'OBSERVED', 'INFERRED', 'UNKNOWN')),
+    author_kind         TEXT NOT NULL CHECK (author_kind IN ('HUMAN', 'AGENT')),
+    author_id           TEXT NOT NULL,
     import_id           TEXT REFERENCES imports(id),
     created_at          TEXT NOT NULL,
     updated_at          TEXT NOT NULL
@@ -124,6 +128,8 @@ CREATE TABLE observed_changes (
     components          TEXT NOT NULL,
     verification_status TEXT NOT NULL CHECK (verification_status IN ('UNVERIFIED', 'SUPPORTED', 'CONTRADICTED')),
     provenance          TEXT NOT NULL CHECK (provenance IN ('MEASURED', 'OBSERVED', 'INFERRED', 'UNKNOWN')),
+    author_kind         TEXT NOT NULL CHECK (author_kind IN ('HUMAN', 'AGENT')),
+    author_id           TEXT NOT NULL,
     import_id           TEXT REFERENCES imports(id),
     created_at          TEXT NOT NULL,
     updated_at          TEXT NOT NULL
@@ -139,22 +145,25 @@ CREATE TABLE findings (
     title                  TEXT NOT NULL,
     rationale              TEXT NOT NULL,
     provenance             TEXT NOT NULL CHECK (provenance IN ('MEASURED', 'OBSERVED', 'INFERRED', 'UNKNOWN')),
+    author_kind            TEXT NOT NULL CHECK (author_kind IN ('HUMAN', 'AGENT')),
+    author_id              TEXT NOT NULL,
     import_id              TEXT REFERENCES imports(id),
     created_at             TEXT NOT NULL,
     updated_at             TEXT NOT NULL
 );
 
 CREATE TABLE evidence (
-    id                TEXT PRIMARY KEY,
-    revision_id       TEXT NOT NULL REFERENCES revisions(id),
-    kind              TEXT NOT NULL CHECK (kind IN ('CODE_RANGE', 'TEST_RESULT', 'SPECIFICATION', 'ANALYSIS_OUTPUT', 'ARTIFACT')),
-    title             TEXT NOT NULL,
-    content           TEXT,
-    source            TEXT NOT NULL,
-    collection_method TEXT NOT NULL CHECK (collection_method IN ('CAPTURED', 'REPORTED')),
-    provenance        TEXT NOT NULL CHECK (provenance IN ('MEASURED', 'OBSERVED', 'INFERRED', 'UNKNOWN')),
-    import_id         TEXT REFERENCES imports(id),
-    created_at        TEXT NOT NULL
+    id          TEXT PRIMARY KEY,
+    revision_id TEXT NOT NULL REFERENCES revisions(id),
+    kind        TEXT NOT NULL CHECK (kind IN ('CODE_RANGE', 'TEST_RESULT', 'SPECIFICATION', 'ANALYSIS_OUTPUT', 'ARTIFACT')),
+    title       TEXT NOT NULL,
+    content     TEXT,
+    source      TEXT NOT NULL,
+    provenance  TEXT NOT NULL CHECK (provenance IN ('MEASURED', 'OBSERVED', 'INFERRED', 'UNKNOWN')),
+    author_kind TEXT NOT NULL CHECK (author_kind IN ('HUMAN', 'AGENT')),
+    author_id   TEXT NOT NULL,
+    import_id   TEXT REFERENCES imports(id),
+    created_at  TEXT NOT NULL
 );
 
 CREATE TABLE evidence_code_ranges (
@@ -177,8 +186,9 @@ CREATE TABLE attention_signals (
     priority    TEXT NOT NULL CHECK (priority IN ('HIGH', 'MEDIUM', 'LOW', 'UNKNOWN')),
     rationale   TEXT NOT NULL,
     uncertainty TEXT NOT NULL,
-    source      TEXT NOT NULL,
     provenance  TEXT NOT NULL CHECK (provenance IN ('MEASURED', 'OBSERVED', 'INFERRED', 'UNKNOWN')),
+    author_kind TEXT NOT NULL CHECK (author_kind IN ('HUMAN', 'AGENT')),
+    author_id   TEXT NOT NULL,
     import_id   TEXT REFERENCES imports(id),
     created_at  TEXT NOT NULL,
     CHECK ((topic_id IS NOT NULL) + (finding_id IS NOT NULL) + (change_id IS NOT NULL) = 1)
@@ -193,6 +203,8 @@ CREATE TABLE representations (
     config      TEXT NOT NULL,
     origin      TEXT NOT NULL CHECK (origin IN ('MANUAL', 'IMPORTED', 'GENERATED')),
     position    INTEGER NOT NULL,
+    author_kind TEXT NOT NULL CHECK (author_kind IN ('HUMAN', 'AGENT')),
+    author_id   TEXT NOT NULL,
     import_id   TEXT REFERENCES imports(id),
     created_at  TEXT NOT NULL,
     updated_at  TEXT NOT NULL

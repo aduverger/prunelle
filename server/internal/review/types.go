@@ -135,6 +135,7 @@ type Topic struct {
 	Origin      string    `json:"origin"`
 	State       string    `json:"state"`
 	Position    int       `json:"position"`
+	Author      Author    `json:"author"`
 	ImportID    *string   `json:"import_id"`
 	IntentIDs   []string  `json:"intent_ids"`
 	ChangeIDs   []string  `json:"change_ids"`
@@ -152,6 +153,7 @@ type Intent struct {
 	Source             string   `json:"source"`
 	AcceptanceCriteria *string  `json:"acceptance_criteria"`
 	Provenance         string   `json:"provenance"`
+	Author             Author   `json:"author"`
 	ImportID           *string  `json:"import_id"`
 	EvidenceIDs        []string `json:"evidence_ids"`
 }
@@ -166,6 +168,7 @@ type ObservedChange struct {
 	Components         []string `json:"components"`
 	VerificationStatus string   `json:"verification_status"`
 	Provenance         string   `json:"provenance"`
+	Author             Author   `json:"author"`
 	ImportID           *string  `json:"import_id"`
 	EvidenceIDs        []string `json:"evidence_ids"`
 }
@@ -180,21 +183,22 @@ type Finding struct {
 	Title               string   `json:"title"`
 	Rationale           string   `json:"rationale"`
 	Provenance          string   `json:"provenance"`
+	Author              Author   `json:"author"`
 	ImportID            *string  `json:"import_id"`
 	EvidenceIDs         []string `json:"evidence_ids"`
 }
 
 type Evidence struct {
-	ID               string     `json:"id"`
-	RevisionID       string     `json:"revision_id"`
-	Kind             string     `json:"kind"`
-	Title            string     `json:"title"`
-	Content          *string    `json:"content"`
-	Source           string     `json:"source"`
-	CollectionMethod string     `json:"collection_method"`
-	Provenance       string     `json:"provenance"`
-	ImportID         *string    `json:"import_id"`
-	CodeRange        *CodeRange `json:"code_range"`
+	ID         string     `json:"id"`
+	RevisionID string     `json:"revision_id"`
+	Kind       string     `json:"kind"`
+	Title      string     `json:"title"`
+	Content    *string    `json:"content"`
+	Source     string     `json:"source"`
+	Provenance string     `json:"provenance"`
+	Author     Author     `json:"author"`
+	ImportID   *string    `json:"import_id"`
+	CodeRange  *CodeRange `json:"code_range"`
 }
 
 type CodeRange struct {
@@ -214,8 +218,8 @@ type AttentionSignal struct {
 	Priority    string          `json:"priority"`
 	Rationale   string          `json:"rationale"`
 	Uncertainty string          `json:"uncertainty"`
-	Source      string          `json:"source"`
 	Provenance  string          `json:"provenance"`
+	Author      Author          `json:"author"`
 	ImportID    *string         `json:"import_id"`
 	EvidenceIDs []string        `json:"evidence_ids"`
 }
@@ -225,8 +229,8 @@ type AttentionTarget struct {
 	ID   string `json:"id"`
 }
 
-// Representation is one way to present a topic. ID is nil for representations derived
-// from topic links (code diff, evidence list) or reported as unavailable.
+// Representation is one way to present a topic. ID and Author are nil for representations
+// derived from topic links (code diff, evidence list) or reported as unavailable.
 type Representation struct {
 	ID                *string             `json:"id"`
 	TopicID           string              `json:"topic_id"`
@@ -236,6 +240,7 @@ type Representation struct {
 	Available         bool                `json:"available"`
 	UnavailableReason *string             `json:"unavailable_reason"`
 	RevisionID        *string             `json:"revision_id"`
+	Author            *Author             `json:"author"`
 	Text              *TextConfig         `json:"text,omitempty"`
 	Diagram           *DiagramConfig      `json:"diagram,omitempty"`
 	CodeDiff          *EvidenceListConfig `json:"code_diff,omitempty"`
@@ -289,5 +294,4 @@ type ImportResult struct {
 	ImportID   string                       `json:"import_id"`
 	RevisionID string                       `json:"revision_id"`
 	IDs        map[string]map[string]string `json:"ids"`
-	Warnings   []string                     `json:"warnings"`
 }

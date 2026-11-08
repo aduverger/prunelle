@@ -105,12 +105,8 @@ func TestCaptureSpansBothRepositories(t *testing.T) {
 
 func TestImportLinksTopicsToCanonicalRecords(t *testing.T) {
 	e := newEnv(t)
-	result := e.importFixture(t)
-	ids := result.IDs
-
-	if !slices.ContainsFunc(result.Warnings, func(w string) bool { return strings.Contains(w, "recorded as UNVERIFIED") }) {
-		t.Errorf("warnings = %v", result.Warnings)
-	}
+	ids := e.importFixture(t).IDs
+	agent := review.Author{Kind: "AGENT", ID: "pi:fixture-session"}
 
 	topics, err := e.svc.ListTopics(e.ctx, e.review.ID)
 	if err != nil {
@@ -131,7 +127,7 @@ func TestImportLinksTopicsToCanonicalRecords(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(findings) != 2 || findings[0].Severity != "HIGH" || findings[0].Provenance != "INFERRED" {
+	if len(findings) != 2 || findings[0].Severity != "HIGH" || findings[0].Provenance != "INFERRED" || findings[0].Author != agent {
 		t.Fatalf("findings = %+v", findings)
 	}
 
@@ -153,7 +149,7 @@ func TestImportLinksTopicsToCanonicalRecords(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if retry.CollectionMethod != "CAPTURED" || retry.Provenance != "OBSERVED" ||
+	if retry.Provenance != "OBSERVED" || retry.Author != agent ||
 		!strings.HasPrefix(retry.CodeRange.SelectedText, "    for attempt in range") || !strings.HasSuffix(retry.CodeRange.SelectedText, "return") {
 		t.Errorf("code evidence = %+v", retry)
 	}
@@ -161,7 +157,7 @@ func TestImportLinksTopicsToCanonicalRecords(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if testRun.CollectionMethod != "REPORTED" || testRun.Provenance != "MEASURED" || testRun.CodeRange != nil {
+	if testRun.Provenance != "MEASURED" || testRun.Author != agent || testRun.CodeRange != nil {
 		t.Errorf("reported evidence = %+v", testRun)
 	}
 	deleted, err := e.svc.GetEvidence(e.ctx, ids["evidence"]["E-sync"])
@@ -177,9 +173,16 @@ func TestImportLinksTopicsToCanonicalRecords(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, c := range changes {
-		if c.Provenance != "INFERRED" || c.VerificationStatus != "UNVERIFIED" {
-			t.Errorf("agent change %s = %s/%s", c.Summary, c.Provenance, c.VerificationStatus)
+		if c.Provenance != "OBSERVED" || c.Author != agent {
+			t.Errorf("change %s = %s by %+v", c.Summary, c.Provenance, c.Author)
 		}
+	}
+	if changes[1].VerificationStatus != "SUPPORTED" || changes[0].VerificationStatus != "UNVERIFIED" {
+		t.Errorf("verification stored as declared: %s, %s", changes[0].VerificationStatus, changes[1].VerificationStatus)
+	}
+	topic, err := e.svc.GetTopic(e.ctx, ids["topics"]["T-async"])
+	if err != nil || topic.Author != agent {
+		t.Errorf("topic author = %+v, %v", topic.Author, err)
 	}
 	attention, err := e.svc.ListAttention(e.ctx, e.review.ID)
 	if err != nil {
@@ -260,7 +263,10 @@ func TestTopicRepresentationsReportAvailability(t *testing.T) {
 	}
 
 	status := byType("T-status")
-	if status["CODE_DIFF"].ID != nil || !status["CODE_DIFF"].Available || status["CODE_DIFF"].Origin != "DERIVED" {
+	if status["TEXT"].Author == nil || status["TEXT"].Author.Kind != "AGENT" {
+		t.Errorf("stored representation author = %+v", status["TEXT"].Author)
+	}
+	if status["CODE_DIFF"].ID != nil || status["CODE_DIFF"].Author != nil || !status["CODE_DIFF"].Available || status["CODE_DIFF"].Origin != "DERIVED" {
 		t.Errorf("derived code diff = %+v", status["CODE_DIFF"])
 	}
 
@@ -324,6 +330,7 @@ func TestImportRejectsInvalidManifestWithoutWriting(t *testing.T) {
 	m.Topics[1].Changes = append(m.Topics[1].Changes, "C-missing")
 	m.Evidence[0].CodeRange.EndLine = 999
 	m.Findings[0].Severity = "CRITICAL"
+	m.Findings[1].Provenance = "GUESSED"
 	m.Topics = append([]review.ManifestTopic{{Key: "T-orphan", Parent: "T-later", Title: "Orphan"}}, m.Topics...)
 
 	_, err := e.svc.Import(e.ctx, e.review.ID, review.ImportRequest{Manifest: m})
@@ -332,7 +339,7 @@ func TestImportRejectsInvalidManifestWithoutWriting(t *testing.T) {
 		t.Fatalf("err = %v", err)
 	}
 	joined := strings.Join(reviewErr.Details, "\n")
-	for _, want := range []string{`unknown changes key "C-missing"`, "-999 are outside src/routes/upload.ts", `"CRITICAL" is not one of`, `parent "T-later" must be a topic listed earlier`} {
+	for _, want := range []string{`unknown changes key "C-missing"`, "-999 are outside src/routes/upload.ts", `"CRITICAL" is not one of`, `findings[1].provenance: "GUESSED" is not one of`, `parent "T-later" must be a topic listed earlier`} {
 		if !strings.Contains(joined, want) {
 			t.Errorf("details miss %q:\n%s", want, joined)
 		}
