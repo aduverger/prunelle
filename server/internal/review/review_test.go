@@ -1,0 +1,366 @@
+package review_test
+
+import (
+	"context"
+	"errors"
+	"os"
+	"path/filepath"
+	"slices"
+	"strings"
+	"testing"
+
+	"github.com/aduverger/prunelle/server/internal/fixture"
+	"github.com/aduverger/prunelle/server/internal/review"
+	"github.com/aduverger/prunelle/server/internal/store"
+)
+
+type env struct {
+	ctx      context.Context
+	svc      *review.Service
+	repos    fixture.Repos
+	review   review.Review
+	revision review.Revision
+}
+
+func newEnv(t *testing.T) *env {
+	t.Helper()
+	ctx := context.Background()
+	root, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	db, err := store.Open(ctx, filepath.Join(root))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Close() })
+	reposDir := filepath.Join(root, "repos")
+	repos, err := fixture.BuildRepos(reposDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	svc := review.NewService(db, []string{reposDir})
+	ws, err := svc.CreateWorkspace(ctx, fixture.WorkspaceRequest(repos))
+	if err != nil {
+		t.Fatal(err)
+	}
+	rv, err := svc.CreateReview(ctx, review.CreateReviewRequest{WorkspaceID: ws.ID, Title: fixture.ReviewTitle})
+	if err != nil {
+		t.Fatal(err)
+	}
+	revision, err := svc.CaptureRevision(ctx, rv.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return &env{ctx: ctx, svc: svc, repos: repos, review: rv, revision: revision}
+}
+
+func (e *env) importFixture(t *testing.T) review.ImportResult {
+	t.Helper()
+	result, err := e.svc.Import(e.ctx, e.review.ID, review.ImportRequest{Manifest: fixture.Manifest()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return result
+}
+
+func TestCaptureSpansBothRepositories(t *testing.T) {
+	e := newEnv(t)
+	if e.revision.Status != "CONSISTENT" || e.revision.Ordinal != 1 || len(e.revision.Snapshots) != 2 {
+		t.Fatalf("revision = %+v", e.revision)
+	}
+	for _, snap := range e.revision.Snapshots {
+		if snap.Branch != fixture.FeatureBranch || snap.BaseSHA == snap.HeadSHA {
+			t.Errorf("snapshot %s = %+v", snap.RepositoryLabel, snap)
+		}
+	}
+	changes, err := e.svc.SourceChanges(e.ctx, e.revision.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]string{}
+	for _, repo := range changes.Repositories {
+		for _, f := range repo.Files {
+			got[repo.RepositoryLabel+"/"+f.Path] = f.Status
+		}
+	}
+	want := map[string]string{
+		"api/docs/async-upload.md": "UNTRACKED", "api/package.json": "MODIFIED", "api/src/processing.ts": "DELETED",
+		"api/src/queue.ts": "ADDED", "api/src/routes/status.ts": "ADDED", "api/src/routes/upload.ts": "MODIFIED",
+		"worker/tests/test_consumer.py": "ADDED", "worker/worker/config.py": "MODIFIED",
+		"worker/worker/consumer.py": "ADDED", "worker/worker/processing.py": "ADDED",
+	}
+	if len(got) != len(want) {
+		t.Fatalf("changed files = %v", got)
+	}
+	for path, status := range want {
+		if got[path] != status {
+			t.Errorf("%s = %q, want %q", path, got[path], status)
+		}
+	}
+	if changes.UnassignedCount != len(want) {
+		t.Errorf("before import every file is unassigned, got %d", changes.UnassignedCount)
+	}
+}
+
+func TestImportLinksTopicsToCanonicalRecords(t *testing.T) {
+	e := newEnv(t)
+	result := e.importFixture(t)
+	ids := result.IDs
+
+	if !slices.ContainsFunc(result.Warnings, func(w string) bool { return strings.Contains(w, "recorded as UNVERIFIED") }) {
+		t.Errorf("warnings = %v", result.Warnings)
+	}
+
+	topics, err := e.svc.ListTopics(e.ctx, e.review.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(topics) != 4 {
+		t.Fatalf("topics = %d", len(topics))
+	}
+	worker, err := e.svc.GetTopic(e.ctx, ids["topics"]["T-worker"])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if *worker.ParentID != ids["topics"]["T-async"] || !slices.Equal(worker.FindingIDs, []string{ids["findings"]["F-1"]}) {
+		t.Errorf("worker topic = %+v", worker)
+	}
+
+	findings, err := e.svc.ListFindings(e.ctx, e.review.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(findings) != 2 || findings[0].Severity != "HIGH" || findings[0].Provenance != "INFERRED" {
+		t.Fatalf("findings = %+v", findings)
+	}
+
+	evidence, err := e.svc.ListEvidence(e.ctx, e.review.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	retryUses := 0
+	for _, list := range [][]string{findings[0].EvidenceIDs, findings[1].EvidenceIDs} {
+		if slices.Contains(list, ids["evidence"]["E-retry"]) {
+			retryUses++
+		}
+	}
+	if len(evidence) != 10 || retryUses != 2 {
+		t.Errorf("evidence rows = %d, E-retry shared by %d findings", len(evidence), retryUses)
+	}
+
+	retry, err := e.svc.GetEvidence(e.ctx, ids["evidence"]["E-retry"])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if retry.CollectionMethod != "CAPTURED" || retry.Provenance != "OBSERVED" ||
+		!strings.HasPrefix(retry.CodeRange.SelectedText, "    for attempt in range") || !strings.HasSuffix(retry.CodeRange.SelectedText, "return") {
+		t.Errorf("code evidence = %+v", retry)
+	}
+	testRun, err := e.svc.GetEvidence(e.ctx, ids["evidence"]["E-test-run"])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if testRun.CollectionMethod != "REPORTED" || testRun.Provenance != "MEASURED" || testRun.CodeRange != nil {
+		t.Errorf("reported evidence = %+v", testRun)
+	}
+	deleted, err := e.svc.GetEvidence(e.ctx, ids["evidence"]["E-sync"])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if deleted.CodeRange.Side != "BASE" || !strings.Contains(deleted.CodeRange.SelectedText, "processDocument") {
+		t.Errorf("base-side evidence = %+v", deleted.CodeRange)
+	}
+
+	changes, err := e.svc.ListChanges(e.ctx, e.review.ID, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range changes {
+		if c.Provenance != "INFERRED" || c.VerificationStatus != "UNVERIFIED" {
+			t.Errorf("agent change %s = %s/%s", c.Summary, c.Provenance, c.VerificationStatus)
+		}
+	}
+	attention, err := e.svc.ListAttention(e.ctx, e.review.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(attention) != 1 || attention[0].Target != (review.AttentionTarget{Type: "FINDING", ID: ids["findings"]["F-1"]}) {
+		t.Errorf("attention = %+v", attention)
+	}
+}
+
+func TestSourceChangesListUnassignedFiles(t *testing.T) {
+	e := newEnv(t)
+	ids := e.importFixture(t).IDs
+	changes, err := e.svc.SourceChanges(e.ctx, e.revision.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	unassigned := map[string][]string{}
+	topicsByPath := map[string][]string{}
+	for _, repo := range changes.Repositories {
+		for _, f := range repo.Files {
+			if f.Unassigned {
+				unassigned[repo.RepositoryLabel] = append(unassigned[repo.RepositoryLabel], f.Path)
+			}
+			topicsByPath[repo.RepositoryLabel+"/"+f.Path] = f.TopicIDs
+		}
+	}
+	if len(unassigned) != 1 || !slices.Equal(unassigned["api"], fixture.UnassignedFiles["api"]) {
+		t.Fatalf("unassigned = %v", unassigned)
+	}
+	if changes.UnassignedCount != 2 {
+		t.Errorf("unassigned count = %d", changes.UnassignedCount)
+	}
+	// worker/consumer.py is reached through a change (T-worker), a finding (T-worker, T-status), and directly (none).
+	consumer := topicsByPath["worker/worker/consumer.py"]
+	for _, key := range []string{"T-worker", "T-status"} {
+		if !slices.Contains(consumer, ids["topics"][key]) {
+			t.Errorf("consumer.py topics %v miss %s", consumer, key)
+		}
+	}
+}
+
+func TestTopicRepresentationsReportAvailability(t *testing.T) {
+	e := newEnv(t)
+	ids := e.importFixture(t).IDs
+	byType := func(topicKey string) map[string]review.Representation {
+		reps, err := e.svc.TopicRepresentations(e.ctx, ids["topics"][topicKey])
+		if err != nil {
+			t.Fatal(err)
+		}
+		m := map[string]review.Representation{}
+		for _, r := range reps {
+			m[r.Type] = r
+		}
+		if len(m) != 4 {
+			t.Fatalf("%s representations = %+v", topicKey, reps)
+		}
+		return m
+	}
+
+	async := byType("T-async")
+	for _, typ := range []string{"TEXT", "DIAGRAM", "CODE_DIFF", "EVIDENCE_LIST"} {
+		if async[typ].ID == nil || !async[typ].Available {
+			t.Errorf("T-async %s = %+v", typ, async[typ])
+		}
+	}
+	if got := async["CODE_DIFF"].CodeDiff.EvidenceIDs; len(got) != 3 {
+		t.Errorf("T-async code evidence = %v", got)
+	}
+	node := async["DIAGRAM"].Diagram.Nodes[3]
+	if node.Ref == nil || node.Ref.ID != ids["topics"]["T-worker"] {
+		t.Errorf("diagram node ref = %+v", node.Ref)
+	}
+
+	worker := byType("T-worker")
+	if got := worker["CODE_DIFF"].CodeDiff.EvidenceIDs; len(got) != 2 || worker["CODE_DIFF"].Title != "Retry path" {
+		t.Errorf("narrowed code diff = %+v", worker["CODE_DIFF"])
+	}
+
+	status := byType("T-status")
+	if status["CODE_DIFF"].ID != nil || !status["CODE_DIFF"].Available || status["CODE_DIFF"].Origin != "DERIVED" {
+		t.Errorf("derived code diff = %+v", status["CODE_DIFF"])
+	}
+
+	tests := byType("T-tests")
+	if tests["DIAGRAM"].Available || tests["DIAGRAM"].UnavailableReason == nil {
+		t.Errorf("missing diagram = %+v", tests["DIAGRAM"])
+	}
+}
+
+func TestOldRevisionKeepsItsContentAfterWorktreeChanges(t *testing.T) {
+	e := newEnv(t)
+	upload := filepath.Join(e.repos.API, "src/routes/upload.ts")
+	before, err := os.ReadFile(upload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(upload, []byte("// rewritten\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	second, err := e.svc.CaptureRevision(e.ctx, e.review.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if second.Ordinal != 2 || second.Fingerprint == e.revision.Fingerprint {
+		t.Fatalf("second revision = %+v", second)
+	}
+	apiID := e.revision.Snapshots[0].RepositoryID
+	old, err := e.svc.GetFile(e.ctx, e.revision.ID, apiID, "src/routes/upload.ts")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if *old.HeadText != string(before) || !strings.Contains(*old.BaseText, "processDocument(doc)") {
+		t.Errorf("first revision content changed: %q", *old.HeadText)
+	}
+	current, err := e.svc.GetFile(e.ctx, second.ID, apiID, "src/routes/upload.ts")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if *current.HeadText != "// rewritten\n" {
+		t.Errorf("second revision head = %q", *current.HeadText)
+	}
+	rv, err := e.svc.GetReview(e.ctx, e.review.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if *rv.CurrentRevisionID != second.ID {
+		t.Errorf("current revision = %s", *rv.CurrentRevisionID)
+	}
+	deleted, err := e.svc.GetFile(e.ctx, second.ID, apiID, "src/processing.ts")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if deleted.HeadText != nil || deleted.BaseText == nil {
+		t.Errorf("deleted file = %+v", deleted)
+	}
+}
+
+func TestImportRejectsInvalidManifestWithoutWriting(t *testing.T) {
+	e := newEnv(t)
+	m := fixture.Manifest()
+	m.Topics[1].Changes = append(m.Topics[1].Changes, "C-missing")
+	m.Evidence[0].CodeRange.EndLine = 999
+	m.Findings[0].Severity = "CRITICAL"
+	m.Topics = append([]review.ManifestTopic{{Key: "T-orphan", Parent: "T-later", Title: "Orphan"}}, m.Topics...)
+
+	_, err := e.svc.Import(e.ctx, e.review.ID, review.ImportRequest{Manifest: m})
+	var reviewErr *review.Error
+	if !errors.As(err, &reviewErr) || reviewErr.Code != review.CodeInvalidArgument {
+		t.Fatalf("err = %v", err)
+	}
+	joined := strings.Join(reviewErr.Details, "\n")
+	for _, want := range []string{`unknown changes key "C-missing"`, "-999 are outside src/routes/upload.ts", `"CRITICAL" is not one of`, `parent "T-later" must be a topic listed earlier`} {
+		if !strings.Contains(joined, want) {
+			t.Errorf("details miss %q:\n%s", want, joined)
+		}
+	}
+	topics, err := e.svc.ListTopics(e.ctx, e.review.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	evidence, err := e.svc.ListEvidence(e.ctx, e.review.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	imports, err := e.svc.ListImports(e.ctx, e.review.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(topics)+len(evidence)+len(imports) != 0 {
+		t.Errorf("invalid import wrote %d topics, %d evidence, %d imports", len(topics), len(evidence), len(imports))
+	}
+}
+
+func TestCreateWorkspaceRejectsRepositoryOutsideAllowedRoots(t *testing.T) {
+	e := newEnv(t)
+	req := fixture.WorkspaceRequest(e.repos)
+	req.Repositories[0].Path = t.TempDir()
+	_, err := e.svc.CreateWorkspace(e.ctx, req)
+	var reviewErr *review.Error
+	if !errors.As(err, &reviewErr) || reviewErr.Code != review.CodeInvalidArgument || !strings.Contains(err.Error(), "allowed roots") {
+		t.Fatalf("err = %v", err)
+	}
+}
