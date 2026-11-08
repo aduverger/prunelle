@@ -16,6 +16,7 @@ type Fake struct {
 	mu          sync.Mutex
 	runtimes    map[string]sessions.Observed
 	unreachable error
+	inspectErr  error
 	subscribers []chan sessions.Event
 }
 
@@ -57,6 +58,10 @@ func (f *Fake) Inspect(_ context.Context, externalID string) (sessions.Observed,
 	defer f.mu.Unlock()
 	if f.unreachable != nil {
 		return sessions.Observed{}, f.unreachable
+	}
+	if err := f.inspectErr; err != nil {
+		f.inspectErr = nil
+		return sessions.Observed{}, err
 	}
 	r, ok := f.runtimes[externalID]
 	if !ok {
@@ -120,6 +125,20 @@ func (f *Fake) notify(e sessions.Event) {
 	for _, s := range f.subscribers {
 		s <- e
 	}
+}
+
+// FailNextInspect makes the next Inspect call return err.
+func (f *Fake) FailNextInspect(err error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.inspectErr = err
+}
+
+// Subscriptions returns the number of open event streams.
+func (f *Fake) Subscriptions() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return len(f.subscribers)
 }
 
 // ErrUnreachable is a convenient failure for SetUnreachable.

@@ -166,6 +166,20 @@ func TestObserverFollowsEventsAndOutages(t *testing.T) {
 	eventually(t, "recovery", func() bool { return e.runtimes(t)["s/pi"].State == sessions.StateOnline })
 }
 
+func TestObserverClosesEventStreamWhenHandlingAnEventFails(t *testing.T) {
+	e := newEnv(t, piRuntime("/elsewhere"))
+	ctx, cancel := context.WithCancel(e.ctx)
+	done := make(chan struct{})
+	go func() { e.svc.Run(ctx); close(done) }()
+	defer func() { cancel(); <-done }()
+	eventually(t, "subscription", func() bool { return e.fake.Subscriptions() == 1 })
+
+	e.fake.FailNextInspect(errors.New("rex timed out"))
+	e.fake.Set(piRuntime("/elsewhere/again"))
+	eventually(t, "stream closed before retrying", func() bool { return e.fake.Subscriptions() == 0 })
+	eventually(t, "resubscribed", func() bool { return e.fake.Subscriptions() == 1 })
+}
+
 func TestRestartMarksRuntimesUnknownAndDisablesRemovedBackends(t *testing.T) {
 	e := newEnv(t, piRuntime("/elsewhere"))
 	if err := e.svc.Sync(e.ctx, e.backendID(t)); err != nil {

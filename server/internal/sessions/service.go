@@ -119,6 +119,9 @@ func (s *Service) observe(ctx context.Context, b *backendState) {
 }
 
 func (s *Service) syncAndFollow(ctx context.Context, b *backendState) error {
+	// The event stream lives for one attempt; returning early must stop it.
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
 	if err := s.Sync(ctx, b.id); err != nil {
 		return err
 	}
