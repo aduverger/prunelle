@@ -124,6 +124,58 @@ test('exact code discussion is shared across views, replies and resolution persi
   await expect(page.getByTestId('file-diff')).toContainText('HEAD lines 9–9');
 });
 
+test('a lost reply response stays retry-safe after resolving its thread', async ({ page }) => {
+  const seeded = await fetch(server + '/v1/reviews/' + fixture.review.id + '/discussions', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      anchor: { type: 'TOPIC', id: fixture.ids.topics['T-async'] },
+      body: 'Thread awaiting review.',
+    }),
+  });
+  expect(seeded.status).toBe(201);
+  const discussion = (await seeded.json()) as Model['Discussion'];
+  await page.goto('/');
+  const thread = page
+    .getByRole('region', { name: 'Discussions', exact: true })
+    .getByRole('article');
+  await expect(thread).toContainText('Thread awaiting review.');
+  const replyBody = 'This reply committed before its response was lost.';
+  let firstKey = '';
+  await page.route('**/messages', async (route) => {
+    firstKey = route.request().headers()['idempotency-key'];
+    const committed = await route.fetch();
+    expect(committed.status()).toBe(201);
+    await route.abort('failed');
+  });
+  const reply = thread.getByRole('textbox', { name: /^Reply to / });
+  await reply.fill(replyBody);
+  await thread.getByRole('button', { name: 'Reply', exact: true }).click();
+  await expect(thread.getByRole('alert')).toBeVisible();
+  await expect(thread).toContainText(replyBody);
+  await page.unroute('**/messages');
+
+  await thread.getByRole('button', { name: 'Resolve', exact: true }).click();
+  await expect(thread).toContainText('RESOLVED');
+  await expect(reply).toHaveValue(replyBody);
+  const retry = page.waitForRequest((r) => r.method() === 'POST' && r.url().endsWith('/messages'));
+  const replayed = page.waitForResponse(
+    (r) => r.request().method() === 'POST' && r.url().endsWith('/messages'),
+  );
+  await thread.getByRole('button', { name: 'Reply', exact: true }).click();
+  expect((await replayed).status()).toBe(201);
+  const persisted = await fixture.get<Model['Discussion']>('/v1/discussions/' + discussion.id);
+  expect(persisted.messages.filter((message) => message.body === replyBody)).toHaveLength(1);
+  expect((await retry).headers()['idempotency-key']).toBe(firstKey);
+  await expect
+    .poll(() =>
+      reply.evaluateAll((fields) =>
+        fields.every((field) => (field as HTMLTextAreaElement).value === ''),
+      ),
+    )
+    .toBe(true);
+});
+
 test('evidence-loaded and reopened ranges keep their original revision when discussed', async ({
   page,
 }) => {

@@ -149,11 +149,14 @@ function Thread({
   open: () => void;
 }) {
   const [reply, setReply] = useState('');
-  const action = useSubmit();
+  const replyAction = useSubmit();
+  const statusAction = useSubmit();
+  const busy = replyAction.busy || statusAction.busy;
+  const error = [replyAction.error, statusAction.error].filter(Boolean).join('\n');
   async function post() {
     if (!reply.trim()) return;
     if (
-      await action.submit([d.id, reply], (key) =>
+      await replyAction.submit([d.id, reply], (key) =>
         result(
           api.POST('/v1/discussions/{discussionId}/messages', {
             params: { path: { discussionId: d.id }, header: { 'Idempotency-Key': key } },
@@ -165,7 +168,7 @@ function Thread({
       setReply('');
   }
   async function toggle() {
-    await action.submit([d.id, d.version, d.status], () =>
+    await statusAction.submit([d.id, d.version, d.status], () =>
       result(
         api.PATCH('/v1/discussions/{discussionId}', {
           params: { path: { discussionId: d.id }, header: { 'If-Match': `"${d.version}"` } },
@@ -198,18 +201,18 @@ function Thread({
       >
         <textarea
           aria-label={'Reply to ' + anchorLabel(d.anchor)}
-          disabled={action.busy}
+          disabled={busy}
           placeholder="Reply…"
           value={reply}
           onChange={(e) => setReply(e.target.value)}
         />
         <div className="row">
-          <button disabled={action.busy || !reply.trim()} type="submit">
+          <button disabled={busy || !reply.trim()} type="submit">
             Reply
           </button>
           <button
             type="button"
-            disabled={action.busy}
+            disabled={busy}
             onClick={() => {
               void toggle();
             }}
@@ -218,9 +221,9 @@ function Thread({
           </button>
         </div>
       </form>
-      {action.error && (
+      {error && (
         <p role="alert" className="error">
-          {action.error}
+          {error}
         </p>
       )}
     </article>
