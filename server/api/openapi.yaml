@@ -17,6 +17,7 @@ tags:
   - name: reviews
   - name: revisions
   - name: content
+  - name: sessions
 paths:
   /v1/health:
     get:
@@ -345,6 +346,72 @@ paths:
               schema: { $ref: "#/components/schemas/Evidence" }
         default: { $ref: "#/components/responses/Error" }
 
+  /v1/session-backends:
+    get:
+      tags: [sessions]
+      operationId: listSessionBackends
+      description: Session backends from the server configuration, with their current health. Backends are configured in the server config file, never through the API.
+      responses:
+        "200":
+          description: Session backends.
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/SessionBackend" } }
+        default: { $ref: "#/components/responses/Error" }
+  /v1/runtime-sessions:
+    get:
+      tags: [sessions]
+      operationId: listRuntimeSessions
+      parameters:
+        - name: workspace_id
+          in: query
+          required: false
+          description: Only runtime sessions explicitly associated with this workspace.
+          schema: { type: string }
+      responses:
+        "200":
+          description: Runtime sessions discovered by session backends.
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/RuntimeSession" } }
+        default: { $ref: "#/components/responses/Error" }
+  /v1/runtime-sessions/{runtimeSessionId}:
+    parameters:
+      - $ref: "#/components/parameters/RuntimeSessionId"
+    get:
+      tags: [sessions]
+      operationId: getRuntimeSession
+      responses:
+        "200":
+          description: The runtime session.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RuntimeSession" }
+        default: { $ref: "#/components/responses/Error" }
+  /v1/workspaces/{workspaceId}/runtime-sessions/{runtimeSessionId}:
+    parameters:
+      - $ref: "#/components/parameters/WorkspaceId"
+      - $ref: "#/components/parameters/RuntimeSessionId"
+    put:
+      tags: [sessions]
+      operationId: associateRuntimeSession
+      description: Explicitly associate a runtime session with a workspace. Idempotent.
+      responses:
+        "200":
+          description: The associated runtime session.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RuntimeSession" }
+        default: { $ref: "#/components/responses/Error" }
+    delete:
+      tags: [sessions]
+      operationId: dissociateRuntimeSession
+      description: Remove an association. Idempotent.
+      responses:
+        "204":
+          description: Association removed.
+        default: { $ref: "#/components/responses/Error" }
+
 components:
   parameters:
     WorkspaceId:
@@ -364,6 +431,11 @@ components:
       schema: { type: string }
     TopicId:
       name: topicId
+      in: path
+      required: true
+      schema: { type: string }
+    RuntimeSessionId:
+      name: runtimeSessionId
       in: path
       required: true
       schema: { type: string }
@@ -1049,3 +1121,71 @@ components:
     KeyList:
       type: array
       items: { type: string }
+
+    SessionBackend:
+      x-go-type: sessions.SessionBackend
+      x-go-type-import: { path: github.com/aduverger/prunelle/server/internal/sessions }
+      type: object
+      required: [id, name, kind, enabled, capabilities, config, health]
+      additionalProperties: false
+      properties:
+        id: { type: string }
+        name: { type: string }
+        kind: { type: string, enum: [REX, HERDR, MANAGED] }
+        enabled: { type: boolean, description: False when the backend is no longer in the server configuration. }
+        capabilities: { type: array, items: { $ref: "#/components/schemas/SessionCapability" } }
+        config: { type: object, description: Non-secret backend configuration. }
+        health: { $ref: "#/components/schemas/BackendHealth" }
+
+    SessionCapability:
+      type: string
+      enum: [DISCOVER, INSPECT, SUBSCRIBE]
+
+    BackendHealth:
+      x-go-type: sessions.BackendHealth
+      x-go-type-import: { path: github.com/aduverger/prunelle/server/internal/sessions }
+      type: object
+      required: [state, error, checked_at, info]
+      additionalProperties: false
+      properties:
+        state:
+          type: string
+          enum: [CONNECTING, REACHABLE, UNREACHABLE, DISABLED]
+        error: { type: [string, "null"] }
+        checked_at: { type: [string, "null"], format: date-time }
+        info:
+          type: object
+          description: Endpoint details such as rex_version and api_revision.
+          additionalProperties: { type: string }
+
+    RuntimeSession:
+      x-go-type: sessions.RuntimeSession
+      x-go-type-import: { path: github.com/aduverger/prunelle/server/internal/sessions }
+      description: |
+        A process or terminal hosted by a session backend (for Rex, one terminal block). Not an
+        agent conversation. UNKNOWN means the backend cannot currently be observed; it does not
+        mean the process stopped.
+      type: object
+      required: [id, backend_id, backend_kind, external_id, state, label, cwd, process, local, harness_hint, capabilities, metadata, workspace_ids, suggested_workspace_ids, first_seen_at, last_seen_at, state_changed_at]
+      additionalProperties: false
+      properties:
+        id: { type: string, description: Prunelle-owned ID. }
+        backend_id: { type: string }
+        backend_kind: { type: string, enum: [REX, HERDR, MANAGED] }
+        external_id: { type: string, description: Opaque backend identifier, informational only. }
+        state: { type: string, enum: [ONLINE, OFFLINE, STOPPED, UNKNOWN] }
+        label: { type: string }
+        cwd: { type: [string, "null"] }
+        process: { type: [string, "null"], description: Foreground program name. }
+        local: { type: boolean, description: Runs on the backend's host, so cwd is a path on that machine. }
+        harness_hint: { type: [string, "null"], description: "Coding harness the runtime appears to run, e.g. pi. A hint, not an agent identity." }
+        capabilities: { type: array, items: { $ref: "#/components/schemas/SessionCapability" } }
+        metadata: { type: object, description: Backend-specific details. }
+        workspace_ids: { type: array, items: { type: string }, description: Explicit associations. }
+        suggested_workspace_ids:
+          type: array
+          items: { type: string }
+          description: Workspaces whose repositories contain the runtime's local cwd. Never applied automatically.
+        first_seen_at: { type: string, format: date-time }
+        last_seen_at: { type: string, format: date-time }
+        state_changed_at: { type: string, format: date-time }

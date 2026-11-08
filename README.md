@@ -29,6 +29,13 @@ listen = "127.0.0.1:7390"         # loopback only
 allowed_roots = ["~/code"]        # repositories must live below one of these
 allowed_logins = []               # Tailscale logins besides the machine owner
 # data_dir defaults to ~/.local/share/prunelle (Linux) or ~/Library/Application Support/Prunelle (macOS)
+
+# Optional: discover agent runtimes in Rex. Reviews work without it.
+[[session_backends]]
+name = "rex"
+kind = "REX"
+# rex_path = "rex"                # rex CLI
+# server = ""                     # rex -S value; empty = default local server
 ```
 
 Run the server and seed the demo review:
@@ -46,6 +53,8 @@ tailscale serve --bg --https=443 http://127.0.0.1:7390
 ```
 
 Requests through Tailscale Serve must come from the machine's Tailscale owner or a login in `allowed_logins`. Local processes on the server machine are trusted (see [decisions](docs/decisions.md), D2).
+
+With a session backend configured, `prunelle sessions ls` lists discovered runtimes (one per Rex terminal block) and the workspaces they suggest; `prunelle sessions link RUNTIME_ID WORKSPACE_ID` records the association explicitly.
 
 The API contract is [`server/api/openapi.yaml`](server/api/openapi.yaml). Review content is imported as a manifest: `prunelle review import REVIEW_ID manifest.json`; `prunelle fixture --print-manifest` prints a complete example.
 

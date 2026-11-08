@@ -13,6 +13,7 @@ import (
 
 	"github.com/aduverger/prunelle/server/api"
 	"github.com/aduverger/prunelle/server/internal/review"
+	"github.com/aduverger/prunelle/server/internal/sessions"
 )
 
 var statusByCode = map[string]int{
@@ -29,13 +30,13 @@ const healthPath = "/v1/health"
 
 // NewHandler returns the API handler: access check, request validation against the OpenAPI
 // document, then the generated router.
-func NewHandler(svc *review.Service, auth *Authorizer, version string) (http.Handler, error) {
+func NewHandler(reviews *review.Service, sessionSvc *sessions.Service, auth *Authorizer, version string) (http.Handler, error) {
 	spec, err := api.GetSwagger()
 	if err != nil {
 		return nil, err
 	}
 	spec.Servers = nil // validate paths regardless of the host the server is reached through
-	strict := api.NewStrictHandlerWithOptions(&handlers{svc: svc, version: version}, nil, api.StrictHTTPServerOptions{
+	strict := api.NewStrictHandlerWithOptions(&handlers{svc: reviews, sessions: sessionSvc, version: version}, nil, api.StrictHTTPServerOptions{
 		RequestErrorHandlerFunc:  writeRequestError,
 		ResponseErrorHandlerFunc: writeResponseError,
 	})
@@ -87,8 +88,9 @@ func writeResponseError(w http.ResponseWriter, r *http.Request, err error) {
 }
 
 type handlers struct {
-	svc     *review.Service
-	version string
+	svc      *review.Service
+	sessions *sessions.Service
+	version  string
 }
 
 var _ api.StrictServerInterface = (*handlers)(nil)
@@ -205,4 +207,28 @@ func (h *handlers) GetEvidence(ctx context.Context, req api.GetEvidenceRequestOb
 func (h *handlers) ListAttention(ctx context.Context, req api.ListAttentionRequestObject) (api.ListAttentionResponseObject, error) {
 	signals, err := h.svc.ListAttention(ctx, req.ReviewId)
 	return api.ListAttention200JSONResponse(signals), err
+}
+
+func (h *handlers) ListSessionBackends(ctx context.Context, _ api.ListSessionBackendsRequestObject) (api.ListSessionBackendsResponseObject, error) {
+	backends, err := h.sessions.ListBackends(ctx)
+	return api.ListSessionBackends200JSONResponse(backends), err
+}
+
+func (h *handlers) ListRuntimeSessions(ctx context.Context, req api.ListRuntimeSessionsRequestObject) (api.ListRuntimeSessionsResponseObject, error) {
+	runtimes, err := h.sessions.ListRuntimeSessions(ctx, req.Params.WorkspaceId)
+	return api.ListRuntimeSessions200JSONResponse(runtimes), err
+}
+
+func (h *handlers) GetRuntimeSession(ctx context.Context, req api.GetRuntimeSessionRequestObject) (api.GetRuntimeSessionResponseObject, error) {
+	runtime, err := h.sessions.GetRuntimeSession(ctx, req.RuntimeSessionId)
+	return api.GetRuntimeSession200JSONResponse(runtime), err
+}
+
+func (h *handlers) AssociateRuntimeSession(ctx context.Context, req api.AssociateRuntimeSessionRequestObject) (api.AssociateRuntimeSessionResponseObject, error) {
+	runtime, err := h.sessions.Associate(ctx, req.WorkspaceId, req.RuntimeSessionId)
+	return api.AssociateRuntimeSession200JSONResponse(runtime), err
+}
+
+func (h *handlers) DissociateRuntimeSession(ctx context.Context, req api.DissociateRuntimeSessionRequestObject) (api.DissociateRuntimeSessionResponseObject, error) {
+	return api.DissociateRuntimeSession204Response{}, h.sessions.Dissociate(ctx, req.WorkspaceId, req.RuntimeSessionId)
 }

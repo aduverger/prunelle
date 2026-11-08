@@ -20,6 +20,7 @@ import (
 	"github.com/aduverger/prunelle/server/internal/fixture"
 	"github.com/aduverger/prunelle/server/internal/httpapi"
 	"github.com/aduverger/prunelle/server/internal/review"
+	"github.com/aduverger/prunelle/server/internal/sessions"
 	"github.com/aduverger/prunelle/server/internal/store"
 )
 
@@ -31,10 +32,11 @@ type testServer struct {
 	client   *api.ClientWithResponses
 	url      string
 	reposDir string
+	sessions *sessions.Service
 }
 
 // newTestServer serves the API and returns a client whose responses are validated against openapi.yaml.
-func newTestServer(t *testing.T, allowedLogins ...string) *testServer {
+func newTestServer(t *testing.T, allowedLogins []string, backends ...sessions.Registration) *testServer {
 	t.Helper()
 	ctx := context.Background()
 	root, err := filepath.EvalSymlinks(t.TempDir())
@@ -47,7 +49,12 @@ func newTestServer(t *testing.T, allowedLogins ...string) *testServer {
 	}
 	t.Cleanup(func() { db.Close() })
 	reposDir := filepath.Join(root, "repos")
-	handler, err := httpapi.NewHandler(review.NewService(db, []string{reposDir}), httpapi.NewAuthorizer(allowedLogins, ownerLookup), "test")
+	reviews := review.NewService(db, []string{reposDir})
+	sessionSvc, err := sessions.NewService(ctx, db, reviews, backends)
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler, err := httpapi.NewHandler(reviews, sessionSvc, httpapi.NewAuthorizer(allowedLogins, ownerLookup), "test")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -68,7 +75,7 @@ func newTestServer(t *testing.T, allowedLogins ...string) *testServer {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return &testServer{client: client, url: srv.URL, reposDir: reposDir}
+	return &testServer{client: client, url: srv.URL, reposDir: reposDir, sessions: sessionSvc}
 }
 
 type validatingTransport struct {
@@ -144,7 +151,7 @@ func (s *testServer) seed(t *testing.T) (review.Review, review.Revision, review.
 
 func TestFixtureReviewOverHTTP(t *testing.T) {
 	ctx := context.Background()
-	s := newTestServer(t)
+	s := newTestServer(t, nil)
 	rv, revision, imported := s.seed(t)
 
 	health := must(s.client.GetHealthWithResponse(ctx))
@@ -199,7 +206,7 @@ func TestFixtureReviewOverHTTP(t *testing.T) {
 
 func TestErrorsUseEnvelope(t *testing.T) {
 	ctx := context.Background()
-	s := newTestServer(t)
+	s := newTestServer(t, nil)
 	resp := must(s.client.GetReviewWithResponse(ctx, "rvw_missing"))
 	expectStatus(t, resp.StatusCode(), http.StatusNotFound, resp.Body)
 	if resp.JSONDefault == nil || resp.JSONDefault.Error.Code != "NOT_FOUND" {
@@ -209,7 +216,7 @@ func TestErrorsUseEnvelope(t *testing.T) {
 
 func TestRequestValidationRejectsUnknownManifestFields(t *testing.T) {
 	ctx := context.Background()
-	s := newTestServer(t)
+	s := newTestServer(t, nil)
 	rv, _, _ := s.seed(t)
 
 	body := `{"manifest": {"author": {"kind": "AGENT", "id": "pi:x"}, "findings": [
@@ -223,7 +230,7 @@ func TestRequestValidationRejectsUnknownManifestFields(t *testing.T) {
 
 func TestInvalidManifestReportsEveryProblem(t *testing.T) {
 	ctx := context.Background()
-	s := newTestServer(t)
+	s := newTestServer(t, nil)
 	rv, _, _ := s.seed(t)
 	m := fixture.Manifest()
 	m.Topics[0].Changes = []string{"C-missing"}
@@ -236,7 +243,7 @@ func TestInvalidManifestReportsEveryProblem(t *testing.T) {
 }
 
 func TestAccessPolicy(t *testing.T) {
-	s := newTestServer(t, "friend@example.com")
+	s := newTestServer(t, []string{"friend@example.com"})
 	cases := []struct {
 		name       string
 		path       string

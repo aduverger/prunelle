@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/aduverger/prunelle/server/internal/git"
+	"github.com/aduverger/prunelle/server/internal/store"
 )
 
 func (s *Service) CreateWorkspace(ctx context.Context, req CreateWorkspaceRequest) (Workspace, error) {
@@ -18,7 +19,7 @@ func (s *Service) CreateWorkspace(ctx context.Context, req CreateWorkspaceReques
 		return Workspace{}, invalid("a workspace needs at least one repository")
 	}
 	now := s.now()
-	ws := Workspace{ID: newID("ws"), Name: name, CreatedAt: now, UpdatedAt: now}
+	ws := Workspace{ID: store.NewID("ws"), Name: name, CreatedAt: now, UpdatedAt: now}
 	labels, roots := map[string]bool{}, map[string]bool{}
 	for _, r := range req.Repositories {
 		label := strings.TrimSpace(r.Label)
@@ -38,19 +39,19 @@ func (s *Service) CreateWorkspace(ctx context.Context, req CreateWorkspaceReques
 		labels[label], roots[root] = true, true
 		includeUntracked := r.IncludeUntracked == nil || *r.IncludeUntracked
 		ws.Repositories = append(ws.Repositories, Repository{
-			ID: newID("repo"), WorkspaceID: ws.ID, Label: label, RootPath: root, BaseRef: r.BaseRef, IncludeUntracked: includeUntracked,
+			ID: store.NewID("repo"), WorkspaceID: ws.ID, Label: label, RootPath: root, BaseRef: r.BaseRef, IncludeUntracked: includeUntracked,
 		})
 	}
 	err := s.db.Write(ctx, func(tx *sql.Tx) error {
 		if _, err := tx.ExecContext(ctx, `INSERT INTO workspaces (id, name, created_at, updated_at) VALUES (?, ?, ?, ?)`,
-			ws.ID, ws.Name, formatTime(now), formatTime(now)); err != nil {
+			ws.ID, ws.Name, store.FormatTime(now), store.FormatTime(now)); err != nil {
 			return err
 		}
 		for _, r := range ws.Repositories {
 			if _, err := tx.ExecContext(ctx, `INSERT INTO repositories
 				(id, workspace_id, label, root_path, base_ref, include_untracked, created_at, updated_at)
 				VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-				r.ID, r.WorkspaceID, r.Label, r.RootPath, r.BaseRef, r.IncludeUntracked, formatTime(now), formatTime(now)); err != nil {
+				r.ID, r.WorkspaceID, r.Label, r.RootPath, r.BaseRef, r.IncludeUntracked, store.FormatTime(now), store.FormatTime(now)); err != nil {
 				return err
 			}
 		}
@@ -83,7 +84,7 @@ func (s *Service) GetWorkspace(ctx context.Context, id string) (Workspace, error
 	if err != nil {
 		return Workspace{}, err
 	}
-	ws.CreatedAt, ws.UpdatedAt = parseTime(created), parseTime(updated)
+	ws.CreatedAt, ws.UpdatedAt = store.ParseTime(created), store.ParseTime(updated)
 	ws.Repositories, err = s.repositories(ctx, id)
 	return ws, err
 }

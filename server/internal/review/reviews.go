@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/aduverger/prunelle/server/internal/git"
+	"github.com/aduverger/prunelle/server/internal/store"
 )
 
 func (s *Service) CreateReview(ctx context.Context, req CreateReviewRequest) (Review, error) {
@@ -21,11 +22,11 @@ func (s *Service) CreateReview(ctx context.Context, req CreateReviewRequest) (Re
 		return Review{}, err
 	}
 	now := s.now()
-	r := Review{ID: newID("rvw"), WorkspaceID: req.WorkspaceID, Title: title, Description: req.Description,
+	r := Review{ID: store.NewID("rvw"), WorkspaceID: req.WorkspaceID, Title: title, Description: req.Description,
 		Status: "OPEN", CreatedAt: now, UpdatedAt: now}
 	err := s.db.Write(ctx, func(tx *sql.Tx) error {
 		_, err := tx.ExecContext(ctx, `INSERT INTO reviews (id, workspace_id, title, description, status, created_at, updated_at)
-			VALUES (?, ?, ?, ?, ?, ?, ?)`, r.ID, r.WorkspaceID, r.Title, r.Description, r.Status, formatTime(now), formatTime(now))
+			VALUES (?, ?, ?, ?, ?, ?, ?)`, r.ID, r.WorkspaceID, r.Title, r.Description, r.Status, store.FormatTime(now), store.FormatTime(now))
 		return err
 	})
 	return r, err
@@ -41,7 +42,7 @@ func scanReview(scan func(...any) error) (Review, error) {
 		return Review{}, err
 	}
 	r.CurrentRevisionID = stringPtr(current)
-	r.CreatedAt, r.UpdatedAt = parseTime(created), parseTime(updated)
+	r.CreatedAt, r.UpdatedAt = store.ParseTime(created), store.ParseTime(updated)
 	return r, nil
 }
 
@@ -98,7 +99,7 @@ func (s *Service) CaptureRevision(ctx context.Context, reviewID string) (Revisio
 	}
 
 	now := s.now()
-	revision := Revision{ID: newID("rev"), ReviewID: reviewID, CapturedAt: now, Status: "CONSISTENT"}
+	revision := Revision{ID: store.NewID("rev"), ReviewID: reviewID, CapturedAt: now, Status: "CONSISTENT"}
 	fingerprint := sha256.New()
 	for i, snap := range snapshots {
 		fmt.Fprintf(fingerprint, "%s\x00%s\x00", repos[i].ID, snap.Fingerprint)
@@ -114,7 +115,7 @@ func (s *Service) CaptureRevision(ctx context.Context, reviewID string) (Revisio
 			return err
 		}
 		if _, err := tx.ExecContext(ctx, `INSERT INTO revisions (id, review_id, ordinal, captured_at, fingerprint, status)
-			VALUES (?, ?, ?, ?, ?, ?)`, revision.ID, reviewID, revision.Ordinal, formatTime(now), revision.Fingerprint, revision.Status); err != nil {
+			VALUES (?, ?, ?, ?, ?, ?)`, revision.ID, reviewID, revision.Ordinal, store.FormatTime(now), revision.Fingerprint, revision.Status); err != nil {
 			return err
 		}
 		for i, snap := range snapshots {
@@ -123,7 +124,7 @@ func (s *Service) CaptureRevision(ctx context.Context, reviewID string) (Revisio
 			}
 		}
 		_, err := tx.ExecContext(ctx, `UPDATE reviews SET current_revision_id = ?, updated_at = ? WHERE id = ?`,
-			revision.ID, formatTime(now), reviewID)
+			revision.ID, store.FormatTime(now), reviewID)
 		return err
 	})
 	if err != nil {
@@ -141,7 +142,7 @@ func insertSnapshot(ctx context.Context, tx *sql.Tx, revisionID, repositoryID st
 	if err != nil {
 		return err
 	}
-	snapshotID := newID("snap")
+	snapshotID := store.NewID("snap")
 	if _, err := tx.ExecContext(ctx, `INSERT INTO repo_snapshots
 		(id, revision_id, repository_id, base_ref, base_sha, head_sha, branch, staged_count, unstaged_count, untracked_count, fingerprint, status, warnings)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -209,7 +210,7 @@ func (s *Service) GetRevision(ctx context.Context, id string) (Revision, error) 
 	if err != nil {
 		return Revision{}, err
 	}
-	r.CapturedAt = parseTime(captured)
+	r.CapturedAt = store.ParseTime(captured)
 	rows, err := s.db.Reader().QueryContext(ctx, `SELECT s.repository_id, p.label, s.base_ref, s.base_sha, s.head_sha, s.branch,
 			s.staged_count, s.unstaged_count, s.untracked_count, s.status, s.warnings,
 			(SELECT COUNT(*) FROM snapshot_files f WHERE f.snapshot_id = s.id)

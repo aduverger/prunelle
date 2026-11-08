@@ -20,6 +20,7 @@ import (
 	"strings"
 
 	"github.com/aduverger/prunelle/server/internal/review"
+	"github.com/aduverger/prunelle/server/internal/sessions"
 	"github.com/getkin/kin-openapi/openapi3"
 	"github.com/oapi-codegen/runtime"
 )
@@ -153,11 +154,35 @@ func (e Provenance) Valid() bool {
 	}
 }
 
+// Defines values for SessionCapability.
+const (
+	DISCOVER  SessionCapability = "DISCOVER"
+	INSPECT   SessionCapability = "INSPECT"
+	SUBSCRIBE SessionCapability = "SUBSCRIBE"
+)
+
+// Valid indicates whether the value is a known member of the SessionCapability enum.
+func (e SessionCapability) Valid() bool {
+	switch e {
+	case DISCOVER:
+		return true
+	case INSPECT:
+		return true
+	case SUBSCRIBE:
+		return true
+	default:
+		return false
+	}
+}
+
 // AttentionSignal defines model for AttentionSignal.
 type AttentionSignal = review.AttentionSignal
 
 // Author defines model for Author.
 type Author = review.Author
+
+// BackendHealth defines model for BackendHealth.
+type BackendHealth = sessions.BackendHealth
 
 // CodeRange defines model for CodeRange.
 type CodeRange = review.CodeRange
@@ -259,6 +284,17 @@ type Review = review.Review
 // Revision defines model for Revision.
 type Revision = review.Revision
 
+// RuntimeSession A process or terminal hosted by a session backend (for Rex, one terminal block). Not an
+// agent conversation. UNKNOWN means the backend cannot currently be observed; it does not
+// mean the process stopped.
+type RuntimeSession = sessions.RuntimeSession
+
+// SessionBackend defines model for SessionBackend.
+type SessionBackend = sessions.SessionBackend
+
+// SessionCapability defines model for SessionCapability.
+type SessionCapability string
+
 // SourceChanges defines model for SourceChanges.
 type SourceChanges = review.SourceChanges
 
@@ -273,6 +309,9 @@ type ReviewId = string
 
 // RevisionId defines model for RevisionId.
 type RevisionId = string
+
+// RuntimeSessionId defines model for RuntimeSessionId.
+type RuntimeSessionId = string
 
 // TopicId defines model for TopicId.
 type TopicId = string
@@ -294,6 +333,12 @@ type ListChangesParams struct {
 type GetFileParams struct {
 	RepositoryId string `form:"repository_id" json:"repository_id"`
 	Path         string `form:"path" json:"path"`
+}
+
+// ListRuntimeSessionsParams defines parameters for ListRuntimeSessions.
+type ListRuntimeSessionsParams struct {
+	// WorkspaceId Only runtime sessions explicitly associated with this workspace.
+	WorkspaceId *string `form:"workspace_id,omitempty" json:"workspace_id,omitempty"`
 }
 
 // CreateReviewJSONRequestBody defines body for CreateReview for application/json ContentType.
@@ -455,6 +500,17 @@ type ClientInterface interface {
 	// Every changed file of the revision with the topics it belongs to. Files belonging to no topic are flagged unassigned.
 	GetSourceChanges(ctx context.Context, revisionId RevisionId, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// ListRuntimeSessions performs a GET /v1/runtime-sessions (the `ListRuntimeSessions` operationId) request.
+	ListRuntimeSessions(ctx context.Context, params *ListRuntimeSessionsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetRuntimeSession performs a GET /v1/runtime-sessions/{runtimeSessionId} (the `GetRuntimeSession` operationId) request.
+	GetRuntimeSession(ctx context.Context, runtimeSessionId RuntimeSessionId, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListSessionBackends performs a GET /v1/session-backends (the `ListSessionBackends` operationId) request.
+	//
+	// Session backends from the server configuration, with their current health. Backends are configured in the server config file, never through the API.
+	ListSessionBackends(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// GetTopic performs a GET /v1/topics/{topicId} (the `GetTopic` operationId) request.
 	GetTopic(ctx context.Context, topicId TopicId, reqEditors ...RequestEditorFn) (*http.Response, error)
 
@@ -478,6 +534,16 @@ type ClientInterface interface {
 
 	// GetWorkspace performs a GET /v1/workspaces/{workspaceId} (the `GetWorkspace` operationId) request.
 	GetWorkspace(ctx context.Context, workspaceId WorkspaceId, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// DissociateRuntimeSession performs a DELETE /v1/workspaces/{workspaceId}/runtime-sessions/{runtimeSessionId} (the `DissociateRuntimeSession` operationId) request.
+	//
+	// Remove an association. Idempotent.
+	DissociateRuntimeSession(ctx context.Context, workspaceId WorkspaceId, runtimeSessionId RuntimeSessionId, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// AssociateRuntimeSession performs a PUT /v1/workspaces/{workspaceId}/runtime-sessions/{runtimeSessionId} (the `AssociateRuntimeSession` operationId) request.
+	//
+	// Explicitly associate a runtime session with a workspace. Idempotent.
+	AssociateRuntimeSession(ctx context.Context, workspaceId WorkspaceId, runtimeSessionId RuntimeSessionId, reqEditors ...RequestEditorFn) (*http.Response, error)
 }
 
 // GetEvidence performs a GET /v1/evidence/{evidenceId} (the `GetEvidence` operationId) request.
@@ -756,6 +822,47 @@ func (c *Client) GetSourceChanges(ctx context.Context, revisionId RevisionId, re
 	return c.Client.Do(req)
 }
 
+// ListRuntimeSessions performs a GET /v1/runtime-sessions (the `ListRuntimeSessions` operationId) request.
+func (c *Client) ListRuntimeSessions(ctx context.Context, params *ListRuntimeSessionsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListRuntimeSessionsRequest(c.Server, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetRuntimeSession performs a GET /v1/runtime-sessions/{runtimeSessionId} (the `GetRuntimeSession` operationId) request.
+func (c *Client) GetRuntimeSession(ctx context.Context, runtimeSessionId RuntimeSessionId, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetRuntimeSessionRequest(c.Server, runtimeSessionId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ListSessionBackends performs a GET /v1/session-backends (the `ListSessionBackends` operationId) request.
+//
+// Session backends from the server configuration, with their current health. Backends are configured in the server config file, never through the API.
+func (c *Client) ListSessionBackends(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListSessionBackendsRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 // GetTopic performs a GET /v1/topics/{topicId} (the `GetTopic` operationId) request.
 func (c *Client) GetTopic(ctx context.Context, topicId TopicId, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewGetTopicRequest(c.Server, topicId)
@@ -830,6 +937,36 @@ func (c *Client) CreateWorkspace(ctx context.Context, body CreateWorkspaceJSONRe
 // GetWorkspace performs a GET /v1/workspaces/{workspaceId} (the `GetWorkspace` operationId) request.
 func (c *Client) GetWorkspace(ctx context.Context, workspaceId WorkspaceId, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewGetWorkspaceRequest(c.Server, workspaceId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// DissociateRuntimeSession performs a DELETE /v1/workspaces/{workspaceId}/runtime-sessions/{runtimeSessionId} (the `DissociateRuntimeSession` operationId) request.
+//
+// Remove an association. Idempotent.
+func (c *Client) DissociateRuntimeSession(ctx context.Context, workspaceId WorkspaceId, runtimeSessionId RuntimeSessionId, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDissociateRuntimeSessionRequest(c.Server, workspaceId, runtimeSessionId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// AssociateRuntimeSession performs a PUT /v1/workspaces/{workspaceId}/runtime-sessions/{runtimeSessionId} (the `AssociateRuntimeSession` operationId) request.
+//
+// Explicitly associate a runtime session with a workspace. Idempotent.
+func (c *Client) AssociateRuntimeSession(ctx context.Context, workspaceId WorkspaceId, runtimeSessionId RuntimeSessionId, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewAssociateRuntimeSessionRequest(c.Server, workspaceId, runtimeSessionId)
 	if err != nil {
 		return nil, err
 	}
@@ -1542,6 +1679,121 @@ func NewGetSourceChangesRequest(server string, revisionId RevisionId) (*http.Req
 	return req, nil
 }
 
+// NewListRuntimeSessionsRequest constructs an http.Request for the ListRuntimeSessions method
+func NewListRuntimeSessionsRequest(server string, params *ListRuntimeSessionsParams) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/runtime-sessions")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.WorkspaceId != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "workspace_id", *params.WorkspaceId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetRuntimeSessionRequest constructs an http.Request for the GetRuntimeSession method
+func NewGetRuntimeSessionRequest(server string, runtimeSessionId RuntimeSessionId) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "runtimeSessionId", runtimeSessionId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/runtime-sessions/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewListSessionBackendsRequest constructs an http.Request for the ListSessionBackends method
+func NewListSessionBackendsRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/session-backends")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewGetTopicRequest constructs an http.Request for the GetTopic method
 func NewGetTopicRequest(server string, topicId TopicId) (*http.Request, error) {
 	var err error
@@ -1711,6 +1963,88 @@ func NewGetWorkspaceRequest(server string, workspaceId WorkspaceId) (*http.Reque
 	return req, nil
 }
 
+// NewDissociateRuntimeSessionRequest constructs an http.Request for the DissociateRuntimeSession method
+func NewDissociateRuntimeSessionRequest(server string, workspaceId WorkspaceId, runtimeSessionId RuntimeSessionId) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "workspaceId", workspaceId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "runtimeSessionId", runtimeSessionId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/workspaces/%s/runtime-sessions/%s", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodDelete, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewAssociateRuntimeSessionRequest constructs an http.Request for the AssociateRuntimeSession method
+func NewAssociateRuntimeSessionRequest(server string, workspaceId WorkspaceId, runtimeSessionId RuntimeSessionId) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "workspaceId", workspaceId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "runtimeSessionId", runtimeSessionId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/workspaces/%s/runtime-sessions/%s", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPut, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 func (c *Client) applyEditors(ctx context.Context, req *http.Request, additionalEditors []RequestEditorFn) error {
 	for _, r := range c.RequestEditors {
 		if err := r(ctx, req); err != nil {
@@ -1867,6 +2201,23 @@ type ClientWithResponsesInterface interface {
 	// Returns a wrapper object for the known response body format(s).
 	GetSourceChangesWithResponse(ctx context.Context, revisionId RevisionId, reqEditors ...RequestEditorFn) (*GetSourceChangesResponse, error)
 
+	// ListRuntimeSessionsWithResponse performs a GET /v1/runtime-sessions (the `ListRuntimeSessions` operationId) request.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	ListRuntimeSessionsWithResponse(ctx context.Context, params *ListRuntimeSessionsParams, reqEditors ...RequestEditorFn) (*ListRuntimeSessionsResponse, error)
+
+	// GetRuntimeSessionWithResponse performs a GET /v1/runtime-sessions/{runtimeSessionId} (the `GetRuntimeSession` operationId) request.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	GetRuntimeSessionWithResponse(ctx context.Context, runtimeSessionId RuntimeSessionId, reqEditors ...RequestEditorFn) (*GetRuntimeSessionResponse, error)
+
+	// ListSessionBackendsWithResponse performs a GET /v1/session-backends (the `ListSessionBackends` operationId) request.
+	//
+	// Session backends from the server configuration, with their current health. Backends are configured in the server config file, never through the API.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	ListSessionBackendsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListSessionBackendsResponse, error)
+
 	// GetTopicWithResponse performs a GET /v1/topics/{topicId} (the `GetTopic` operationId) request.
 	//
 	// Returns a wrapper object for the known response body format(s).
@@ -1900,6 +2251,20 @@ type ClientWithResponsesInterface interface {
 	//
 	// Returns a wrapper object for the known response body format(s).
 	GetWorkspaceWithResponse(ctx context.Context, workspaceId WorkspaceId, reqEditors ...RequestEditorFn) (*GetWorkspaceResponse, error)
+
+	// DissociateRuntimeSessionWithResponse performs a DELETE /v1/workspaces/{workspaceId}/runtime-sessions/{runtimeSessionId} (the `DissociateRuntimeSession` operationId) request.
+	//
+	// Remove an association. Idempotent.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	DissociateRuntimeSessionWithResponse(ctx context.Context, workspaceId WorkspaceId, runtimeSessionId RuntimeSessionId, reqEditors ...RequestEditorFn) (*DissociateRuntimeSessionResponse, error)
+
+	// AssociateRuntimeSessionWithResponse performs a PUT /v1/workspaces/{workspaceId}/runtime-sessions/{runtimeSessionId} (the `AssociateRuntimeSession` operationId) request.
+	//
+	// Explicitly associate a runtime session with a workspace. Idempotent.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	AssociateRuntimeSessionWithResponse(ctx context.Context, workspaceId WorkspaceId, runtimeSessionId RuntimeSessionId, reqEditors ...RequestEditorFn) (*AssociateRuntimeSessionResponse, error)
 }
 
 type GetEvidenceResponse struct {
@@ -2759,6 +3124,150 @@ func (r GetSourceChangesResponse) ContentType() string {
 	return ""
 }
 
+type ListRuntimeSessionsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *[]RuntimeSession
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *Error
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ListRuntimeSessionsResponse) GetJSON200() *[]RuntimeSession {
+	return r.JSON200
+}
+
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r ListRuntimeSessionsResponse) GetJSONDefault() *Error {
+	return r.JSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r ListRuntimeSessionsResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ListRuntimeSessionsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListRuntimeSessionsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListRuntimeSessionsResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type GetRuntimeSessionResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *RuntimeSession
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *Error
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetRuntimeSessionResponse) GetJSON200() *RuntimeSession {
+	return r.JSON200
+}
+
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r GetRuntimeSessionResponse) GetJSONDefault() *Error {
+	return r.JSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r GetRuntimeSessionResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetRuntimeSessionResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetRuntimeSessionResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetRuntimeSessionResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type ListSessionBackendsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *[]SessionBackend
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *Error
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ListSessionBackendsResponse) GetJSON200() *[]SessionBackend {
+	return r.JSON200
+}
+
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r ListSessionBackendsResponse) GetJSONDefault() *Error {
+	return r.JSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r ListSessionBackendsResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ListSessionBackendsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListSessionBackendsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListSessionBackendsResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 type GetTopicResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -2999,6 +3508,95 @@ func (r GetWorkspaceResponse) ContentType() string {
 	return ""
 }
 
+type DissociateRuntimeSessionResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *Error
+}
+
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r DissociateRuntimeSessionResponse) GetJSONDefault() *Error {
+	return r.JSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r DissociateRuntimeSessionResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r DissociateRuntimeSessionResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r DissociateRuntimeSessionResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r DissociateRuntimeSessionResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type AssociateRuntimeSessionResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *RuntimeSession
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *Error
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r AssociateRuntimeSessionResponse) GetJSON200() *RuntimeSession {
+	return r.JSON200
+}
+
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r AssociateRuntimeSessionResponse) GetJSONDefault() *Error {
+	return r.JSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r AssociateRuntimeSessionResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r AssociateRuntimeSessionResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r AssociateRuntimeSessionResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r AssociateRuntimeSessionResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 // GetEvidenceWithResponse performs a GET /v1/evidence/{evidenceId} (the `GetEvidence` operationId) request.
 //
 // Returns a wrapper object for the known response body format(s).
@@ -3231,6 +3829,41 @@ func (c *ClientWithResponses) GetSourceChangesWithResponse(ctx context.Context, 
 	return ParseGetSourceChangesResponse(rsp)
 }
 
+// ListRuntimeSessionsWithResponse performs a GET /v1/runtime-sessions (the `ListRuntimeSessions` operationId) request.
+//
+// Returns a wrapper object for the known response body format(s).
+func (c *ClientWithResponses) ListRuntimeSessionsWithResponse(ctx context.Context, params *ListRuntimeSessionsParams, reqEditors ...RequestEditorFn) (*ListRuntimeSessionsResponse, error) {
+	rsp, err := c.ListRuntimeSessions(ctx, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListRuntimeSessionsResponse(rsp)
+}
+
+// GetRuntimeSessionWithResponse performs a GET /v1/runtime-sessions/{runtimeSessionId} (the `GetRuntimeSession` operationId) request.
+//
+// Returns a wrapper object for the known response body format(s).
+func (c *ClientWithResponses) GetRuntimeSessionWithResponse(ctx context.Context, runtimeSessionId RuntimeSessionId, reqEditors ...RequestEditorFn) (*GetRuntimeSessionResponse, error) {
+	rsp, err := c.GetRuntimeSession(ctx, runtimeSessionId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetRuntimeSessionResponse(rsp)
+}
+
+// ListSessionBackendsWithResponse performs a GET /v1/session-backends (the `ListSessionBackends` operationId) request.
+//
+// Session backends from the server configuration, with their current health. Backends are configured in the server config file, never through the API.
+//
+// Returns a wrapper object for the known response body format(s).
+func (c *ClientWithResponses) ListSessionBackendsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListSessionBackendsResponse, error) {
+	rsp, err := c.ListSessionBackends(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListSessionBackendsResponse(rsp)
+}
+
 // GetTopicWithResponse performs a GET /v1/topics/{topicId} (the `GetTopic` operationId) request.
 //
 // Returns a wrapper object for the known response body format(s).
@@ -3299,6 +3932,32 @@ func (c *ClientWithResponses) GetWorkspaceWithResponse(ctx context.Context, work
 		return nil, err
 	}
 	return ParseGetWorkspaceResponse(rsp)
+}
+
+// DissociateRuntimeSessionWithResponse performs a DELETE /v1/workspaces/{workspaceId}/runtime-sessions/{runtimeSessionId} (the `DissociateRuntimeSession` operationId) request.
+//
+// Remove an association. Idempotent.
+//
+// Returns a wrapper object for the known response body format(s).
+func (c *ClientWithResponses) DissociateRuntimeSessionWithResponse(ctx context.Context, workspaceId WorkspaceId, runtimeSessionId RuntimeSessionId, reqEditors ...RequestEditorFn) (*DissociateRuntimeSessionResponse, error) {
+	rsp, err := c.DissociateRuntimeSession(ctx, workspaceId, runtimeSessionId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDissociateRuntimeSessionResponse(rsp)
+}
+
+// AssociateRuntimeSessionWithResponse performs a PUT /v1/workspaces/{workspaceId}/runtime-sessions/{runtimeSessionId} (the `AssociateRuntimeSession` operationId) request.
+//
+// Explicitly associate a runtime session with a workspace. Idempotent.
+//
+// Returns a wrapper object for the known response body format(s).
+func (c *ClientWithResponses) AssociateRuntimeSessionWithResponse(ctx context.Context, workspaceId WorkspaceId, runtimeSessionId RuntimeSessionId, reqEditors ...RequestEditorFn) (*AssociateRuntimeSessionResponse, error) {
+	rsp, err := c.AssociateRuntimeSession(ctx, workspaceId, runtimeSessionId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseAssociateRuntimeSessionResponse(rsp)
 }
 
 // ParseGetEvidenceResponse parses an HTTP response from a GetEvidenceWithResponse call
@@ -3888,6 +4547,105 @@ func ParseGetSourceChangesResponse(rsp *http.Response) (*GetSourceChangesRespons
 	return response, nil
 }
 
+// ParseListRuntimeSessionsResponse parses an HTTP response from a ListRuntimeSessionsWithResponse call
+func ParseListRuntimeSessionsResponse(rsp *http.Response) (*ListRuntimeSessionsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListRuntimeSessionsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest []RuntimeSession
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetRuntimeSessionResponse parses an HTTP response from a GetRuntimeSessionWithResponse call
+func ParseGetRuntimeSessionResponse(rsp *http.Response) (*GetRuntimeSessionResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetRuntimeSessionResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest RuntimeSession
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListSessionBackendsResponse parses an HTTP response from a ListSessionBackendsWithResponse call
+func ParseListSessionBackendsResponse(rsp *http.Response) (*ListSessionBackendsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListSessionBackendsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest []SessionBackend
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
 // ParseGetTopicResponse parses an HTTP response from a GetTopicWithResponse call
 func ParseGetTopicResponse(rsp *http.Response) (*GetTopicResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -4053,6 +4811,68 @@ func ParseGetWorkspaceResponse(rsp *http.Response) (*GetWorkspaceResponse, error
 	return response, nil
 }
 
+// ParseDissociateRuntimeSessionResponse parses an HTTP response from a DissociateRuntimeSessionWithResponse call
+func ParseDissociateRuntimeSessionResponse(rsp *http.Response) (*DissociateRuntimeSessionResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &DissociateRuntimeSessionResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case rsp.StatusCode == 204:
+		break // No content-type
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseAssociateRuntimeSessionResponse parses an HTTP response from a AssociateRuntimeSessionWithResponse call
+func ParseAssociateRuntimeSessionResponse(rsp *http.Response) (*AssociateRuntimeSessionResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &AssociateRuntimeSessionResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest RuntimeSession
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
 
@@ -4110,6 +4930,15 @@ type ServerInterface interface {
 	// (GET /v1/revisions/{revisionId}/source-changes)
 	GetSourceChanges(w http.ResponseWriter, r *http.Request, revisionId RevisionId)
 
+	// (GET /v1/runtime-sessions)
+	ListRuntimeSessions(w http.ResponseWriter, r *http.Request, params ListRuntimeSessionsParams)
+
+	// (GET /v1/runtime-sessions/{runtimeSessionId})
+	GetRuntimeSession(w http.ResponseWriter, r *http.Request, runtimeSessionId RuntimeSessionId)
+
+	// (GET /v1/session-backends)
+	ListSessionBackends(w http.ResponseWriter, r *http.Request)
+
 	// (GET /v1/topics/{topicId})
 	GetTopic(w http.ResponseWriter, r *http.Request, topicId TopicId)
 
@@ -4124,6 +4953,12 @@ type ServerInterface interface {
 
 	// (GET /v1/workspaces/{workspaceId})
 	GetWorkspace(w http.ResponseWriter, r *http.Request, workspaceId WorkspaceId)
+
+	// (DELETE /v1/workspaces/{workspaceId}/runtime-sessions/{runtimeSessionId})
+	DissociateRuntimeSession(w http.ResponseWriter, r *http.Request, workspaceId WorkspaceId, runtimeSessionId RuntimeSessionId)
+
+	// (PUT /v1/workspaces/{workspaceId}/runtime-sessions/{runtimeSessionId})
+	AssociateRuntimeSession(w http.ResponseWriter, r *http.Request, workspaceId WorkspaceId, runtimeSessionId RuntimeSessionId)
 }
 
 // ServerInterfaceWrapper converts contexts to parameters.
@@ -4631,6 +5466,79 @@ func (siw *ServerInterfaceWrapper) GetSourceChanges(w http.ResponseWriter, r *ht
 	handler.ServeHTTP(w, r)
 }
 
+// ListRuntimeSessions operation middleware
+func (siw *ServerInterfaceWrapper) ListRuntimeSessions(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListRuntimeSessionsParams
+
+	// ------------- Optional query parameter "workspace_id" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "workspace_id", r.URL.Query(), &params.WorkspaceId, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "workspace_id"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "workspace_id", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListRuntimeSessions(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetRuntimeSession operation middleware
+func (siw *ServerInterfaceWrapper) GetRuntimeSession(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "runtimeSessionId" -------------
+	var runtimeSessionId RuntimeSessionId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "runtimeSessionId", r.PathValue("runtimeSessionId"), &runtimeSessionId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "runtimeSessionId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetRuntimeSession(w, r, runtimeSessionId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListSessionBackends operation middleware
+func (siw *ServerInterfaceWrapper) ListSessionBackends(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListSessionBackends(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetTopic operation middleware
 func (siw *ServerInterfaceWrapper) GetTopic(w http.ResponseWriter, r *http.Request) {
 
@@ -4728,6 +5636,76 @@ func (siw *ServerInterfaceWrapper) GetWorkspace(w http.ResponseWriter, r *http.R
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetWorkspace(w, r, workspaceId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DissociateRuntimeSession operation middleware
+func (siw *ServerInterfaceWrapper) DissociateRuntimeSession(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "workspaceId" -------------
+	var workspaceId WorkspaceId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "workspaceId", r.PathValue("workspaceId"), &workspaceId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "workspaceId", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "runtimeSessionId" -------------
+	var runtimeSessionId RuntimeSessionId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "runtimeSessionId", r.PathValue("runtimeSessionId"), &runtimeSessionId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "runtimeSessionId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DissociateRuntimeSession(w, r, workspaceId, runtimeSessionId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// AssociateRuntimeSession operation middleware
+func (siw *ServerInterfaceWrapper) AssociateRuntimeSession(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "workspaceId" -------------
+	var workspaceId WorkspaceId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "workspaceId", r.PathValue("workspaceId"), &workspaceId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "workspaceId", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "runtimeSessionId" -------------
+	var runtimeSessionId RuntimeSessionId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "runtimeSessionId", r.PathValue("runtimeSessionId"), &runtimeSessionId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "runtimeSessionId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.AssociateRuntimeSession(w, r, workspaceId, runtimeSessionId)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -4880,6 +5858,11 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/reviews/{reviewId}/evidence", wrapper.ListEvidence)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/reviews/{reviewId}/attention", wrapper.ListAttention)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/evidence/{evidenceId}", wrapper.GetEvidence)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/session-backends", wrapper.ListSessionBackends)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/runtime-sessions", wrapper.ListRuntimeSessions)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/runtime-sessions/{runtimeSessionId}", wrapper.GetRuntimeSession)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/v1/workspaces/{workspaceId}/runtime-sessions/{runtimeSessionId}", wrapper.DissociateRuntimeSession)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/v1/workspaces/{workspaceId}/runtime-sessions/{runtimeSessionId}", wrapper.AssociateRuntimeSession)
 
 	return m
 }
@@ -5573,6 +6556,122 @@ func (response GetSourceChangesdefaultJSONResponse) VisitGetSourceChangesRespons
 	return err
 }
 
+type ListRuntimeSessionsRequestObject struct {
+	Params ListRuntimeSessionsParams
+}
+
+type ListRuntimeSessionsResponseObject interface {
+	VisitListRuntimeSessionsResponse(w http.ResponseWriter) error
+}
+
+type ListRuntimeSessions200JSONResponse []RuntimeSession
+
+func (response ListRuntimeSessions200JSONResponse) VisitListRuntimeSessionsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListRuntimeSessionsdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response ListRuntimeSessionsdefaultJSONResponse) VisitListRuntimeSessionsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetRuntimeSessionRequestObject struct {
+	RuntimeSessionId RuntimeSessionId `json:"runtimeSessionId"`
+}
+
+type GetRuntimeSessionResponseObject interface {
+	VisitGetRuntimeSessionResponse(w http.ResponseWriter) error
+}
+
+type GetRuntimeSession200JSONResponse RuntimeSession
+
+func (response GetRuntimeSession200JSONResponse) VisitGetRuntimeSessionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetRuntimeSessiondefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response GetRuntimeSessiondefaultJSONResponse) VisitGetRuntimeSessionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListSessionBackendsRequestObject struct {
+}
+
+type ListSessionBackendsResponseObject interface {
+	VisitListSessionBackendsResponse(w http.ResponseWriter) error
+}
+
+type ListSessionBackends200JSONResponse []SessionBackend
+
+func (response ListSessionBackends200JSONResponse) VisitListSessionBackendsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListSessionBackendsdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response ListSessionBackendsdefaultJSONResponse) VisitListSessionBackendsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetTopicRequestObject struct {
 	TopicId TopicId `json:"topicId"`
 }
@@ -5767,6 +6866,80 @@ func (response GetWorkspacedefaultJSONResponse) VisitGetWorkspaceResponse(w http
 	return err
 }
 
+type DissociateRuntimeSessionRequestObject struct {
+	WorkspaceId      WorkspaceId      `json:"workspaceId"`
+	RuntimeSessionId RuntimeSessionId `json:"runtimeSessionId"`
+}
+
+type DissociateRuntimeSessionResponseObject interface {
+	VisitDissociateRuntimeSessionResponse(w http.ResponseWriter) error
+}
+
+type DissociateRuntimeSession204Response struct {
+}
+
+func (response DissociateRuntimeSession204Response) VisitDissociateRuntimeSessionResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type DissociateRuntimeSessiondefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response DissociateRuntimeSessiondefaultJSONResponse) VisitDissociateRuntimeSessionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AssociateRuntimeSessionRequestObject struct {
+	WorkspaceId      WorkspaceId      `json:"workspaceId"`
+	RuntimeSessionId RuntimeSessionId `json:"runtimeSessionId"`
+}
+
+type AssociateRuntimeSessionResponseObject interface {
+	VisitAssociateRuntimeSessionResponse(w http.ResponseWriter) error
+}
+
+type AssociateRuntimeSession200JSONResponse RuntimeSession
+
+func (response AssociateRuntimeSession200JSONResponse) VisitAssociateRuntimeSessionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AssociateRuntimeSessiondefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response AssociateRuntimeSessiondefaultJSONResponse) VisitAssociateRuntimeSessionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 // StrictServerInterface represents all server handlers.
 type StrictServerInterface interface {
 
@@ -5824,6 +6997,15 @@ type StrictServerInterface interface {
 	// (GET /v1/revisions/{revisionId}/source-changes)
 	GetSourceChanges(ctx context.Context, request GetSourceChangesRequestObject) (GetSourceChangesResponseObject, error)
 
+	// (GET /v1/runtime-sessions)
+	ListRuntimeSessions(ctx context.Context, request ListRuntimeSessionsRequestObject) (ListRuntimeSessionsResponseObject, error)
+
+	// (GET /v1/runtime-sessions/{runtimeSessionId})
+	GetRuntimeSession(ctx context.Context, request GetRuntimeSessionRequestObject) (GetRuntimeSessionResponseObject, error)
+
+	// (GET /v1/session-backends)
+	ListSessionBackends(ctx context.Context, request ListSessionBackendsRequestObject) (ListSessionBackendsResponseObject, error)
+
 	// (GET /v1/topics/{topicId})
 	GetTopic(ctx context.Context, request GetTopicRequestObject) (GetTopicResponseObject, error)
 
@@ -5838,6 +7020,12 @@ type StrictServerInterface interface {
 
 	// (GET /v1/workspaces/{workspaceId})
 	GetWorkspace(ctx context.Context, request GetWorkspaceRequestObject) (GetWorkspaceResponseObject, error)
+
+	// (DELETE /v1/workspaces/{workspaceId}/runtime-sessions/{runtimeSessionId})
+	DissociateRuntimeSession(ctx context.Context, request DissociateRuntimeSessionRequestObject) (DissociateRuntimeSessionResponseObject, error)
+
+	// (PUT /v1/workspaces/{workspaceId}/runtime-sessions/{runtimeSessionId})
+	AssociateRuntimeSession(ctx context.Context, request AssociateRuntimeSessionRequestObject) (AssociateRuntimeSessionResponseObject, error)
 }
 
 type StrictHandlerFunc func(ctx context.Context, w http.ResponseWriter, r *http.Request, request any) (any, error)
@@ -6359,6 +7547,82 @@ func (sh *strictHandler) GetSourceChanges(w http.ResponseWriter, r *http.Request
 	}
 }
 
+// ListRuntimeSessions operation middleware
+func (sh *strictHandler) ListRuntimeSessions(w http.ResponseWriter, r *http.Request, params ListRuntimeSessionsParams) {
+	var request ListRuntimeSessionsRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListRuntimeSessions(ctx, request.(ListRuntimeSessionsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListRuntimeSessions")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListRuntimeSessionsResponseObject); ok {
+		if err := validResponse.VisitListRuntimeSessionsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetRuntimeSession operation middleware
+func (sh *strictHandler) GetRuntimeSession(w http.ResponseWriter, r *http.Request, runtimeSessionId RuntimeSessionId) {
+	var request GetRuntimeSessionRequestObject
+
+	request.RuntimeSessionId = runtimeSessionId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetRuntimeSession(ctx, request.(GetRuntimeSessionRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetRuntimeSession")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetRuntimeSessionResponseObject); ok {
+		if err := validResponse.VisitGetRuntimeSessionResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListSessionBackends operation middleware
+func (sh *strictHandler) ListSessionBackends(w http.ResponseWriter, r *http.Request) {
+	var request ListSessionBackendsRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListSessionBackends(ctx, request.(ListSessionBackendsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListSessionBackends")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListSessionBackendsResponseObject); ok {
+		if err := validResponse.VisitListSessionBackendsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // GetTopic operation middleware
 func (sh *strictHandler) GetTopic(w http.ResponseWriter, r *http.Request, topicId TopicId) {
 	var request GetTopicRequestObject
@@ -6492,102 +7756,173 @@ func (sh *strictHandler) GetWorkspace(w http.ResponseWriter, r *http.Request, wo
 	}
 }
 
+// DissociateRuntimeSession operation middleware
+func (sh *strictHandler) DissociateRuntimeSession(w http.ResponseWriter, r *http.Request, workspaceId WorkspaceId, runtimeSessionId RuntimeSessionId) {
+	var request DissociateRuntimeSessionRequestObject
+
+	request.WorkspaceId = workspaceId
+	request.RuntimeSessionId = runtimeSessionId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DissociateRuntimeSession(ctx, request.(DissociateRuntimeSessionRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DissociateRuntimeSession")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DissociateRuntimeSessionResponseObject); ok {
+		if err := validResponse.VisitDissociateRuntimeSessionResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// AssociateRuntimeSession operation middleware
+func (sh *strictHandler) AssociateRuntimeSession(w http.ResponseWriter, r *http.Request, workspaceId WorkspaceId, runtimeSessionId RuntimeSessionId) {
+	var request AssociateRuntimeSessionRequestObject
+
+	request.WorkspaceId = workspaceId
+	request.RuntimeSessionId = runtimeSessionId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.AssociateRuntimeSession(ctx, request.(AssociateRuntimeSessionRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "AssociateRuntimeSession")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(AssociateRuntimeSessionResponseObject); ok {
+		if err := validResponse.VisitAssociateRuntimeSessionResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // Base64 encoded, compressed with deflate, json marshaled OpenAPI spec.
 // Stored as a slice of fixed-width chunks rather than one concatenated
 // const string: with thousands of chunks the chained `+` fold is several
 // times slower for the Go compiler than parsing a slice literal.
 var swaggerSpec = []string{
-	"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",
-	"yc3vWJOz7mbB4a1bRuewbmaYePr+9L8DAA==",
+	"3H3rcts4muiroHhO1SRVtJzMnLNT6/xSJNphjS15JTk9XZ2UGiYhCRMKUAOgHVXKf/cB9hH3SbZwI0GK",
+	"lEhZdNz7y7IE4vLdb/j4w4voekMJIoJ7Fz+8DWRwjQRi6r8JesDoMYzlZ0y8C28DxcrzPQLXyLvwmP3Z",
+	"9xj6I8UMxd6FYCnyPR6t0BrK58R2I8dywTBZek9PvpqVY0r2zmsGtJw5JQKv0RTx/fOXh7VbZUY3OKqd",
+	"XJhf2835C2Xf+AZGqHbeR2dEm7mf5GC+oYQjhdOAMcrkh4gSgYiQH+Fmk+AICkzJ+b84JfK7fMb/y9DC",
+	"u/D+z3lOKuf6V36uZ1OrxIhHDG/kJN6FXqanzmbGyqn6Qi6JKZniJYGJWjuOsfwGJreMbhATWO5zAROO",
+	"fG/jfPXDg6lYUXZoS3096sn30AOOEYnQHMfqeSzQmlfAyLdfQMbgVv6P48pheL2hTMzdX3+zP/seSZPE",
+	"+/okd40pw2IrRyGSruWoT+HVJ8/3boJheHfj+d71+BfP9+5G/xiNfxl5X/3dxTaMPiACSYQOnfg2Hymx",
+	"DTU4UeURLG/Na44oIFsi0RIxdXOpL3IYzMa34cDzvctwNAxHV57vDT71R1dBxfGfXBL/Tf+q0JIPpff/",
+	"QpGQ66QkQkxATDTI90+FY68IhezMDuJcKBbnL+DFtyTpkkaJ7nY27Hvfz5b0zHypZWivzBjOoDM9tZbO",
+	"YuVdeEssVul9L6LrcxinD4gtETvfsJSgJEHnHLEHxM4xEYgRmJzrFRQc+hkDtUZukbsvGUJnC8rWQAMA",
+	"yAMLLLY+QL1lD0CQ0CUmgDKwwRdf0nfv/hZxLW7VP6jn+d4ak2tElvJI7yvo/xsmcYGD7m76I8/3+lfB",
+	"aHaYZNTj1SRTjQGLyS4A/xFG3xCJPyGYiFVL+EcrFH1D8RyqnUigy09eDAU6k2rM8/eIImSlff0QTBa0",
+	"fksVbF0S9CTeUEwEiJGAOOGAp9EKQA4Y+j5/QEziHEASA7jBc8t3Pa+CjbmAoiAvBuPRKBjMtKiYBP3B",
+	"p/7H60CJTfe/YTiVn4aHaUKvYKHiu6A1cDhAK4aGea+I0BMSjV1B7X1AYzSBZIlaksx9Qu/nK8hXu5w7",
+	"/dQ/++v//zdAF0CsEOCCMhSDBU4QMAZBz9sBo+8hEs8TTNRG1pjgdbp2uVZuf4mU0tWnrtQ8G8qxoGxb",
+	"p3s4SlAkUDwX6LuoHoHjAoV87E8lBXwK+sNKHcoFZKLRxkuUUtysb20xtX5hWgc0vgP38mGayaAc392I",
+	"oYHG8HiNhUAVYv2X1VZRhSIHzEGCuUAxeMRiRVNhCYT31KkNBsJRf/Kr53uz8Xh+3Z9cSXxM7z7ejId3",
+	"ijtH49m8P58EV3fX/cn8MpRfStnzdZ/YGjAEBdLuxwT9kSLe1iQpHKzKNsEisUSxTwtlZnc10ZbIpjDa",
+	"LtIQ9xVH7ogK1EqZx3EcfLVXchB8GR9hVDTB20gzyNFcmb8Hl8MkStIYzVMimJTQhsYXME2EdZXMQ/eU",
+	"JggS+VQC71HSYHYr2opMcwvFClCixamC+gewTrkACUYAEyky1G8RJQu8TKW4hUlCH1EMGKWam/ZTld5f",
+	"JoQyeFTZwmtMQg3j92W3pjSrwmAJQ21IdYeAuqHWIYZLBtdB3FoLLhhdV/J+hu+dXwQ9zONqWjXUztQM",
+	"au5BugFVoEzwCVq0BFRL9y0czaQFnnlvrkMXfA6HwWjwPJeuEnz54ToCnrWUWwAOHfFMRIsmjNSPl+O7",
+	"0VBB9nP/OhzO+5OruxsD4/Ho8jocqI/929ndJJhf9kNp7UozuH83+xSMZuGgP1Pf3AaTm3A6Dcej+TAY",
+	"hcHQoGsy6l9XGkjGaG8XHVkjzuESHWYVddZ8fL7cruQqPakhWyXgAuNcdxw7klufM2t7U4LGC+/it+zA",
+	"ylJ58vfPlptzT1/VlFnAbY839qzIU9lnHoyHwXxiuHQWTGfzSTC9u5bUNL0NBuGlpJxwrNzqUf/612k4",
+	"nY/vZrd3ckR/Mgsv+4PZaaNTB+JPnKYsQrtaVkUcpCkNKMNLTEygQSvW9Vo6mGIFBdgwGqcRigEWPXAD",
+	"t+AeAbTeiG2lW5NZga1jRia8oCfIcZsdoEmcyKGxhjLQ0n5HItBMf425GChrpa08PDLgWmb+9vGziq13",
+	"A6NLnKCBEzlvacaujfSvZ2E1jOK4wSjrJhc5ZZQmCVhQBmAcG9eeqwAM1W7frp9fuQAmkLnhVMdeNhPM",
+	"ae5H7heDBa/zyfdWCMYNQKGGHQSFGnUAFDFKkDgeGDSJ58W4RtWoZ0Q+DkpFAUXKDwFa0uZUj9yNZ7jC",
+	"qya6kR0zW9B3qNZFm0OmDpoyqtklEZdiXZQ1426X6bpj62kGZKs++8OhMqFuxsPwUltTw+A60LbWJBj1",
+	"b9Sn2a+3wVwbw9osm036g38E1SGpS0xi+fG1pr4WmHEx5wiR+SGqPLWtMpkEg9komE4VnKfhlbRLpsHg",
+	"bhLOftXW7eV4ctMfDTJz5qp/6/neePYpmLxwEg091jIrekDN0n/h6HJcF7cskeL4NhjpWLc08A0BTsfX",
+	"n2vIrK1lo49Ti/7M4MkO58gIawS5ObNOsmSWd7qRAXl2psh7u8ig3yphbrIdh6GeQc4+UeXohNnBOpQT",
+	"e1m4SdKpMVfsFyaHyLJIiyV60vtsRkIGqt1QkJ78uIDqGhK8MI/tw92NHbcL06LxM9RhTw4EVW6S3udf",
+	"OIhSxhARoCIZV4OObG9tYNxtWNCuwdOkLaSNSqzLdzbOg+5wbDkxKrDYAik3wRusMyc+sFLPB9FKen7c",
+	"Bwst1bgPVO0Q9wG01QBvwX//538BC37wDW3VF5BzvCQoBuGwMpNaoYGP5kRHYheZsLnYLuCqI3I4xiOD",
+	"UYQ2QuqoecSwQAzD/SbLn6UAqWxafQw+9T+H44mOJ05nk344On1YZ49FlAV1Ki0dtC6ExRorBWuSZFM4",
+	"0Zcq3HZklYRdOib/QFsZ02hHPTeOLtnLD0WJpZOP1iUGjwwLgQi43wJIbKHPG7Hd4Agmic4U4/UmUbDH",
+	"ZAngEhHxtgeU5MOIA4YWiElofiEIRitAxQoxOd83tOUgJfiPFIENYgDlsrIHggfEtoChiLJYZqGhEAzf",
+	"p9JbN6pM7+XDF5LjUw40xQyQgxhFCZSf35gKO/C4QsQ6/T4Yf5wGk8/BUAUHZBgOqDAcf9v7QvKYaSas",
+	"dT5Pl7lAAaCR3aZuwpRSWOn4AdwavAKGOE0eEAdY8C9ERS9l9kgN5wRu+IqK3hfi7QgmK/+PTZkiJ0i+",
+	"j4ktdUmZgbaVtPWaixmPKlasO2hdumsny9U0tSUXena5YpvaxKrFyqKhdR5EWynHEiJcCMQqwX2PFpRV",
+	"o7VYkt5c7J2Q6vdoUJVPu+yrGMSwP+vLP8FtMJJ5z19Nxi68upvYxMpd2EmEgqfrdTFCW3BE8cIUdM93",
+	"3de70edgYgNa07vb2/FEh7QGYxm6GoaDWZNqOgm7XAmb7WSI9Q3umxCli7hjqKyYrGvx4EnL2nZdsEn2",
+	"G1CVApU5qJ9Q09awoK0KdTtJTJdpGjLT68tK7jFQGwbSCsxQU/dVGW3Vvt8rUPR/4njsCSKux6DZiYXu",
+	"hkCbYN9EBY5Wrvv8V+dsL6MXO/IsT+M7FvG26zA2wZaOzuxK+T7YQBVQU17CPbJls1oRStsfRCucxAyp",
+	"UNtRCi63whoi8Aicu7Ko4SMOAT/XzVAgrNOwDHFEhOIt/iwjIcaLRdcitjI0qIv/2i4dl03vfRtwCwwr",
+	"yJfQGL2knqmJBe2qmZvb8UgXu0mnPMwM6+lsPJGf/+MuuJN/+4OZEjTTWXCr/vRnwV5lU1/naaqJm8TZ",
+	"ZcVhZSTKVuWqAx2WH6UpNDaqHssiUAlunUQ4Ca3aWooW63IUPYs372m8PZXqksUFJsG+XyfYgb5evjUK",
+	"s0NXPlljT1TEGYJ/zlRmt3816d8oRToM5sPw8tKpp51fh9NZw8hDE122z3tsZQpZw8dO2BqKJiDRLNRq",
+	"mbKjYKvL890GlU5aQ10ZaNoLv+7KqMf36sd4sDrCHa+PFrUNW3UYXXpFyZxXEoo6WL3200NV9QW8tXGr",
+	"AqFU77OjfFKJhbrh09sCrosOzSf66KRZwDdCH/kFuAn607tJMARvBKUJoKnYpCK77QuBkBlqlpK3Tnrl",
+	"DUeIgBgzFIlkCzDRyRZZnMoEXsBI8Lc+CEeXwUTNzBDklMhcEmXgX2m8XMuMkg9MaqEHplmKx9mgyfbI",
+	"NIt7NdFuWNK82ZCOAKjFDiQsZOhualI0z7ivthv2lj/yFdyF+loi70z+/kbG/nxg53lbFTW8Z5BEFbfR",
+	"AlnrrrNdchaZFouRgNEKxZXRR5nBmkc0LfheTtxTlWqa/R5V2JqNqLfGuYBLFO/bxa5gkNGGcGqUaDhy",
+	"/q3CZkoOr5HdGdw36BEyshOva1fdXi6+3QGRc8PPoRcHFRn2S6DbOefuoQoId0r4snM1E1EF7uhGQE0K",
+	"cfVTsV+dKq66N7rnougunVMq5tX3QweQUCJT5iDHtLr5Wbw0Wsmd7W4fK3IqPJJ7qfkGC+S1e/DmBJDl",
+	"EjpCvxP0OboK8riLW9aOVDU/DxAn8D5B1SRRiCrtm7PyhkpJdpshIBxyW1XgFCfI6ge+oo+9/00BpZNZ",
+	"068prnQc1eU3XJ++Ho446cUOGZjNwlC+IYxG4aiWRJ5hrPZqDsMP0qQjMUhJxm0AEcEw4gcu5qi7gC7a",
+	"b/qju/61tAluMl/hKhgFE3NDdhhMQm0IjsajoBK9le5M1eo/MVBWBOYNZN9i+kg+AIZIjFjWsYPBR/Bp",
+	"dnNdqVyOZ8FjQ2zPpdZjI24ycTPHcffhON9zSHiuvZl9NFTF5dlufRvfsTE2Q+2uTqpcsKZcvrFmdxVv",
+	"V9pdfWyZwGEItr2TYGrd5415+lDfmIMX9EoXdgbX42nLKzq+l27i1id9vqloycwFgeMiVIHSd5FS2HdT",
+	"YpN/OiQy3t54jOBGpKwl9BeYLBHbMFyTw6whG8pibPpg7i8/OlBfbVyx5qZdwYGryg9k9FzUNK6nraMM",
+	"0HVrvqGN0MWxMoYTp3KDwAD0Q1byysEabsEafwdyGVToJ9XGrz9UH26h6xdwWkSWQ+A5FJsTL+9QRha6",
+	"1LYs5e7LRggR4lwG0gRiawkIsKK6MGELIDCN5sC97mQH3khjbIK++4ASlD9yn9Do29seGFEBIPlCVI23",
+	"LBF/QIwrFdGz0TmwRpDowJydNIKEUGFvHCWqGwM14c0PAAsQU8QBoeILkQ+rZ+3GuaCbDYqr6qPN9HXs",
+	"YH8uuwST4J+qsG4ylOb+TX/Uv6oRzRHcwHucYIFbuEsGUwP77LaKsaLHAwoIfdekUHmna7yBsmTegld3",
+	"3VxgxEz/QimqFIEASpJtz7uQ01aKq+yWZxspt4KMIM7nKyPmSoEOKm09YAYpXJpOywBuNggy5cGy1Pbu",
+	"2OAe6AM5ly9JQF0yUNRlm4nut/2r4GMr78/o4871qCb+WwKPAUtCI5jsbmaSEm5jPAZjf+GKB1XdEYge",
+	"9fUGsMk6iEEB1jBaYYLKuHNCDmskYAxFRQjZdKU84xsUyWyF7clZeUnM8NnuLJeUoSWjKYklL8oIACBw",
+	"jfZjY6d553h0HY6UH315aT5NZ+Pb24ORdzXT3NywaIUHni6XSEq4uWvZVJwwa13GweOKcgTcJmjq/gvE",
+	"xCXgv3CgkCxx1gMj9IAYUE2zpeOaCirZTl2KKRR4HfSjDmwz+C7bcmMh7/vRCOvypzYrVClIR3aWJGVR",
+	"9vhZt1QbdpCiKycbS/YlqVCSnQ61lo9bj6+yfCrxZQWJNG3bWtKpXfVtNfMbdmxvf3ale7KePqVYDCVn",
+	"HEUMiVxxm2aFWsNXiQ9EpMtZ1RtaHkrbhq4pgKWeBwklS8QAdiPftYs5Mm+V3c3fB4ViV97mscLmhoFt",
+	"e9nAElVDs2CdBdcOf0Q2FmyO2JSUSzTWMSk7hOXAbRhOB+PPgS5FkKX7M938dTqYhB+rg2tTVW87yOtZ",
+	"W3DGKZqJqg5Axz7caVOkZzYZat8iKA81tQz/pcReQK8CRYkX9vUWqu8WlO+ssFyT0raTJKXb52w1YTXb",
+	"4P5ymfy89ZnoZu2dtITZma+Ze1vk1G58XPUqla47OaoTtKfyY8KN5ZB6qSOHrYNJMPmG4vx6sXbW/FZd",
+	"mlSt/kvXoul6//arts3TfPXrbggc3KIifRMwKTnPTKZG4JqSJeD4PsFk6XpGzaNtZVenP5iFnwNdZjSW",
+	"7cGq/ZojSm6PCQUfiorlcNyt3nVyDNb6z+BZU+DmkESB14o0WmKN58aNtdzoRiZlzuELpCdqKKzGytzT",
+	"Tv1QrFcrq0plfhICq2om/lwk54joAtFPzqtPKttgGOekfxv2QD9JAKOpQByg75EMcv9+/vD+XJvsvwMD",
+	"DtkYAiYJyl+Hc/GFQPD7TMZgIpigszuO2Nk1XWLyO5C5UcQAl17XFmRjwFSu66saSZBQupEOlFoBcWET",
+	"u19IPl7Pw8Eb6VGZ6BGQ8S8mW3EwRhkHKdc96H9X//8OEHlACd0gHVxNcIQIVxTnRBQvvJtwlr9/TP6T",
+	"S6os0gYMtPq3odPP7MJ713vfeycfoBtE4AZ7F97f1FfahFVEK0FoxcL5D/spjJ/kj6axg+Qw5RfKF6N5",
+	"V0g4PXAL7zX767t3p3urmV2j4sVmsxXKFLeuxLGvF6ieM9tk9q403xNwyXV/bL1Zbdjnb977rfINcDmA",
+	"Wr0ATk6eE+s+0GZvs+kMsNYz3wXrVHMb5jLkRjBZ9gqQ4lsu0FpnzOVhNBvz2tPIApSJGVMN2z9SxLY5",
+	"cEu50D3gfCZ4GopsLaV2AnpP1T17uA/oRuupZCtLx2QOJzvSc8nUAtuYVxXgdl9eYogTcfHRFKuchHSq",
+	"3o/y9PRU5oSnHfS8P9kWJpnuKGNBby42PfZOB+8itZ//sG/c3CshHTR0xMb1gJit0MmBsMO/VVPlQ86z",
+	"t5Zmom8XfueFFku1IiR7LZ/3ElxffglgA/bPHgFcPcNlSs22CtLZJV0UJFNvCaXfTKoNxGiBItUu/94E",
+	"9jpUZqdAmHMFvhZdebCigcQvxkx+ssAv3flpgHn7hO0j+crR517krcXfqWy7RiDPjbzDwA66N/hOAWS3",
+	"g0MtkC/toJcAslmsCYztvgBlMWK6TMV2WHnlcNc+6X6wh2bMS0Bdr9UE6PZCMDBHUA6mdBUxM7frXodg",
+	"yQ3P4v4/wwTHUCCl55QjmjXLhUuICRfmF1Xr9MYcQ9+sMG2QKUFvVfU5F7Zdi+49yWWaUhVDMUg4jGx2",
+	"sohbDWvnYnoXxm+xo/ILm72F9r0VNKR/B0wNyAhIXWLJGhULWuhifEKi2sOVeXOaeq40Y16EK/VkDbgy",
+	"tO/ZfNVSz7LVYS9cj3opx1mu1tR1VjtzNY6pGT2F96JP3YnYG+h6VoBMq9ysAJcuir3esxgAwERQAAFB",
+	"jwCv16lQl2zsNn3wuMLRCtyjiK4RL8hHt018yevXu3DqYDt1vTVeK5xvvY3Y2enpkFdP/nk7MEP7JU9Y",
+	"/ZyRlnrVJ1B1Tb4EL8l6gkmqMw3EpBay+ZYe+JjiJFaoEAwh3Tk4S97sYkMym170RThNLdWEzfSeXpss",
+	"U/g9/2E/Ngip8BOEAY4l8ZnTX1pRibZSMrbPStd/ttzSsDwE6nNZLFHLOf297bW1gSHPb9p9y9vMCiYy",
+	"EQLknbxd3rhCQla+NA0MlIs9moba/eoJTRi/Rci+QzJz36VVQ2kS7H8SQtLtG892g0Nl/13qycNkJb/R",
+	"cl1eTrhHslxRVq33wKV6c5z+Rla5CyrLGdVYABkCiwQu5dx5sU0lFZaLajpDc3GhKq3pAIOrJvw53b86",
+	"5Ouy3bOsMnGvwVmo8a0IBpbiaCTZZvcU7AIAmdLrZJsVX5sX4QOxwtzNrfh/hnxSASaNjOMyRGLMI/qQ",
+	"B2YKt4eerXcyzOYWVwnn5z9Y4RCHNHa50rs7vV2CbY32LsLzhPBqzWAlMOZsZiY9s0itFafTEvadt1pU",
+	"VHT7blDJehU6G90DH+0UUog6r8ivqhBXssoHRF2/ECtG06UW2bJGo9IeLhZJv4xhXFyzCa9NO2cmrdPO",
+	"f6i/BzjH1lZ1xjDGc6jmE6NRjYmrO4epesmf6EHMNNRyRimD87yiRXE142iTtTQcbJKUq0gjIoJtlTJe",
+	"Y86lnXHz+RZI+umBG/ON6ggjAZSVjyrX9AuRHGS7aWiGVLBUwANvdGEfMP0v3n7IVlCvpZHzmZYyejrF",
+	"jwzp1+t9IW5nDjuVbKDxVlcQ1XiikxJYXiYC5K7ZLA5U2OUrorPMiNhv8eTX2V4EwtlyjRLUSZIbS8+G",
+	"bT7TwWIUt3qwu3qUbJWfFJt3cFFflXKyQqAC+Hdo9PxH9vmAiinipiM1sxc0UtV0A5a2TP9LDrMqxi8C",
+	"talVrN93XlXauqYPSN20zq+U9kAYo/WG2vegF9E1xGYkOmRS/7+KUE6+CmBq7fgnWr4FUPvHGMq+t0lF",
+	"/UVd11uUeceiza/NYOjQ3V7A95vC/aVdGcch7s6reVKvdZHGv0ZtyhLvwlsJsbk4P3//17/33vXe9d5f",
+	"/P1v//5O4cVM8cP636Zg9MnPvnG41PnWlpmVvtLbcL608HW+ynb79PXpfwYA",
 }
 
 // decodeSpec returns the embedded OpenAPI spec as raw JSON bytes,
