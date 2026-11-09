@@ -27,7 +27,7 @@ Configuration lives in `<user config dir>/prunelle/config.toml` (`~/.config/prun
 
 ```toml
 listen = "127.0.0.1:7390"         # loopback only
-allowed_roots = ["~/code"]        # repositories must live below one of these
+workspace_root_paths = ["~/code/emidat"] # immediate children are workspace folders; roots are never workspaces
 allowed_logins = []               # Tailscale logins besides the machine owner
 # data_dir defaults to ~/.local/share/prunelle (Linux) or ~/Library/Application Support/Prunelle (macOS)
 
@@ -43,9 +43,44 @@ Run the server and seed the demo review:
 
 ```sh
 bin/prunelle serve
-bin/prunelle fixture ~/code/prunelle-demo     # must be inside allowed_roots
+bin/prunelle fixture ~/code/emidat/prunelle-demo # inside a configured workspace root
 bin/prunelle review ls
 ```
+
+### Workspaces and CLI context
+
+`workspace_root_paths` contains parent directories, not individual workspaces. Discovery considers only immediate child folders. A child is either a Git repository/worktree, or a folder whose immediate children are Git repositories/worktrees. It never groups the configured root itself or recursively collects deeper repositories. Symlink directory entries are not scanned. Candidates without reviews stay out of ordinary client navigation.
+
+For example, with `workspace_root_paths = ["~/code/emidat"]`, `ecomapping/.git` is a single-repository workspace and `unblock_elems/repo-a/.git` plus its sibling repositories form one multi-repository workspace. No registration command is needed.
+
+Install the CLI on your `PATH` so it runs from your actual project directory, not the Prunelle Go module:
+
+```sh
+# From server/:
+mkdir -p "$HOME/.local/bin"
+go build -o "$HOME/.local/bin/prunelle" ./cmd/prunelle
+
+cd ~/code/emidat/unblock_elems
+prunelle review create --base-ref origin/main # title defaults to the workspace name
+prunelle review capture
+```
+
+Creation/capture also infer context from member repositories and subdirectories. Capture requires exactly one review in that workspace; zero/multiple reviews report an error instead of choosing another review. `--base-ref` defaults to `main` on initial registration, applies to every member repository and never rewrites existing settings. No Git fetch or branch switch is performed. Existing registrations retain their repository membership; changed membership reports a conflict rather than silently changing a review.
+
+Explicit controls remain available from anywhere:
+
+```sh
+prunelle workspace ls --discover                 # read-only candidates, including unused folders
+prunelle workspace ls                            # registered workspace IDs
+prunelle review create --workspace WORKSPACE_ID "Review title"
+prunelle review create WORKSPACE_ID "Review title" # existing positional form
+prunelle review capture REVIEW_ID
+prunelle workspace delete --yes WORKSPACE_ID
+```
+
+Deletion permanently removes the workspace’s Prunelle reviews, snapshots, semantic content, discussions, decisions, runtime associations and scoped response receipts, plus unreferenced stored file blobs. It does **not** delete project files/Git history or stop runtimes. A deletion notification remains in the event stream. Discovery does not resurrect metadata: deliberately starting another review in that folder creates fresh workspace/history IDs. Repeating deletion with the old ID cannot delete the new workspace. If another client deletes the review you are editing, its unsent drafts stay in memory until you deliberately leave; copy any text you want to retain.
+
+**Configuration migration:** `allowed_roots` is no longer accepted. Replace it with `workspace_root_paths`, choosing the actual workspace-parent directories (for example `~/code/emidat`, not its namespace parent `~/code`). Existing review/history IDs remain valid; explicit IDs also preserve manually registered repository sets. The server reports an actionable error for the obsolete key rather than silently ignoring it.
 
 Expose it to your tailnet (no sudo once your user is the Tailscale operator):
 
@@ -117,7 +152,7 @@ pnpm test:native
 
 Both integration test commands build the real server and create disposable two-repository reviews. They never connect to the user's Rex server. `test:native` launches the bundled MyGo/WebKit app under Xvfb with isolated app storage and writes the ignored `client/native-smoke.png`. Its automation endpoint is compiled only with the `e2e` build tag, never into ordinary/release builds. The smoke test disables WebKit's sandbox only in that disposable test subprocess (for restricted CI containers).
 
-The [M2 plan](docs/plans/m2.md) and [M3b plan](docs/plans/m3b.md) record implementation choices and verification.
+The [M2 plan](docs/plans/m2.md), [M2b plan](docs/plans/m2b.md) and [M3b plan](docs/plans/m3b.md) record implementation choices and verification.
 
 ## License
 

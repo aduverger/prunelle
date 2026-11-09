@@ -16,11 +16,11 @@ import (
 const DefaultListen = "127.0.0.1:7390"
 
 type Config struct {
-	Listen          string           `toml:"listen"`
-	DataDir         string           `toml:"data_dir"`
-	AllowedRoots    []string         `toml:"allowed_roots"`
-	AllowedLogins   []string         `toml:"allowed_logins"`
-	SessionBackends []SessionBackend `toml:"session_backends"`
+	Listen             string           `toml:"listen"`
+	DataDir            string           `toml:"data_dir"`
+	WorkspaceRootPaths []string         `toml:"workspace_root_paths"`
+	AllowedLogins      []string         `toml:"allowed_logins"`
+	SessionBackends    []SessionBackend `toml:"session_backends"`
 }
 
 // SessionBackend configures an external session provider. Only REX is implemented.
@@ -45,14 +45,17 @@ func DefaultPath() (string, error) {
 // Load reads path. A missing file yields defaults.
 func Load(path string) (Config, error) {
 	var cfg Config
-	_, err := toml.DecodeFile(path, &cfg)
+	metadata, err := toml.DecodeFile(path, &cfg)
 	if err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return Config{}, fmt.Errorf("read config %s: %w", path, err)
 	}
+	if metadata.IsDefined("allowed_roots") {
+		return Config{}, errors.New("allowed_roots was replaced by workspace_root_paths: configure the parent directories whose immediate children are workspaces")
+	}
 	home, _ := os.UserHomeDir()
 	cfg.DataDir = expandHome(cfg.DataDir, home)
-	for i, root := range cfg.AllowedRoots {
-		cfg.AllowedRoots[i] = expandHome(root, home)
+	for i, root := range cfg.WorkspaceRootPaths {
+		cfg.WorkspaceRootPaths[i] = expandHome(root, home)
 	}
 	if cfg.Listen == "" {
 		cfg.Listen = DefaultListen

@@ -102,7 +102,10 @@ export function App() {
       setAddressError((e as Error).message);
     }
   }
-  const selected = reviews.data?.find((r) => r.id === reviewID) || reviews.data?.[0];
+  const selectedID = reviewID || reviews.data?.[0]?.id;
+  if (!reviewID && selectedID) setReviewID(selectedID);
+  const selectedMissing =
+    !!selectedID && !!reviews.data && !reviews.data.some((r) => r.id === selectedID);
   return (
     <div className="app">
       <header className="app-bar">
@@ -113,11 +116,16 @@ export function App() {
         </div>
         <select
           aria-label="Feature review"
-          value={selected?.id || ''}
+          value={selectedID || ''}
           onChange={(e) => {
             if (leaveDrafts(hiddenDrafts.current)) setReviewID(e.target.value);
           }}
         >
+          {selectedMissing && (
+            <option value={selectedID} disabled>
+              Review unavailable · {selectedID}
+            </option>
+          )}
           {reviews.data?.map((r) => (
             <option key={r.id} value={r.id}>
               {workspaces.data?.find((w) => w.id === r.workspace_id)?.name || r.workspace_id} /{' '}
@@ -161,11 +169,17 @@ export function App() {
         )}
       </header>
       <ErrorNotice error={reviews.error} />
-      {selected ? (
+      {selectedMissing && (
+        <Notice>
+          Selected review was removed or is unavailable. Your unposted drafts remain here until you
+          leave. Copy any text you want to keep before switching reviews or closing.
+        </Notice>
+      )}
+      {selectedID ? (
         <ReviewLoader
-          key={preferences.server + selected.id}
+          key={preferences.server + selectedID}
           api={api}
-          reviewID={selected.id}
+          reviewID={selectedID}
           preferences={preferences}
           setPreferences={setPreferences}
           onDraftChange={reportDrafts}
@@ -176,7 +190,7 @@ export function App() {
           <Notice>
             {reviews.isPending
               ? 'Connecting to the review server…'
-              : 'No reviews yet. Register a workspace and import review content with the prunelle CLI.'}
+              : 'No reviews yet. From a workspace folder on the server, run prunelle review create, then prunelle review capture.'}
           </Notice>
           {!desktop && (
             <p>
@@ -200,7 +214,11 @@ function ReviewLoader(props: {
   return (
     <>
       <ErrorNotice error={query.error} />
-      {query.data ? <ReviewPage {...props} data={query.data} /> : <Notice>Loading review…</Notice>}
+      {query.data ? (
+        <ReviewPage {...props} data={query.data} />
+      ) : (
+        <Notice>{query.error ? 'Review unavailable.' : 'Loading review…'}</Notice>
+      )}
     </>
   );
 }

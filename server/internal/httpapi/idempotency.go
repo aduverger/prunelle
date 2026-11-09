@@ -121,13 +121,31 @@ func (i *idempotency) claim(ctx context.Context, caller, key, requestHash string
 
 // complete and release run after the request, even if the client is gone.
 func (i *idempotency) complete(caller, key string, response storedResponse) error {
+	var resource struct {
+		ID       string `json:"id"`
+		ImportID string `json:"import_id"`
+	}
+	if len(response.body) != 0 {
+		if err := json.Unmarshal(response.body, &resource); err != nil {
+			return err
+		}
+	}
+	id := resource.ID
+	if id == "" {
+		id = resource.ImportID
+	}
 	headers, err := json.Marshal(response.headers)
 	if err != nil {
 		return err
 	}
 	return i.db.Write(context.Background(), func(tx *sql.Tx) error {
-		_, err := tx.ExecContext(context.Background(), `UPDATE idempotency_keys SET status = ?, headers = ?, body = ? WHERE caller = ? AND key = ?`,
-			response.status, string(headers), response.body, caller, key)
+		// Deletion can commit after the mutation but before its receipt: do not cache deleted content.
+		_, err := tx.ExecContext(context.Background(), `UPDATE idempotency_keys SET status = ?, headers = ?, body = ?,
+			workspace_id = (SELECT workspace_id FROM resource_workspaces WHERE id = ?)
+			WHERE caller = ? AND key = ? AND (? = ''
+				OR EXISTS (SELECT 1 FROM resource_workspaces WHERE id = ?)
+				OR EXISTS (SELECT 1 FROM runtime_sessions WHERE id = ?))`,
+			response.status, string(headers), response.body, id, caller, key, id, id, id)
 		return err
 	})
 }

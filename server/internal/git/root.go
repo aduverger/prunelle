@@ -15,7 +15,7 @@ var ErrOutsideAllowedRoots = errors.New("path is outside the configured allowed 
 // Both path and the resulting top level must lie inside one of allowedRoots after resolving symlinks.
 func ResolveRoot(ctx context.Context, path string, allowedRoots []string) (string, error) {
 	if len(allowedRoots) == 0 {
-		return "", fmt.Errorf("%w: no allowed_roots configured", ErrOutsideAllowedRoots)
+		return "", fmt.Errorf("%w: no workspace_root_paths configured", ErrOutsideAllowedRoots)
 	}
 	canonicalAllowed := make([]string, 0, len(allowedRoots))
 	for _, root := range allowedRoots {

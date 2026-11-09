@@ -120,6 +120,20 @@ func (h *handlers) CreateWorkspace(ctx context.Context, req api.CreateWorkspaceR
 	return api.CreateWorkspace201JSONResponse(ws), err
 }
 
+func (h *handlers) DiscoverWorkspaces(ctx context.Context, _ api.DiscoverWorkspacesRequestObject) (api.DiscoverWorkspacesResponseObject, error) {
+	candidates, err := h.svc.DiscoverWorkspaces(ctx)
+	return api.DiscoverWorkspaces200JSONResponse(candidates), err
+}
+
+func (h *handlers) DeleteWorkspace(ctx context.Context, req api.DeleteWorkspaceRequestObject) (api.DeleteWorkspaceResponseObject, error) {
+	return api.DeleteWorkspace204Response{}, h.svc.DeleteWorkspace(ctx, req.WorkspaceId, callerFrom(ctx))
+}
+
+func (h *handlers) ResolveReview(ctx context.Context, req api.ResolveReviewRequestObject) (api.ResolveReviewResponseObject, error) {
+	rv, err := h.svc.ResolveReview(ctx, req.Params.Path)
+	return api.ResolveReview200JSONResponse(rv), err
+}
+
 func (h *handlers) GetWorkspace(ctx context.Context, req api.GetWorkspaceRequestObject) (api.GetWorkspaceResponseObject, error) {
 	ws, err := h.svc.GetWorkspace(ctx, req.WorkspaceId)
 	return api.GetWorkspace200JSONResponse(ws), err

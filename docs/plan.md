@@ -15,8 +15,8 @@ Each PR starts with its own plan in [`plans/`](plans/), followed by its implemen
 
 M3+ (revision-aware review, analysis, Pi adapter) get separate plans.
 
-- **M2b:** [workspace/CLI usability #5](https://github.com/aduverger/prunelle/issues/5), including automatic discovery, context inference and workspace deletion. Complete before M3.
-- **M3b:** [Pierre-native code review UI #6](https://github.com/aduverger/prunelle/issues/6): inline comments, stable code scrolling, Highlights, left comment navigation and on-demand decision/integration surfaces. [Implementation plan and ledger](plans/m3b.md); implemented locally on explicit request. Separate from M2b and M3's revision-aware domain changes.
+- **M2b:** [workspace/CLI usability #5](https://github.com/aduverger/prunelle/issues/5), including automatic discovery, context inference and workspace deletion. [Implementation plan and ledger](plans/m2b.md); implemented and locally verified with approved one-level `workspace_root_paths` discovery and hard deletion, not yet published. Complete before M3.
+- **M3b:** [Pierre-native code review UI #6](https://github.com/aduverger/prunelle/issues/6): inline comments, stable code scrolling, Highlights, left comment navigation and on-demand decision/integration surfaces. [Implementation plan and ledger](plans/m3b.md); merged in [PR #7](https://github.com/aduverger/prunelle/pull/7). Separate from M2b and M3's revision-aware domain changes.
 
 ## Server
 

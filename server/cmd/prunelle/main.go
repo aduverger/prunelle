@@ -18,10 +18,12 @@ const usage = `usage: prunelle [--config PATH] COMMAND [ARGS]
 Commands:
   serve                                   run the review server
   workspace add NAME LABEL=PATH...        register a workspace (--base-ref, default main)
-  workspace ls                            list workspaces
-  review create WORKSPACE_ID TITLE        create a review (--description)
+  workspace ls                            list registered workspaces (--discover lists candidates)
+  workspace delete --yes WORKSPACE_ID     permanently delete workspace's Prunelle data, never project files
+  review create [TITLE]                    create a review in cwd's workspace (--workspace ID, --base-ref)
+  review create WORKSPACE_ID TITLE        create with an explicit workspace ID (legacy form)
   review ls                               list reviews
-  review capture REVIEW_ID                capture a new revision
+  review capture [REVIEW_ID]               capture a revision (default: cwd workspace's sole review)
   review import REVIEW_ID MANIFEST.json   import a review manifest ("-" reads stdin; --revision)
   sessions backends                       list session backends and their health
   sessions ls                             list runtime sessions (--workspace ID)
