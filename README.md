@@ -27,9 +27,11 @@ Configuration lives in `<user config dir>/prunelle/config.toml` (`~/.config/prun
 
 ```toml
 listen = "127.0.0.1:7390"         # loopback only
-workspace_root_paths = ["~/code/emidat"] # immediate children are workspace folders; roots are never workspaces
 allowed_logins = []               # Tailscale logins besides the machine owner
 # data_dir defaults to ~/.local/share/prunelle (Linux) or ~/Library/Application Support/Prunelle (macOS)
+
+[snapshot]
+default_base_ref = "origin/main" # omit for the built-in main default; no automatic fetch/fallback
 
 # Optional: discover agent runtimes in Rex. Reviews work without it.
 [[session_backends]]
@@ -43,44 +45,43 @@ Run the server and seed the demo review:
 
 ```sh
 bin/prunelle serve
-bin/prunelle fixture ~/code/emidat/prunelle-demo # inside a configured workspace root
+bin/prunelle fixture ~/code/prunelle-demo
 bin/prunelle review ls
 ```
 
-### Workspaces and CLI context
+### Reviews, source context and snapshots
 
-`workspace_root_paths` contains parent directories, not individual workspaces. Discovery considers only immediate child folders. A child is either a Git repository/worktree, or a folder whose immediate children are Git repositories/worktrees. It never groups the configured root itself or recursively collects deeper repositories. Symlink directory entries are not scanned. Candidates without reviews stay out of ordinary client navigation.
+A review owns its repository set, revisions, semantic content and runtime associations. There is no workspace registration or configured discovery root. Start from a Git repository/worktree, or explicitly target a folder whose immediate children are Git worktrees. Prunelle does not recursively collect an entire namespace. New reviews re-evaluate source independently; changing a folder does not rewrite another review’s declared set.
 
-For example, with `workspace_root_paths = ["~/code/emidat"]`, `ecomapping/.git` is a single-repository workspace and `unblock_elems/repo-a/.git` plus its sibling repositories form one multi-repository workspace. No registration command is needed.
-
-Install the CLI on your `PATH` so it runs from your actual project directory, not the Prunelle Go module:
+Install the CLI on your `PATH` so cwd means your project directory, not the Prunelle Go module:
 
 ```sh
 # From server/:
 mkdir -p "$HOME/.local/bin"
 go build -o "$HOME/.local/bin/prunelle" ./cmd/prunelle
 
+# First multi-repository review: target its container, not an unknown member:
 cd ~/code/emidat/unblock_elems
-prunelle review create --base-ref origin/main # title defaults to the workspace name
+prunelle review create "Missing Permission"
 prunelle review capture
+
+# Explicit targets and operations work from elsewhere:
+prunelle review create --path ~/code/emidat/unblock_elems "Another review"
+prunelle review create --repo api="$HOME/code/api" --repo web="$HOME/code/web" "Selected repositories"
+prunelle review capture --base-ref origin/main REVIEW_ID
+prunelle review capture --repo-base-ref REPOSITORY_ID=origin/develop REVIEW_ID
+prunelle review delete --yes REVIEW_ID
 ```
 
-Creation/capture also infer context from member repositories and subdirectories. Capture requires exactly one review in that workspace; zero/multiple reviews report an error instead of choosing another review. `--base-ref` defaults to `main` on initial registration, applies to every member repository and never rewrites existing settings. No Git fetch or branch switch is performed. Existing registrations retain their repository membership; changed membership reports a conflict rather than silently changing a review.
+Creation without `--path` can reuse one known containing source context, but never copies another review’s membership/settings. Without known context, an invocation inside a Git worktree selects that repository; choose the container explicitly for a first multi-repo review. An omitted title defaults to the source folder or repository labels. Inferred capture requires exactly one review matching cwd through its context/member paths, including closed reviews; zero/multiple matches require explicit selection. It never picks a global/latest review.
 
-Explicit controls remain available from anywhere:
+Base refs are capture inputs, not review-registration settings: per-repository override, then capture-wide `--base-ref`, then `[snapshot].default_base_ref`, then built-in `main`. Defaults are loaded at server startup and consulted for each capture; restart after editing configuration. Each repository stores the actual ref, merge-base/head SHAs and immutable source. Missing refs fail atomically; Prunelle never fetches, switches branches or guesses a fallback. Committed idempotent retries retain the original revision even after defaults change.
 
-```sh
-prunelle workspace ls --discover                 # read-only candidates, including unused folders
-prunelle workspace ls                            # registered workspace IDs
-prunelle review create --workspace WORKSPACE_ID "Review title"
-prunelle review create WORKSPACE_ID "Review title" # existing positional form
-prunelle review capture REVIEW_ID
-prunelle workspace delete --yes WORKSPACE_ID
-```
+Deletion removes only that review’s Prunelle history, scoped receipts and links, plus unreferenced identities/blobs. It never changes project files/Git history or stops runtimes. Other reviews survive, even when they share paths or migrated source identities. A deletion notification and body-less unknown-outcome protection remain. Unsent desktop drafts stay in memory after remote deletion until deliberate navigation; copy text you want to retain before leaving.
 
-Deletion permanently removes the workspace’s Prunelle reviews, snapshots, semantic content, discussions, decisions, runtime associations and scoped response receipts, plus unreferenced stored file blobs. It does **not** delete project files/Git history or stop runtimes. A deletion notification remains in the event stream. Discovery does not resurrect metadata: deliberately starting another review in that folder creates fresh workspace/history IDs. Repeating deletion with the old ID cannot delete the new workspace. If another client deletes the review you are editing, its unsent drafts stay in memory until you deliberately leave; copy any text you want to retain.
+**Trust boundary:** every authenticated Prunelle caller, including `allowed_logins`, is trusted to select any Git source readable by the server account. There is no path allowlist. Canonical/Git validation rejects invalid or retargeted sources; it is not filesystem authorization. Grant access only to trusted users.
 
-**Configuration migration:** `allowed_roots` is no longer accepted. Replace it with `workspace_root_paths`, choosing the actual workspace-parent directories (for example `~/code/emidat`, not its namespace parent `~/code`). Existing review/history IDs remain valid; explicit IDs also preserve manually registered repository sets. The server reports an actionable error for the obsolete key rather than silently ignoring it.
+**Upgrade from M2b:** stop the server and back up its data directory. Remove `allowed_roots`, `workspace_root_paths` and `[[workspace]]` settings; use `[snapshot]` above. Startup applies migration 0005 before serving requests, retaining review/repository/revision/anchor IDs and source history, separating memberships and mapping existing runtime links to the reviews that previously saw them. Old per-repository base preferences remain in `repositories.legacy_base_ref` for migration auditing, never as capture defaults. They are removed with the last owning source identity, not retained in a deletion-exempt sidecar; future captures use configuration/explicit overrides. The stopped-server backup preserves pre-migration values too. Old workspace-only receipts are retired, while review receipts and pending retry protection survive. Upgrade server, CLI and desktop together: workspace APIs/commands/DTO fields were removed. Old binaries cannot read the newer database; rollback requires restoring the backup.
 
 Expose it to your tailnet (no sudo once your user is the Tailscale operator):
 
@@ -90,7 +91,7 @@ tailscale serve --bg --https=443 http://127.0.0.1:7390
 
 Requests through Tailscale Serve must come from the machine's Tailscale owner or a login in `allowed_logins`. Local processes on the server machine are trusted (see [decisions](docs/decisions.md), D2).
 
-With a session backend configured, `prunelle sessions ls` lists discovered runtimes (one per Rex terminal block) and the workspaces they suggest; `prunelle sessions link RUNTIME_ID WORKSPACE_ID` records the association explicitly.
+With a session backend configured, `prunelle sessions ls` lists discovered runtimes (one per Rex terminal block) and the reviews they suggest; `prunelle sessions link RUNTIME_ID REVIEW_ID` records the association explicitly.
 
 The API contract is [`server/api/openapi.yaml`](server/api/openapi.yaml). Review content is imported as a manifest: `prunelle review import REVIEW_ID manifest.json`; `prunelle fixture --print-manifest` prints a complete example.
 
@@ -125,7 +126,7 @@ Use **Server** in the app to connect to `http://127.0.0.1:7390` locally or `http
 - Semantic topics retain Text / Diagram / Code / Evidence and one/two-view layouts. Evidence links and diagram nodes trace back to canonical records and stored source. Drafts and explicit retry identities survive virtualized view recycling; they remain in memory, with warnings before leaving the review.
 - Discussions, replies and resolution are shared across views. **Review decision** opens a modal with revision-specific verdicts/history; request changes selects actionable findings or threads. Closing the modal keeps a dirty draft. Comments never start an agent or change code.
 - Perspectives and layout are local preferences. Capture is manual; source can be inspected at older revisions, while topic/representation metadata is the current graph (revision-aware comparison is M3).
-- **Settings → Integrations** contains optional runtime sessions, polls only while open, and allows only explicit workspace association/removal. It has no process-control or agent-chat UI.
+- **Settings → Integrations** contains optional runtime sessions, polls only while open, and allows only explicit review association/removal. It has no process-control or agent-chat UI.
 
 Package the desktop app (`build/` is ignored):
 

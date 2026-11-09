@@ -19,7 +19,7 @@ test.beforeEach(async () => {
   const response = await fetch(`${server}/v1/reviews`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ workspace_path: path, title: 'Unrelated workspace review' }),
+    body: JSON.stringify({ path, title: 'Unrelated review' }),
   });
   expect(response.status).toBe(201);
   otherReview = (await response.json()) as Model['Review'];
@@ -74,7 +74,7 @@ for (const kind of ['code', 'reply', 'decision'] as const) {
     }
     const body = `Keep my unposted ${kind} text after remote deletion.`;
     await draft.fill(body);
-    const deleted = await fetch(`${server}/v1/workspaces/${fixture.review.workspace_id}`, {
+    const deleted = await fetch(`${server}/v1/reviews/${fixture.review.id}`, {
       method: 'DELETE',
     });
     expect(deleted.status).toBe(204);
@@ -104,15 +104,13 @@ for (const kind of ['code', 'reply', 'decision'] as const) {
   });
 }
 
-test('unused discovered folders stay out of navigation until the first review is created', async ({
+test('unreviewed source folders stay out of navigation until the first review is created', async ({
   page,
 }) => {
   const path = `${fixture.dir}/unused-project`;
   cpSync(`${fixture.dir}/repos/api`, path, { recursive: true });
-  const candidates = await fixture.get<Model['WorkspaceCandidate'][]>('/v1/workspace-candidates');
-  expect(candidates.find((candidate) => candidate.path === path)).toMatchObject({
-    workspace_id: null,
-  });
+  const reviews = await fixture.get<Model['Review'][]>('/v1/reviews');
+  expect(reviews.some((review) => review.context_path === path)).toBe(false);
   await page.goto('/');
   const picker = page.getByLabel('Feature review', { exact: true });
   await expect(picker).toHaveValue(fixture.review.id);
@@ -120,7 +118,7 @@ test('unused discovered folders stay out of navigation until the first review is
   const response = await fetch(`${server}/v1/reviews`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ workspace_path: path }),
+    body: JSON.stringify({ path }),
   });
   expect(response.status).toBe(201);
   const review = (await response.json()) as Model['Review'];

@@ -110,23 +110,8 @@ func (h *handlers) GetHealth(context.Context, api.GetHealthRequestObject) (api.G
 	return api.GetHealth200JSONResponse{Status: api.Ok, Version: h.version}, nil
 }
 
-func (h *handlers) ListWorkspaces(ctx context.Context, _ api.ListWorkspacesRequestObject) (api.ListWorkspacesResponseObject, error) {
-	ws, err := h.svc.ListWorkspaces(ctx)
-	return api.ListWorkspaces200JSONResponse(ws), err
-}
-
-func (h *handlers) CreateWorkspace(ctx context.Context, req api.CreateWorkspaceRequestObject) (api.CreateWorkspaceResponseObject, error) {
-	ws, err := h.svc.CreateWorkspace(ctx, *req.Body, callerFrom(ctx))
-	return api.CreateWorkspace201JSONResponse(ws), err
-}
-
-func (h *handlers) DiscoverWorkspaces(ctx context.Context, _ api.DiscoverWorkspacesRequestObject) (api.DiscoverWorkspacesResponseObject, error) {
-	candidates, err := h.svc.DiscoverWorkspaces(ctx)
-	return api.DiscoverWorkspaces200JSONResponse(candidates), err
-}
-
-func (h *handlers) DeleteWorkspace(ctx context.Context, req api.DeleteWorkspaceRequestObject) (api.DeleteWorkspaceResponseObject, error) {
-	return api.DeleteWorkspace204Response{}, h.svc.DeleteWorkspace(ctx, req.WorkspaceId, callerFrom(ctx))
+func (h *handlers) DeleteReview(ctx context.Context, req api.DeleteReviewRequestObject) (api.DeleteReviewResponseObject, error) {
+	return api.DeleteReview204Response{}, h.svc.DeleteReview(ctx, req.ReviewId, callerFrom(ctx))
 }
 
 func (h *handlers) ResolveReview(ctx context.Context, req api.ResolveReviewRequestObject) (api.ResolveReviewResponseObject, error) {
@@ -134,13 +119,8 @@ func (h *handlers) ResolveReview(ctx context.Context, req api.ResolveReviewReque
 	return api.ResolveReview200JSONResponse(rv), err
 }
 
-func (h *handlers) GetWorkspace(ctx context.Context, req api.GetWorkspaceRequestObject) (api.GetWorkspaceResponseObject, error) {
-	ws, err := h.svc.GetWorkspace(ctx, req.WorkspaceId)
-	return api.GetWorkspace200JSONResponse(ws), err
-}
-
-func (h *handlers) ListReviews(ctx context.Context, req api.ListReviewsRequestObject) (api.ListReviewsResponseObject, error) {
-	reviews, err := h.svc.ListReviews(ctx, req.Params.WorkspaceId)
+func (h *handlers) ListReviews(ctx context.Context, _ api.ListReviewsRequestObject) (api.ListReviewsResponseObject, error) {
+	reviews, err := h.svc.ListReviews(ctx)
 	return api.ListReviews200JSONResponse(reviews), err
 }
 
@@ -160,7 +140,11 @@ func (h *handlers) ListRevisions(ctx context.Context, req api.ListRevisionsReque
 }
 
 func (h *handlers) CaptureRevision(ctx context.Context, req api.CaptureRevisionRequestObject) (api.CaptureRevisionResponseObject, error) {
-	revision, err := h.svc.CaptureRevision(ctx, req.ReviewId, callerFrom(ctx))
+	input := review.CaptureRequest{}
+	if req.Body != nil {
+		input = *req.Body
+	}
+	revision, err := h.svc.CaptureRevision(ctx, req.ReviewId, input, callerFrom(ctx))
 	return api.CaptureRevision201JSONResponse(revision), err
 }
 
@@ -334,7 +318,7 @@ func (h *handlers) ListSessionBackends(ctx context.Context, _ api.ListSessionBac
 }
 
 func (h *handlers) ListRuntimeSessions(ctx context.Context, req api.ListRuntimeSessionsRequestObject) (api.ListRuntimeSessionsResponseObject, error) {
-	runtimes, err := h.sessions.ListRuntimeSessions(ctx, req.Params.WorkspaceId)
+	runtimes, err := h.sessions.ListRuntimeSessions(ctx, req.Params.ReviewId)
 	return api.ListRuntimeSessions200JSONResponse(runtimes), err
 }
 
@@ -344,10 +328,10 @@ func (h *handlers) GetRuntimeSession(ctx context.Context, req api.GetRuntimeSess
 }
 
 func (h *handlers) AssociateRuntimeSession(ctx context.Context, req api.AssociateRuntimeSessionRequestObject) (api.AssociateRuntimeSessionResponseObject, error) {
-	runtime, err := h.sessions.Associate(ctx, req.WorkspaceId, req.RuntimeSessionId)
+	runtime, err := h.sessions.Associate(ctx, req.ReviewId, req.RuntimeSessionId)
 	return api.AssociateRuntimeSession200JSONResponse(runtime), err
 }
 
 func (h *handlers) DissociateRuntimeSession(ctx context.Context, req api.DissociateRuntimeSessionRequestObject) (api.DissociateRuntimeSessionResponseObject, error) {
-	return api.DissociateRuntimeSession204Response{}, h.sessions.Dissociate(ctx, req.WorkspaceId, req.RuntimeSessionId)
+	return api.DissociateRuntimeSession204Response{}, h.sessions.Dissociate(ctx, req.ReviewId, req.RuntimeSessionId)
 }

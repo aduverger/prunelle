@@ -219,7 +219,7 @@ func TestEventStreamResumesWhereTheClientLeft(t *testing.T) {
 
 	stream := s.openEvents(t, "")
 	ready := stream.next(t)
-	if ready.event != "ready" || ready.data != `{"sequence":`+strconv.FormatInt(ready.id, 10)+`}` || ready.id < 4 {
+	if ready.event != "ready" || ready.data != `{"sequence":`+strconv.FormatInt(ready.id, 10)+`}` {
 		t.Fatalf("ready = %+v", ready)
 	}
 	first := comment("First")
@@ -270,10 +270,10 @@ func TestReviewStateSurvivesRestart(t *testing.T) {
 	stream := restarted.openEvents(t, "0")
 	stream.next(t) // ready
 	var types []string
-	for len(types) < 6 {
+	for len(types) < 5 {
 		types = append(types, stream.next(t).event)
 	}
-	want := []string{"workspace.created", "review.created", "revision.created", "import.created", "decision.created", "discussion.created"}
+	want := []string{"review.created", "revision.created", "import.created", "decision.created", "discussion.created"}
 	if strings.Join(types, " ") != strings.Join(want, " ") {
 		t.Errorf("events after restart = %v", types)
 	}

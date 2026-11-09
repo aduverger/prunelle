@@ -36,12 +36,12 @@ func TestOpenAppliesMigrationsOnceAndEnforcesForeignKeys(t *testing.T) {
 	}
 
 	err = db.Write(ctx, func(tx *sql.Tx) error {
-		_, err := tx.ExecContext(ctx, `INSERT INTO repositories (id, workspace_id, label, root_path, base_ref, include_untracked, created_at, updated_at)
-			VALUES ('repo_1', 'ws_missing', 'api', '/tmp/api', 'main', 1, 'now', 'now')`)
+		_, err := tx.ExecContext(ctx, `INSERT INTO reviews (id, title, description, status, current_revision_id, created_at, updated_at)
+			VALUES ('rvw_fixture', 'Review', '', 'OPEN', 'rev_missing', 'now', 'now')`)
 		return err
 	})
-	if err == nil {
-		t.Fatal("expected foreign key violation")
+	if err == nil || !strings.Contains(err.Error(), "FOREIGN KEY constraint failed") {
+		t.Fatalf("a valid write referencing a missing revision must fail on its foreign key: %v", err)
 	}
 }
 
@@ -52,12 +52,12 @@ func TestReaderCannotWrite(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer db.Close()
-	if _, err := db.Reader().ExecContext(ctx, `INSERT INTO workspaces (id, name, created_at, updated_at) VALUES ('ws_1', 'x', 'now', 'now')`); err == nil || !strings.Contains(err.Error(), "readonly") {
+	if _, err := db.Reader().ExecContext(ctx, `INSERT INTO reviews (id, title, description, status, created_at, updated_at) VALUES ('rvw_1', 'x', '', 'OPEN', 'now', 'now')`); err == nil || !strings.Contains(err.Error(), "readonly") {
 		t.Fatalf("reader connection must reject a valid write as readonly: %v", err)
 	}
 }
 
-func TestWorkspaceMigrationScopesExistingReceipts(t *testing.T) {
+func TestReviewMigrationScopesExistingReceipts(t *testing.T) {
 	ctx := context.Background()
 	dir := t.TempDir()
 	legacy, err := sql.Open("sqlite", dsn(filepath.Join(dir, fileName)))
@@ -92,7 +92,7 @@ func TestWorkspaceMigrationScopesExistingReceipts(t *testing.T) {
 	defer db.Close()
 	for _, key := range []string{"review", "import"} {
 		var owner string
-		if err := db.Reader().QueryRowContext(ctx, `SELECT workspace_id FROM idempotency_keys WHERE key = ?`, key).Scan(&owner); err != nil || owner != "ws_legacy" {
+		if err := db.Reader().QueryRowContext(ctx, `SELECT review_id FROM idempotency_keys WHERE key = ?`, key).Scan(&owner); err != nil || owner != "rvw_legacy" {
 			t.Fatalf("legacy %s receipt owner = %q: %v", key, owner, err)
 		}
 	}

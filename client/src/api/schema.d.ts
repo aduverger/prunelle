@@ -20,58 +20,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/v1/workspaces": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get: operations["listWorkspaces"];
-        put?: never;
-        post: operations["createWorkspace"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/workspace-candidates": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** @description Read-only discovery of immediate child workspace folders under workspace_root_paths. Configured roots are never workspaces; discovery creates no registration. */
-        get: operations["discoverWorkspaces"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/workspaces/{workspaceId}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                workspaceId: components["parameters"]["WorkspaceId"];
-            };
-            cookie?: never;
-        };
-        get: operations["getWorkspace"];
-        put?: never;
-        post?: never;
-        /** @description Hard-delete workspace-owned Prunelle data, stored content and scoped idempotency receipts. Never delete project files or Git history or stop runtime sessions. The folder remains discoverable. Repeated deletion of an absent ID succeeds; a fresh workspace has a new ID. Past workspace/review events are removed; a workspace.deleted notification remains. */
-        delete: operations["deleteWorkspace"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/v1/reviews": {
         parameters: {
             query?: never;
@@ -95,7 +43,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** @description Resolve an absolute server-side invocation directory to its discovered workspace and return its sole review. Missing or multiple reviews require explicit selection; never choose another workspace's review. */
+        /** @description Resolve a server-side directory to exactly one review using its source context or repository membership. Zero or multiple matches require explicit selection. */
         get: operations["resolveReview"];
         put?: never;
         post?: never;
@@ -117,7 +65,8 @@ export interface paths {
         get: operations["getReview"];
         put?: never;
         post?: never;
-        delete?: never;
+        /** @description Hard-delete this review and its owned Prunelle content/receipts, never project files, Git history or runtimes. Shared source identities/blobs and other reviews are preserved. Repeating an absent ID succeeds. */
+        delete: operations["deleteReview"];
         options?: never;
         head?: never;
         patch?: never;
@@ -134,7 +83,7 @@ export interface paths {
         };
         get: operations["listRevisions"];
         put?: never;
-        /** @description Capture every repository of the review's workspace into a new immutable revision, which becomes the current revision. */
+        /** @description Capture the declared review repository set using per-repository overrides, then a capture-wide base ref, then the server snapshot default. No fetch or branch switch. A committed idempotent retry returns its original revision even if defaults change. */
         post: operations["captureRevision"];
         delete?: never;
         options?: never;
@@ -579,18 +528,18 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/v1/workspaces/{workspaceId}/runtime-sessions/{runtimeSessionId}": {
+    "/v1/reviews/{reviewId}/runtime-sessions/{runtimeSessionId}": {
         parameters: {
             query?: never;
             header?: never;
             path: {
-                workspaceId: components["parameters"]["WorkspaceId"];
+                reviewId: components["parameters"]["ReviewId"];
                 runtimeSessionId: components["parameters"]["RuntimeSessionId"];
             };
             cookie?: never;
         };
         get?: never;
-        /** @description Explicitly associate a runtime session with a workspace. Idempotent. */
+        /** @description Explicitly associate a runtime session with a review. Idempotent. */
         put: operations["associateRuntimeSession"];
         post?: never;
         /** @description Remove an association. Idempotent. */
@@ -622,48 +571,23 @@ export interface components {
          * @enum {string}
          */
         Provenance: "MEASURED" | "OBSERVED" | "INFERRED" | "UNKNOWN";
-        Workspace: {
-            id: string;
-            name: string;
-            /** @description Canonical workspace folder; null for a manual registration not yet associated with a discovered folder. */
-            root_path: string | null;
-            repositories: components["schemas"]["Repository"][];
-            /** Format: date-time */
-            created_at: string;
-            /** Format: date-time */
-            updated_at: string;
-        };
         Repository: {
             id: string;
-            workspace_id: string;
+            review_id: string;
             label: string;
-            /** @description Canonical repository root on the server. */
+            /** @description Canonical source path on the server. */
             root_path: string;
-            base_ref: string;
             include_untracked: boolean;
-        };
-        CreateWorkspaceRequest: {
-            name: string;
-            repositories: components["schemas"]["CreateRepositoryRequest"][];
         };
         CreateRepositoryRequest: {
             label: string;
-            /** @description Canonical repository path on the server; must lie inside workspace_root_paths. */
             path: string;
-            base_ref: string;
-            /** @default true */
-            include_untracked: boolean;
-        };
-        WorkspaceCandidate: {
-            path: string;
-            name: string;
-            repositories: components["schemas"]["CreateRepositoryRequest"][];
-            /** @description Existing matching registration */
-            workspace_id: string | null;
+            include_untracked?: boolean;
         };
         Review: {
             id: string;
-            workspace_id: string;
+            context_path: string | null;
+            repositories: components["schemas"]["Repository"][];
             title: string;
             description: string;
             /** @enum {string} */
@@ -675,15 +599,31 @@ export interface components {
             updated_at: string;
         };
         CreateReviewRequest: {
-            workspace_id?: string;
-            /** @description Absolute server-side invocation directory. Its discovered workspace is registered atomically with the review if needed. */
-            workspace_path?: string;
-            /** @description Initial automatic-registration base ref (default main). Existing settings must agree and are never rewritten. Only valid with workspace_path. */
-            base_ref?: string;
-            /** @description Defaults to the workspace name when omitted. */
+            /** @description Absolute server-side source target; a repository or container of immediate repositories. */
+            path?: string | null;
+            /** @description Resolve cwd through one existing containing review context before validating source. Explicit paths omit this flag. */
+            infer_context?: boolean;
+            repositories?: components["schemas"]["CreateRepositoryRequest"][] | null;
+            /** @description Defaults to the source folder or repository labels. */
             title?: string;
             description?: string;
-        } & (unknown | unknown);
+        } & ({
+            path: string;
+            repositories?: null;
+        } | {
+            path?: null;
+            repositories: components["schemas"]["CreateRepositoryRequest"][];
+            /** @enum {unknown} */
+            infer_context?: false;
+        });
+        RepositoryBaseRef: {
+            repository_id: string;
+            base_ref: string;
+        };
+        CaptureRequest: {
+            base_ref?: string;
+            repository_base_refs?: components["schemas"]["RepositoryBaseRef"][];
+        };
         Revision: {
             id: string;
             review_id: string;
@@ -1090,7 +1030,7 @@ export interface components {
             discussion_ids?: components["schemas"]["IDList"];
         };
         /**
-         * @description A change to refetch. Types: workspace.created, review.created, revision.created, import.created,
+         * @description A change to refetch. Types: review.created, review.deleted, revision.created, import.created,
          *     topic.created, topic.updated (edit or move; refetch the topic list, sibling positions may change),
          *     representation.created, representation.updated, discussion.created, discussion.updated
          *     (status change or reply), decision.created.
@@ -1301,9 +1241,9 @@ export interface components {
             /** @description Backend-specific details. */
             metadata: Record<string, never>;
             /** @description Explicit associations. */
-            workspace_ids: string[];
-            /** @description Workspaces whose repositories contain the runtime's local cwd. Never applied automatically. */
-            suggested_workspace_ids: string[];
+            review_ids: string[];
+            /** @description Reviews whose source contains the runtime's local cwd. Never applied automatically. */
+            suggested_review_ids: string[];
             /** Format: date-time */
             first_seen_at: string;
             /** Format: date-time */
@@ -1324,7 +1264,6 @@ export interface components {
         };
     };
     parameters: {
-        WorkspaceId: string;
         ReviewId: string;
         RevisionId: string;
         TopicId: string;
@@ -1364,132 +1303,16 @@ export interface operations {
             };
         };
     };
-    listWorkspaces: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description All workspaces. */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Workspace"][];
-                };
-            };
-            default: components["responses"]["Error"];
-        };
-    };
-    createWorkspace: {
-        parameters: {
-            query?: never;
-            header?: {
-                /** @description Client-chosen unique key that makes a retried request safe. */
-                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["CreateWorkspaceRequest"];
-            };
-        };
-        responses: {
-            /** @description Created workspace. */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Workspace"];
-                };
-            };
-            default: components["responses"]["Error"];
-        };
-    };
-    discoverWorkspaces: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Workspace candidates, including folders without reviews. */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["WorkspaceCandidate"][];
-                };
-            };
-            default: components["responses"]["Error"];
-        };
-    };
-    getWorkspace: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                workspaceId: components["parameters"]["WorkspaceId"];
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description The workspace. */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Workspace"];
-                };
-            };
-            default: components["responses"]["Error"];
-        };
-    };
-    deleteWorkspace: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                workspaceId: components["parameters"]["WorkspaceId"];
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Workspace deleted, or already absent. */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            default: components["responses"]["Error"];
-        };
-    };
     listReviews: {
         parameters: {
-            query?: {
-                workspace_id?: string;
-            };
+            query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description Reviews, optionally of one workspace. */
+            /** @description Reviews with their owned repository context. */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -1540,7 +1363,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description The sole review in the resolved workspace. */
+            /** @description The sole matching review. */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -1571,6 +1394,27 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["Review"];
                 };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    deleteReview: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                reviewId: components["parameters"]["ReviewId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Review deleted or already absent. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             default: components["responses"]["Error"];
         };
@@ -1610,7 +1454,11 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["CaptureRequest"];
+            };
+        };
         responses: {
             /** @description Captured revision. */
             201: {
@@ -2352,8 +2200,8 @@ export interface operations {
     listRuntimeSessions: {
         parameters: {
             query?: {
-                /** @description Only runtime sessions explicitly associated with this workspace. */
-                workspace_id?: string;
+                /** @description Only runtime sessions explicitly associated with this review. */
+                review_id?: string;
             };
             header?: never;
             path?: never;
@@ -2401,7 +2249,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                workspaceId: components["parameters"]["WorkspaceId"];
+                reviewId: components["parameters"]["ReviewId"];
                 runtimeSessionId: components["parameters"]["RuntimeSessionId"];
             };
             cookie?: never;
@@ -2425,7 +2273,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                workspaceId: components["parameters"]["WorkspaceId"];
+                reviewId: components["parameters"]["ReviewId"];
                 runtimeSessionId: components["parameters"]["RuntimeSessionId"];
             };
             cookie?: never;

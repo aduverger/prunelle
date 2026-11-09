@@ -62,9 +62,9 @@ func TestRuntimeSessionAssociationOverHTTP(t *testing.T) {
 	fake := sessionstest.NewFake()
 	s := newTestServer(t, nil, sessions.Registration{Name: "rex", Config: json.RawMessage(`{"server":""}`), Backend: fake})
 	rv, _, _ := s.seed(t)
-	ws := must(s.client.GetWorkspaceWithResponse(ctx, rv.WorkspaceID))
+	source := must(s.client.GetReviewWithResponse(ctx, rv.ID))
 	fake.Set(sessions.Observed{ExternalID: "session:a/block:a1", State: sessions.StateOnline, Label: "prunelle / shell",
-		Cwd: ws.JSON200.Repositories[0].RootPath, Process: "pi", Local: true, HarnessHint: "pi", Metadata: json.RawMessage(`{"rex_block_id":"block:a1"}`)})
+		Cwd: source.JSON200.Repositories[0].RootPath, Process: "pi", Local: true, HarnessHint: "pi", Metadata: json.RawMessage(`{"rex_block_id":"block:a1"}`)})
 	backends := must(s.client.ListSessionBackendsWithResponse(ctx))
 	if err := s.sessions.Sync(ctx, (*backends.JSON200)[0].ID); err != nil {
 		t.Fatal(err)
@@ -73,24 +73,24 @@ func TestRuntimeSessionAssociationOverHTTP(t *testing.T) {
 	listed := must(s.client.ListRuntimeSessionsWithResponse(ctx, &api.ListRuntimeSessionsParams{}))
 	expectStatus(t, listed.StatusCode(), http.StatusOK, listed.Body)
 	runtime := (*listed.JSON200)[0]
-	if len(runtime.SuggestedWorkspaceIDs) != 1 || runtime.SuggestedWorkspaceIDs[0] != rv.WorkspaceID || len(runtime.WorkspaceIDs) != 0 {
+	if len(runtime.SuggestedReviewIDs) != 1 || runtime.SuggestedReviewIDs[0] != rv.ID || len(runtime.ReviewIDs) != 0 {
 		t.Fatalf("runtime = %s", listed.Body)
 	}
 
-	linked := must(s.client.AssociateRuntimeSessionWithResponse(ctx, rv.WorkspaceID, runtime.ID))
+	linked := must(s.client.AssociateRuntimeSessionWithResponse(ctx, rv.ID, runtime.ID))
 	expectStatus(t, linked.StatusCode(), http.StatusOK, linked.Body)
-	filtered := must(s.client.ListRuntimeSessionsWithResponse(ctx, &api.ListRuntimeSessionsParams{WorkspaceId: &rv.WorkspaceID}))
+	filtered := must(s.client.ListRuntimeSessionsWithResponse(ctx, &api.ListRuntimeSessionsParams{ReviewId: &rv.ID}))
 	if len(*filtered.JSON200) != 1 {
 		t.Fatalf("associated = %s", filtered.Body)
 	}
 	got := must(s.client.GetRuntimeSessionWithResponse(ctx, runtime.ID))
 	expectStatus(t, got.StatusCode(), http.StatusOK, got.Body)
 
-	unlinked := must(s.client.DissociateRuntimeSessionWithResponse(ctx, rv.WorkspaceID, runtime.ID))
+	unlinked := must(s.client.DissociateRuntimeSessionWithResponse(ctx, rv.ID, runtime.ID))
 	expectStatus(t, unlinked.StatusCode(), http.StatusNoContent, unlinked.Body)
-	missing := must(s.client.AssociateRuntimeSessionWithResponse(ctx, rv.WorkspaceID, "rts_missing"))
+	missing := must(s.client.AssociateRuntimeSessionWithResponse(ctx, rv.ID, "rts_missing"))
 	expectStatus(t, missing.StatusCode(), http.StatusNotFound, missing.Body)
-	unknownWorkspace := must(s.client.ListRuntimeSessionsWithResponse(ctx, &api.ListRuntimeSessionsParams{WorkspaceId: ptr("ws_missing")}))
+	unknownWorkspace := must(s.client.ListRuntimeSessionsWithResponse(ctx, &api.ListRuntimeSessionsParams{ReviewId: ptr("ws_missing")}))
 	expectStatus(t, unknownWorkspace.StatusCode(), http.StatusNotFound, unknownWorkspace.Body)
 }
 

@@ -298,6 +298,9 @@ type Author = review.Author
 // BackendHealth defines model for BackendHealth.
 type BackendHealth = sessions.BackendHealth
 
+// CaptureRequest defines model for CaptureRequest.
+type CaptureRequest = review.CaptureRequest
+
 // CodeRange defines model for CodeRange.
 type CodeRange = review.CodeRange
 
@@ -324,9 +327,6 @@ type CreateReviewRequest = review.CreateReviewRequest
 
 // CreateTopicRequest defines model for CreateTopicRequest.
 type CreateTopicRequest = review.CreateTopicRequest
-
-// CreateWorkspaceRequest defines model for CreateWorkspaceRequest.
-type CreateWorkspaceRequest = review.CreateWorkspaceRequest
 
 // Decision defines model for Decision.
 type Decision = review.Decision
@@ -445,6 +445,9 @@ type RepoSnapshot = review.RepoSnapshot
 // Repository defines model for Repository.
 type Repository = review.Repository
 
+// RepositoryBaseRef defines model for RepositoryBaseRef.
+type RepositoryBaseRef = review.RepositoryBaseRef
+
 // Representation defines model for Representation.
 type Representation = review.Representation
 
@@ -490,12 +493,6 @@ type UpdateRepresentationRequest = review.UpdateRepresentationRequest
 // UpdateTopicRequest defines model for UpdateTopicRequest.
 type UpdateTopicRequest = review.UpdateTopicRequest
 
-// Workspace defines model for Workspace.
-type Workspace = review.Workspace
-
-// WorkspaceCandidate defines model for WorkspaceCandidate.
-type WorkspaceCandidate = review.WorkspaceCandidate
-
 // DiscussionId defines model for DiscussionId.
 type DiscussionId = string
 
@@ -516,9 +513,6 @@ type RuntimeSessionId = string
 
 // TopicId defines model for TopicId.
 type TopicId = string
-
-// WorkspaceId defines model for WorkspaceId.
-type WorkspaceId = string
 
 // UpdateDiscussionParams defines parameters for UpdateDiscussion.
 type UpdateDiscussionParams struct {
@@ -542,11 +536,6 @@ type StreamEventsParams struct {
 type UpdateRepresentationParams struct {
 	// IfMatch ETag of the version the change is based on. Required; omitting it returns 428.
 	IfMatch *IfMatch `json:"If-Match,omitempty"`
-}
-
-// ListReviewsParams defines parameters for ListReviews.
-type ListReviewsParams struct {
-	WorkspaceId *string `form:"workspace_id,omitempty" json:"workspace_id,omitempty"`
 }
 
 // CreateReviewParams defines parameters for CreateReview.
@@ -603,8 +592,8 @@ type GetFileParams struct {
 
 // ListRuntimeSessionsParams defines parameters for ListRuntimeSessions.
 type ListRuntimeSessionsParams struct {
-	// WorkspaceId Only runtime sessions explicitly associated with this workspace.
-	WorkspaceId *string `form:"workspace_id,omitempty" json:"workspace_id,omitempty"`
+	// ReviewId Only runtime sessions explicitly associated with this review.
+	ReviewId *string `form:"review_id,omitempty" json:"review_id,omitempty"`
 }
 
 // UpdateTopicParams defines parameters for UpdateTopic.
@@ -621,12 +610,6 @@ type MoveTopicParams struct {
 
 // CreateRepresentationParams defines parameters for CreateRepresentation.
 type CreateRepresentationParams struct {
-	// IdempotencyKey Client-chosen unique key that makes a retried request safe.
-	IdempotencyKey *IdempotencyKey `json:"Idempotency-Key,omitempty"`
-}
-
-// CreateWorkspaceParams defines parameters for CreateWorkspace.
-type CreateWorkspaceParams struct {
 	// IdempotencyKey Client-chosen unique key that makes a retried request safe.
 	IdempotencyKey *IdempotencyKey `json:"Idempotency-Key,omitempty"`
 }
@@ -652,6 +635,9 @@ type CreateDiscussionJSONRequestBody = CreateDiscussionRequest
 // ImportManifestJSONRequestBody defines body for ImportManifest for application/json ContentType.
 type ImportManifestJSONRequestBody = ImportRequest
 
+// CaptureRevisionJSONRequestBody defines body for CaptureRevision for application/json ContentType.
+type CaptureRevisionJSONRequestBody = CaptureRequest
+
 // CreateTopicJSONRequestBody defines body for CreateTopic for application/json ContentType.
 type CreateTopicJSONRequestBody = CreateTopicRequest
 
@@ -663,9 +649,6 @@ type MoveTopicJSONRequestBody = MoveTopicRequest
 
 // CreateRepresentationJSONRequestBody defines body for CreateRepresentation for application/json ContentType.
 type CreateRepresentationJSONRequestBody = CreateRepresentationRequest
-
-// CreateWorkspaceJSONRequestBody defines body for CreateWorkspace for application/json ContentType.
-type CreateWorkspaceJSONRequestBody = CreateWorkspaceRequest
 
 // RequestEditorFn is the function signature for the RequestEditor callback function
 type RequestEditorFn func(ctx context.Context, req *http.Request) error
@@ -795,7 +778,7 @@ type ClientInterface interface {
 	UpdateRepresentation(ctx context.Context, representationId string, params *UpdateRepresentationParams, body UpdateRepresentationJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListReviews performs a GET /v1/reviews (the `ListReviews` operationId) request.
-	ListReviews(ctx context.Context, params *ListReviewsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+	ListReviews(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// CreateReviewWithBody performs a POST /v1/reviews (the `CreateReview` operationId) request,
 	// with any type of body and a specified content type.
@@ -807,8 +790,13 @@ type ClientInterface interface {
 
 	// ResolveReview performs a GET /v1/reviews/resolve (the `ResolveReview` operationId) request.
 	//
-	// Resolve an absolute server-side invocation directory to its discovered workspace and return its sole review. Missing or multiple reviews require explicit selection; never choose another workspace's review.
+	// Resolve a server-side directory to exactly one review using its source context or repository membership. Zero or multiple matches require explicit selection.
 	ResolveReview(ctx context.Context, params *ResolveReviewParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// DeleteReview performs a DELETE /v1/reviews/{reviewId} (the `DeleteReview` operationId) request.
+	//
+	// Hard-delete this review and its owned Prunelle content/receipts, never project files, Git history or runtimes. Shared source identities/blobs and other reviews are preserved. Repeating an absent ID succeeds.
+	DeleteReview(ctx context.Context, reviewId ReviewId, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetReview performs a GET /v1/reviews/{reviewId} (the `GetReview` operationId) request.
 	GetReview(ctx context.Context, reviewId ReviewId, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -880,10 +868,27 @@ type ClientInterface interface {
 	// ListRevisions performs a GET /v1/reviews/{reviewId}/revisions (the `ListRevisions` operationId) request.
 	ListRevisions(ctx context.Context, reviewId ReviewId, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// CaptureRevision performs a POST /v1/reviews/{reviewId}/revisions (the `CaptureRevision` operationId) request.
+	// CaptureRevisionWithBody performs a POST /v1/reviews/{reviewId}/revisions (the `CaptureRevision` operationId) request,
+	// with any type of body and a specified content type.
 	//
-	// Capture every repository of the review's workspace into a new immutable revision, which becomes the current revision.
-	CaptureRevision(ctx context.Context, reviewId ReviewId, params *CaptureRevisionParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+	// Capture the declared review repository set using per-repository overrides, then a capture-wide base ref, then the server snapshot default. No fetch or branch switch. A committed idempotent retry returns its original revision even if defaults change.
+	CaptureRevisionWithBody(ctx context.Context, reviewId ReviewId, params *CaptureRevisionParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CaptureRevision performs a POST /v1/reviews/{reviewId}/revisions (the `CaptureRevision` operationId) request.
+	// Takes a body of the `application/json` content type.
+	//
+	// Capture the declared review repository set using per-repository overrides, then a capture-wide base ref, then the server snapshot default. No fetch or branch switch. A committed idempotent retry returns its original revision even if defaults change.
+	CaptureRevision(ctx context.Context, reviewId ReviewId, params *CaptureRevisionParams, body CaptureRevisionJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// DissociateRuntimeSession performs a DELETE /v1/reviews/{reviewId}/runtime-sessions/{runtimeSessionId} (the `DissociateRuntimeSession` operationId) request.
+	//
+	// Remove an association. Idempotent.
+	DissociateRuntimeSession(ctx context.Context, reviewId ReviewId, runtimeSessionId RuntimeSessionId, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// AssociateRuntimeSession performs a PUT /v1/reviews/{reviewId}/runtime-sessions/{runtimeSessionId} (the `AssociateRuntimeSession` operationId) request.
+	//
+	// Explicitly associate a runtime session with a review. Idempotent.
+	AssociateRuntimeSession(ctx context.Context, reviewId ReviewId, runtimeSessionId RuntimeSessionId, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListTopics performs a GET /v1/reviews/{reviewId}/topics (the `ListTopics` operationId) request.
 	//
@@ -971,40 +976,6 @@ type ClientInterface interface {
 	//
 	// Add a MANUAL representation authored against the review's current revision. Give the config matching the type; references are record IDs of the review.
 	CreateRepresentation(ctx context.Context, topicId TopicId, params *CreateRepresentationParams, body CreateRepresentationJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
-
-	// DiscoverWorkspaces performs a GET /v1/workspace-candidates (the `DiscoverWorkspaces` operationId) request.
-	//
-	// Read-only discovery of immediate child workspace folders under workspace_root_paths. Configured roots are never workspaces; discovery creates no registration.
-	DiscoverWorkspaces(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
-
-	// ListWorkspaces performs a GET /v1/workspaces (the `ListWorkspaces` operationId) request.
-	ListWorkspaces(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
-
-	// CreateWorkspaceWithBody performs a POST /v1/workspaces (the `CreateWorkspace` operationId) request,
-	// with any type of body and a specified content type.
-	CreateWorkspaceWithBody(ctx context.Context, params *CreateWorkspaceParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
-
-	// CreateWorkspace performs a POST /v1/workspaces (the `CreateWorkspace` operationId) request.
-	// Takes a body of the `application/json` content type.
-	CreateWorkspace(ctx context.Context, params *CreateWorkspaceParams, body CreateWorkspaceJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
-
-	// DeleteWorkspace performs a DELETE /v1/workspaces/{workspaceId} (the `DeleteWorkspace` operationId) request.
-	//
-	// Hard-delete workspace-owned Prunelle data, stored content and scoped idempotency receipts. Never delete project files or Git history or stop runtime sessions. The folder remains discoverable. Repeated deletion of an absent ID succeeds; a fresh workspace has a new ID. Past workspace/review events are removed; a workspace.deleted notification remains.
-	DeleteWorkspace(ctx context.Context, workspaceId WorkspaceId, reqEditors ...RequestEditorFn) (*http.Response, error)
-
-	// GetWorkspace performs a GET /v1/workspaces/{workspaceId} (the `GetWorkspace` operationId) request.
-	GetWorkspace(ctx context.Context, workspaceId WorkspaceId, reqEditors ...RequestEditorFn) (*http.Response, error)
-
-	// DissociateRuntimeSession performs a DELETE /v1/workspaces/{workspaceId}/runtime-sessions/{runtimeSessionId} (the `DissociateRuntimeSession` operationId) request.
-	//
-	// Remove an association. Idempotent.
-	DissociateRuntimeSession(ctx context.Context, workspaceId WorkspaceId, runtimeSessionId RuntimeSessionId, reqEditors ...RequestEditorFn) (*http.Response, error)
-
-	// AssociateRuntimeSession performs a PUT /v1/workspaces/{workspaceId}/runtime-sessions/{runtimeSessionId} (the `AssociateRuntimeSession` operationId) request.
-	//
-	// Explicitly associate a runtime session with a workspace. Idempotent.
-	AssociateRuntimeSession(ctx context.Context, workspaceId WorkspaceId, runtimeSessionId RuntimeSessionId, reqEditors ...RequestEditorFn) (*http.Response, error)
 }
 
 // GetDiscussion performs a GET /v1/discussions/{discussionId} (the `GetDiscussion` operationId) request.
@@ -1161,8 +1132,8 @@ func (c *Client) UpdateRepresentation(ctx context.Context, representationId stri
 }
 
 // ListReviews performs a GET /v1/reviews (the `ListReviews` operationId) request.
-func (c *Client) ListReviews(ctx context.Context, params *ListReviewsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewListReviewsRequest(c.Server, params)
+func (c *Client) ListReviews(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListReviewsRequest(c.Server)
 	if err != nil {
 		return nil, err
 	}
@@ -1203,9 +1174,24 @@ func (c *Client) CreateReview(ctx context.Context, params *CreateReviewParams, b
 
 // ResolveReview performs a GET /v1/reviews/resolve (the `ResolveReview` operationId) request.
 //
-// Resolve an absolute server-side invocation directory to its discovered workspace and return its sole review. Missing or multiple reviews require explicit selection; never choose another workspace's review.
+// Resolve a server-side directory to exactly one review using its source context or repository membership. Zero or multiple matches require explicit selection.
 func (c *Client) ResolveReview(ctx context.Context, params *ResolveReviewParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewResolveReviewRequest(c.Server, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// DeleteReview performs a DELETE /v1/reviews/{reviewId} (the `DeleteReview` operationId) request.
+//
+// Hard-delete this review and its owned Prunelle content/receipts, never project files, Git history or runtimes. Shared source identities/blobs and other reviews are preserved. Repeating an absent ID succeeds.
+func (c *Client) DeleteReview(ctx context.Context, reviewId ReviewId, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDeleteReviewRequest(c.Server, reviewId)
 	if err != nil {
 		return nil, err
 	}
@@ -1446,11 +1432,58 @@ func (c *Client) ListRevisions(ctx context.Context, reviewId ReviewId, reqEditor
 	return c.Client.Do(req)
 }
 
-// CaptureRevision performs a POST /v1/reviews/{reviewId}/revisions (the `CaptureRevision` operationId) request.
+// CaptureRevisionWithBody performs a POST /v1/reviews/{reviewId}/revisions (the `CaptureRevision` operationId) request,
+// with any type of body and a specified content type.
 //
-// Capture every repository of the review's workspace into a new immutable revision, which becomes the current revision.
-func (c *Client) CaptureRevision(ctx context.Context, reviewId ReviewId, params *CaptureRevisionParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewCaptureRevisionRequest(c.Server, reviewId, params)
+// Capture the declared review repository set using per-repository overrides, then a capture-wide base ref, then the server snapshot default. No fetch or branch switch. A committed idempotent retry returns its original revision even if defaults change.
+func (c *Client) CaptureRevisionWithBody(ctx context.Context, reviewId ReviewId, params *CaptureRevisionParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCaptureRevisionRequestWithBody(c.Server, reviewId, params, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// CaptureRevision performs a POST /v1/reviews/{reviewId}/revisions (the `CaptureRevision` operationId) request.
+// Takes a body of the `application/json` content type.
+//
+// Capture the declared review repository set using per-repository overrides, then a capture-wide base ref, then the server snapshot default. No fetch or branch switch. A committed idempotent retry returns its original revision even if defaults change.
+func (c *Client) CaptureRevision(ctx context.Context, reviewId ReviewId, params *CaptureRevisionParams, body CaptureRevisionJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCaptureRevisionRequest(c.Server, reviewId, params, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// DissociateRuntimeSession performs a DELETE /v1/reviews/{reviewId}/runtime-sessions/{runtimeSessionId} (the `DissociateRuntimeSession` operationId) request.
+//
+// Remove an association. Idempotent.
+func (c *Client) DissociateRuntimeSession(ctx context.Context, reviewId ReviewId, runtimeSessionId RuntimeSessionId, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDissociateRuntimeSessionRequest(c.Server, reviewId, runtimeSessionId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// AssociateRuntimeSession performs a PUT /v1/reviews/{reviewId}/runtime-sessions/{runtimeSessionId} (the `AssociateRuntimeSession` operationId) request.
+//
+// Explicitly associate a runtime session with a review. Idempotent.
+func (c *Client) AssociateRuntimeSession(ctx context.Context, reviewId ReviewId, runtimeSessionId RuntimeSessionId, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewAssociateRuntimeSessionRequest(c.Server, reviewId, runtimeSessionId)
 	if err != nil {
 		return nil, err
 	}
@@ -1708,120 +1741,6 @@ func (c *Client) CreateRepresentationWithBody(ctx context.Context, topicId Topic
 // Add a MANUAL representation authored against the review's current revision. Give the config matching the type; references are record IDs of the review.
 func (c *Client) CreateRepresentation(ctx context.Context, topicId TopicId, params *CreateRepresentationParams, body CreateRepresentationJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewCreateRepresentationRequest(c.Server, topicId, params, body)
-	if err != nil {
-		return nil, err
-	}
-	req = req.WithContext(ctx)
-	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
-		return nil, err
-	}
-	return c.Client.Do(req)
-}
-
-// DiscoverWorkspaces performs a GET /v1/workspace-candidates (the `DiscoverWorkspaces` operationId) request.
-//
-// Read-only discovery of immediate child workspace folders under workspace_root_paths. Configured roots are never workspaces; discovery creates no registration.
-func (c *Client) DiscoverWorkspaces(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewDiscoverWorkspacesRequest(c.Server)
-	if err != nil {
-		return nil, err
-	}
-	req = req.WithContext(ctx)
-	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
-		return nil, err
-	}
-	return c.Client.Do(req)
-}
-
-// ListWorkspaces performs a GET /v1/workspaces (the `ListWorkspaces` operationId) request.
-func (c *Client) ListWorkspaces(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewListWorkspacesRequest(c.Server)
-	if err != nil {
-		return nil, err
-	}
-	req = req.WithContext(ctx)
-	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
-		return nil, err
-	}
-	return c.Client.Do(req)
-}
-
-// CreateWorkspaceWithBody performs a POST /v1/workspaces (the `CreateWorkspace` operationId) request,
-// with any type of body and a specified content type.
-func (c *Client) CreateWorkspaceWithBody(ctx context.Context, params *CreateWorkspaceParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewCreateWorkspaceRequestWithBody(c.Server, params, contentType, body)
-	if err != nil {
-		return nil, err
-	}
-	req = req.WithContext(ctx)
-	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
-		return nil, err
-	}
-	return c.Client.Do(req)
-}
-
-// CreateWorkspace performs a POST /v1/workspaces (the `CreateWorkspace` operationId) request.
-// Takes a body of the `application/json` content type.
-func (c *Client) CreateWorkspace(ctx context.Context, params *CreateWorkspaceParams, body CreateWorkspaceJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewCreateWorkspaceRequest(c.Server, params, body)
-	if err != nil {
-		return nil, err
-	}
-	req = req.WithContext(ctx)
-	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
-		return nil, err
-	}
-	return c.Client.Do(req)
-}
-
-// DeleteWorkspace performs a DELETE /v1/workspaces/{workspaceId} (the `DeleteWorkspace` operationId) request.
-//
-// Hard-delete workspace-owned Prunelle data, stored content and scoped idempotency receipts. Never delete project files or Git history or stop runtime sessions. The folder remains discoverable. Repeated deletion of an absent ID succeeds; a fresh workspace has a new ID. Past workspace/review events are removed; a workspace.deleted notification remains.
-func (c *Client) DeleteWorkspace(ctx context.Context, workspaceId WorkspaceId, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewDeleteWorkspaceRequest(c.Server, workspaceId)
-	if err != nil {
-		return nil, err
-	}
-	req = req.WithContext(ctx)
-	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
-		return nil, err
-	}
-	return c.Client.Do(req)
-}
-
-// GetWorkspace performs a GET /v1/workspaces/{workspaceId} (the `GetWorkspace` operationId) request.
-func (c *Client) GetWorkspace(ctx context.Context, workspaceId WorkspaceId, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewGetWorkspaceRequest(c.Server, workspaceId)
-	if err != nil {
-		return nil, err
-	}
-	req = req.WithContext(ctx)
-	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
-		return nil, err
-	}
-	return c.Client.Do(req)
-}
-
-// DissociateRuntimeSession performs a DELETE /v1/workspaces/{workspaceId}/runtime-sessions/{runtimeSessionId} (the `DissociateRuntimeSession` operationId) request.
-//
-// Remove an association. Idempotent.
-func (c *Client) DissociateRuntimeSession(ctx context.Context, workspaceId WorkspaceId, runtimeSessionId RuntimeSessionId, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewDissociateRuntimeSessionRequest(c.Server, workspaceId, runtimeSessionId)
-	if err != nil {
-		return nil, err
-	}
-	req = req.WithContext(ctx)
-	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
-		return nil, err
-	}
-	return c.Client.Do(req)
-}
-
-// AssociateRuntimeSession performs a PUT /v1/workspaces/{workspaceId}/runtime-sessions/{runtimeSessionId} (the `AssociateRuntimeSession` operationId) request.
-//
-// Explicitly associate a runtime session with a workspace. Idempotent.
-func (c *Client) AssociateRuntimeSession(ctx context.Context, workspaceId WorkspaceId, runtimeSessionId RuntimeSessionId, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewAssociateRuntimeSessionRequest(c.Server, workspaceId, runtimeSessionId)
 	if err != nil {
 		return nil, err
 	}
@@ -2183,7 +2102,7 @@ func NewUpdateRepresentationRequestWithBody(server string, representationId stri
 }
 
 // NewListReviewsRequest constructs an http.Request for the ListReviews method
-func NewListReviewsRequest(server string, params *ListReviewsParams) (*http.Request, error) {
+func NewListReviewsRequest(server string) (*http.Request, error) {
 	var err error
 
 	serverURL, err := url.Parse(server)
@@ -2199,33 +2118,6 @@ func NewListReviewsRequest(server string, params *ListReviewsParams) (*http.Requ
 	queryURL, err := serverURL.Parse(operationPath)
 	if err != nil {
 		return nil, err
-	}
-
-	if params != nil {
-		// queryValues collects non-styled parameters (passthrough, JSON)
-		// that are safe to round-trip through url.Values.Encode().
-		queryValues := queryURL.Query()
-		// rawQueryFragments collects pre-encoded query fragments from
-		// styled parameters, preserving literal commas as delimiters
-		// per the OpenAPI spec (e.g. "color=blue,black,brown").
-		var rawQueryFragments []string
-
-		if params.WorkspaceId != nil {
-
-			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "workspace_id", *params.WorkspaceId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
-				return nil, err
-			} else {
-				for _, qp := range strings.Split(queryFrag, "&") {
-					rawQueryFragments = append(rawQueryFragments, qp)
-				}
-			}
-
-		}
-
-		if encoded := queryValues.Encode(); encoded != "" {
-			rawQueryFragments = append(rawQueryFragments, encoded)
-		}
-		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
 	}
 
 	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
@@ -2334,6 +2226,40 @@ func NewResolveReviewRequest(server string, params *ResolveReviewParams) (*http.
 	}
 
 	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewDeleteReviewRequest constructs an http.Request for the DeleteReview method
+func NewDeleteReviewRequest(server string, reviewId ReviewId) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "reviewId", reviewId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/reviews/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodDelete, queryURL.String(), nil)
 	if err != nil {
 		return nil, err
 	}
@@ -2894,8 +2820,19 @@ func NewListRevisionsRequest(server string, reviewId ReviewId) (*http.Request, e
 	return req, nil
 }
 
-// NewCaptureRevisionRequest constructs an http.Request for the CaptureRevision method
-func NewCaptureRevisionRequest(server string, reviewId ReviewId, params *CaptureRevisionParams) (*http.Request, error) {
+// NewCaptureRevisionRequest calls the generic CaptureRevision builder with application/json body
+func NewCaptureRevisionRequest(server string, reviewId ReviewId, params *CaptureRevisionParams, body CaptureRevisionJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewCaptureRevisionRequestWithBody(server, reviewId, params, "application/json", bodyReader)
+}
+
+// NewCaptureRevisionRequestWithBody constructs an http.Request for the CaptureRevision method, with any body, and a specified content type
+func NewCaptureRevisionRequestWithBody(server string, reviewId ReviewId, params *CaptureRevisionParams, contentType string, body io.Reader) (*http.Request, error) {
 	var err error
 
 	var pathParam0 string
@@ -2920,10 +2857,12 @@ func NewCaptureRevisionRequest(server string, reviewId ReviewId, params *Capture
 		return nil, err
 	}
 
-	req, err := http.NewRequest(http.MethodPost, queryURL.String(), nil)
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
 	if err != nil {
 		return nil, err
 	}
+
+	req.Header.Add("Content-Type", contentType)
 
 	if params != nil {
 
@@ -2938,6 +2877,88 @@ func NewCaptureRevisionRequest(server string, reviewId ReviewId, params *Capture
 			req.Header.Set("Idempotency-Key", headerParam0)
 		}
 
+	}
+
+	return req, nil
+}
+
+// NewDissociateRuntimeSessionRequest constructs an http.Request for the DissociateRuntimeSession method
+func NewDissociateRuntimeSessionRequest(server string, reviewId ReviewId, runtimeSessionId RuntimeSessionId) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "reviewId", reviewId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "runtimeSessionId", runtimeSessionId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/reviews/%s/runtime-sessions/%s", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodDelete, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewAssociateRuntimeSessionRequest constructs an http.Request for the AssociateRuntimeSession method
+func NewAssociateRuntimeSessionRequest(server string, reviewId ReviewId, runtimeSessionId RuntimeSessionId) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "reviewId", reviewId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "runtimeSessionId", runtimeSessionId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/reviews/%s/runtime-sessions/%s", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPut, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
 	}
 
 	return req, nil
@@ -3200,9 +3221,9 @@ func NewListRuntimeSessionsRequest(server string, params *ListRuntimeSessionsPar
 		// per the OpenAPI spec (e.g. "color=blue,black,brown").
 		var rawQueryFragments []string
 
-		if params.WorkspaceId != nil {
+		if params.ReviewId != nil {
 
-			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "workspace_id", *params.WorkspaceId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "review_id", *params.ReviewId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
 				return nil, err
 			} else {
 				for _, qp := range strings.Split(queryFrag, "&") {
@@ -3541,265 +3562,6 @@ func NewCreateRepresentationRequestWithBody(server string, topicId TopicId, para
 	return req, nil
 }
 
-// NewDiscoverWorkspacesRequest constructs an http.Request for the DiscoverWorkspaces method
-func NewDiscoverWorkspacesRequest(server string) (*http.Request, error) {
-	var err error
-
-	serverURL, err := url.Parse(server)
-	if err != nil {
-		return nil, err
-	}
-
-	operationPath := fmt.Sprintf("/v1/workspace-candidates")
-	if operationPath[0] == '/' {
-		operationPath = "." + operationPath
-	}
-
-	queryURL, err := serverURL.Parse(operationPath)
-	if err != nil {
-		return nil, err
-	}
-
-	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
-	if err != nil {
-		return nil, err
-	}
-
-	return req, nil
-}
-
-// NewListWorkspacesRequest constructs an http.Request for the ListWorkspaces method
-func NewListWorkspacesRequest(server string) (*http.Request, error) {
-	var err error
-
-	serverURL, err := url.Parse(server)
-	if err != nil {
-		return nil, err
-	}
-
-	operationPath := fmt.Sprintf("/v1/workspaces")
-	if operationPath[0] == '/' {
-		operationPath = "." + operationPath
-	}
-
-	queryURL, err := serverURL.Parse(operationPath)
-	if err != nil {
-		return nil, err
-	}
-
-	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
-	if err != nil {
-		return nil, err
-	}
-
-	return req, nil
-}
-
-// NewCreateWorkspaceRequest calls the generic CreateWorkspace builder with application/json body
-func NewCreateWorkspaceRequest(server string, params *CreateWorkspaceParams, body CreateWorkspaceJSONRequestBody) (*http.Request, error) {
-	var bodyReader io.Reader
-	buf, err := json.Marshal(body)
-	if err != nil {
-		return nil, err
-	}
-	bodyReader = bytes.NewReader(buf)
-	return NewCreateWorkspaceRequestWithBody(server, params, "application/json", bodyReader)
-}
-
-// NewCreateWorkspaceRequestWithBody constructs an http.Request for the CreateWorkspace method, with any body, and a specified content type
-func NewCreateWorkspaceRequestWithBody(server string, params *CreateWorkspaceParams, contentType string, body io.Reader) (*http.Request, error) {
-	var err error
-
-	serverURL, err := url.Parse(server)
-	if err != nil {
-		return nil, err
-	}
-
-	operationPath := fmt.Sprintf("/v1/workspaces")
-	if operationPath[0] == '/' {
-		operationPath = "." + operationPath
-	}
-
-	queryURL, err := serverURL.Parse(operationPath)
-	if err != nil {
-		return nil, err
-	}
-
-	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
-	if err != nil {
-		return nil, err
-	}
-
-	req.Header.Add("Content-Type", contentType)
-
-	if params != nil {
-
-		if params.IdempotencyKey != nil {
-			var headerParam0 string
-
-			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "Idempotency-Key", *params.IdempotencyKey, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
-			if err != nil {
-				return nil, err
-			}
-
-			req.Header.Set("Idempotency-Key", headerParam0)
-		}
-
-	}
-
-	return req, nil
-}
-
-// NewDeleteWorkspaceRequest constructs an http.Request for the DeleteWorkspace method
-func NewDeleteWorkspaceRequest(server string, workspaceId WorkspaceId) (*http.Request, error) {
-	var err error
-
-	var pathParam0 string
-
-	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "workspaceId", workspaceId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
-	if err != nil {
-		return nil, err
-	}
-
-	serverURL, err := url.Parse(server)
-	if err != nil {
-		return nil, err
-	}
-
-	operationPath := fmt.Sprintf("/v1/workspaces/%s", pathParam0)
-	if operationPath[0] == '/' {
-		operationPath = "." + operationPath
-	}
-
-	queryURL, err := serverURL.Parse(operationPath)
-	if err != nil {
-		return nil, err
-	}
-
-	req, err := http.NewRequest(http.MethodDelete, queryURL.String(), nil)
-	if err != nil {
-		return nil, err
-	}
-
-	return req, nil
-}
-
-// NewGetWorkspaceRequest constructs an http.Request for the GetWorkspace method
-func NewGetWorkspaceRequest(server string, workspaceId WorkspaceId) (*http.Request, error) {
-	var err error
-
-	var pathParam0 string
-
-	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "workspaceId", workspaceId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
-	if err != nil {
-		return nil, err
-	}
-
-	serverURL, err := url.Parse(server)
-	if err != nil {
-		return nil, err
-	}
-
-	operationPath := fmt.Sprintf("/v1/workspaces/%s", pathParam0)
-	if operationPath[0] == '/' {
-		operationPath = "." + operationPath
-	}
-
-	queryURL, err := serverURL.Parse(operationPath)
-	if err != nil {
-		return nil, err
-	}
-
-	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
-	if err != nil {
-		return nil, err
-	}
-
-	return req, nil
-}
-
-// NewDissociateRuntimeSessionRequest constructs an http.Request for the DissociateRuntimeSession method
-func NewDissociateRuntimeSessionRequest(server string, workspaceId WorkspaceId, runtimeSessionId RuntimeSessionId) (*http.Request, error) {
-	var err error
-
-	var pathParam0 string
-
-	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "workspaceId", workspaceId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
-	if err != nil {
-		return nil, err
-	}
-
-	var pathParam1 string
-
-	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "runtimeSessionId", runtimeSessionId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
-	if err != nil {
-		return nil, err
-	}
-
-	serverURL, err := url.Parse(server)
-	if err != nil {
-		return nil, err
-	}
-
-	operationPath := fmt.Sprintf("/v1/workspaces/%s/runtime-sessions/%s", pathParam0, pathParam1)
-	if operationPath[0] == '/' {
-		operationPath = "." + operationPath
-	}
-
-	queryURL, err := serverURL.Parse(operationPath)
-	if err != nil {
-		return nil, err
-	}
-
-	req, err := http.NewRequest(http.MethodDelete, queryURL.String(), nil)
-	if err != nil {
-		return nil, err
-	}
-
-	return req, nil
-}
-
-// NewAssociateRuntimeSessionRequest constructs an http.Request for the AssociateRuntimeSession method
-func NewAssociateRuntimeSessionRequest(server string, workspaceId WorkspaceId, runtimeSessionId RuntimeSessionId) (*http.Request, error) {
-	var err error
-
-	var pathParam0 string
-
-	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "workspaceId", workspaceId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
-	if err != nil {
-		return nil, err
-	}
-
-	var pathParam1 string
-
-	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "runtimeSessionId", runtimeSessionId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
-	if err != nil {
-		return nil, err
-	}
-
-	serverURL, err := url.Parse(server)
-	if err != nil {
-		return nil, err
-	}
-
-	operationPath := fmt.Sprintf("/v1/workspaces/%s/runtime-sessions/%s", pathParam0, pathParam1)
-	if operationPath[0] == '/' {
-		operationPath = "." + operationPath
-	}
-
-	queryURL, err := serverURL.Parse(operationPath)
-	if err != nil {
-		return nil, err
-	}
-
-	req, err := http.NewRequest(http.MethodPut, queryURL.String(), nil)
-	if err != nil {
-		return nil, err
-	}
-
-	return req, nil
-}
-
 func (c *Client) applyEditors(ctx context.Context, req *http.Request, additionalEditors []RequestEditorFn) error {
 	for _, r := range c.RequestEditors {
 		if err := r(ctx, req); err != nil {
@@ -3914,7 +3676,7 @@ type ClientWithResponsesInterface interface {
 	// ListReviewsWithResponse performs a GET /v1/reviews (the `ListReviews` operationId) request.
 	//
 	// Returns a wrapper object for the known response body format(s).
-	ListReviewsWithResponse(ctx context.Context, params *ListReviewsParams, reqEditors ...RequestEditorFn) (*ListReviewsResponse, error)
+	ListReviewsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListReviewsResponse, error)
 
 	// CreateReviewWithBodyWithResponse performs a POST /v1/reviews (the `CreateReview` operationId) request,
 	// with any type of body and a specified content type.
@@ -3928,10 +3690,17 @@ type ClientWithResponsesInterface interface {
 
 	// ResolveReviewWithResponse performs a GET /v1/reviews/resolve (the `ResolveReview` operationId) request.
 	//
-	// Resolve an absolute server-side invocation directory to its discovered workspace and return its sole review. Missing or multiple reviews require explicit selection; never choose another workspace's review.
+	// Resolve a server-side directory to exactly one review using its source context or repository membership. Zero or multiple matches require explicit selection.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	ResolveReviewWithResponse(ctx context.Context, params *ResolveReviewParams, reqEditors ...RequestEditorFn) (*ResolveReviewResponse, error)
+
+	// DeleteReviewWithResponse performs a DELETE /v1/reviews/{reviewId} (the `DeleteReview` operationId) request.
+	//
+	// Hard-delete this review and its owned Prunelle content/receipts, never project files, Git history or runtimes. Shared source identities/blobs and other reviews are preserved. Repeating an absent ID succeeds.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	DeleteReviewWithResponse(ctx context.Context, reviewId ReviewId, reqEditors ...RequestEditorFn) (*DeleteReviewResponse, error)
 
 	// GetReviewWithResponse performs a GET /v1/reviews/{reviewId} (the `GetReview` operationId) request.
 	//
@@ -4029,12 +3798,33 @@ type ClientWithResponsesInterface interface {
 	// Returns a wrapper object for the known response body format(s).
 	ListRevisionsWithResponse(ctx context.Context, reviewId ReviewId, reqEditors ...RequestEditorFn) (*ListRevisionsResponse, error)
 
-	// CaptureRevisionWithResponse performs a POST /v1/reviews/{reviewId}/revisions (the `CaptureRevision` operationId) request.
+	// CaptureRevisionWithBodyWithResponse performs a POST /v1/reviews/{reviewId}/revisions (the `CaptureRevision` operationId) request,
+	// with any type of body and a specified content type.
 	//
-	// Capture every repository of the review's workspace into a new immutable revision, which becomes the current revision.
+	// Capture the declared review repository set using per-repository overrides, then a capture-wide base ref, then the server snapshot default. No fetch or branch switch. A committed idempotent retry returns its original revision even if defaults change.
 	//
 	// Returns a wrapper object for the known response body format(s).
-	CaptureRevisionWithResponse(ctx context.Context, reviewId ReviewId, params *CaptureRevisionParams, reqEditors ...RequestEditorFn) (*CaptureRevisionResponse, error)
+	CaptureRevisionWithBodyWithResponse(ctx context.Context, reviewId ReviewId, params *CaptureRevisionParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CaptureRevisionResponse, error)
+
+	// CaptureRevisionWithResponse performs a POST /v1/reviews/{reviewId}/revisions (the `CaptureRevision` operationId) request.
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Capture the declared review repository set using per-repository overrides, then a capture-wide base ref, then the server snapshot default. No fetch or branch switch. A committed idempotent retry returns its original revision even if defaults change.
+	CaptureRevisionWithResponse(ctx context.Context, reviewId ReviewId, params *CaptureRevisionParams, body CaptureRevisionJSONRequestBody, reqEditors ...RequestEditorFn) (*CaptureRevisionResponse, error)
+
+	// DissociateRuntimeSessionWithResponse performs a DELETE /v1/reviews/{reviewId}/runtime-sessions/{runtimeSessionId} (the `DissociateRuntimeSession` operationId) request.
+	//
+	// Remove an association. Idempotent.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	DissociateRuntimeSessionWithResponse(ctx context.Context, reviewId ReviewId, runtimeSessionId RuntimeSessionId, reqEditors ...RequestEditorFn) (*DissociateRuntimeSessionResponse, error)
+
+	// AssociateRuntimeSessionWithResponse performs a PUT /v1/reviews/{reviewId}/runtime-sessions/{runtimeSessionId} (the `AssociateRuntimeSession` operationId) request.
+	//
+	// Explicitly associate a runtime session with a review. Idempotent.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	AssociateRuntimeSessionWithResponse(ctx context.Context, reviewId ReviewId, runtimeSessionId RuntimeSessionId, reqEditors ...RequestEditorFn) (*AssociateRuntimeSessionResponse, error)
 
 	// ListTopicsWithResponse performs a GET /v1/reviews/{reviewId}/topics (the `ListTopics` operationId) request.
 	//
@@ -4148,54 +3938,6 @@ type ClientWithResponsesInterface interface {
 	//
 	// Add a MANUAL representation authored against the review's current revision. Give the config matching the type; references are record IDs of the review.
 	CreateRepresentationWithResponse(ctx context.Context, topicId TopicId, params *CreateRepresentationParams, body CreateRepresentationJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateRepresentationResponse, error)
-
-	// DiscoverWorkspacesWithResponse performs a GET /v1/workspace-candidates (the `DiscoverWorkspaces` operationId) request.
-	//
-	// Read-only discovery of immediate child workspace folders under workspace_root_paths. Configured roots are never workspaces; discovery creates no registration.
-	//
-	// Returns a wrapper object for the known response body format(s).
-	DiscoverWorkspacesWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*DiscoverWorkspacesResponse, error)
-
-	// ListWorkspacesWithResponse performs a GET /v1/workspaces (the `ListWorkspaces` operationId) request.
-	//
-	// Returns a wrapper object for the known response body format(s).
-	ListWorkspacesWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListWorkspacesResponse, error)
-
-	// CreateWorkspaceWithBodyWithResponse performs a POST /v1/workspaces (the `CreateWorkspace` operationId) request,
-	// with any type of body and a specified content type.
-	//
-	// Returns a wrapper object for the known response body format(s).
-	CreateWorkspaceWithBodyWithResponse(ctx context.Context, params *CreateWorkspaceParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateWorkspaceResponse, error)
-
-	// CreateWorkspaceWithResponse performs a POST /v1/workspaces (the `CreateWorkspace` operationId) request.
-	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
-	CreateWorkspaceWithResponse(ctx context.Context, params *CreateWorkspaceParams, body CreateWorkspaceJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateWorkspaceResponse, error)
-
-	// DeleteWorkspaceWithResponse performs a DELETE /v1/workspaces/{workspaceId} (the `DeleteWorkspace` operationId) request.
-	//
-	// Hard-delete workspace-owned Prunelle data, stored content and scoped idempotency receipts. Never delete project files or Git history or stop runtime sessions. The folder remains discoverable. Repeated deletion of an absent ID succeeds; a fresh workspace has a new ID. Past workspace/review events are removed; a workspace.deleted notification remains.
-	//
-	// Returns a wrapper object for the known response body format(s).
-	DeleteWorkspaceWithResponse(ctx context.Context, workspaceId WorkspaceId, reqEditors ...RequestEditorFn) (*DeleteWorkspaceResponse, error)
-
-	// GetWorkspaceWithResponse performs a GET /v1/workspaces/{workspaceId} (the `GetWorkspace` operationId) request.
-	//
-	// Returns a wrapper object for the known response body format(s).
-	GetWorkspaceWithResponse(ctx context.Context, workspaceId WorkspaceId, reqEditors ...RequestEditorFn) (*GetWorkspaceResponse, error)
-
-	// DissociateRuntimeSessionWithResponse performs a DELETE /v1/workspaces/{workspaceId}/runtime-sessions/{runtimeSessionId} (the `DissociateRuntimeSession` operationId) request.
-	//
-	// Remove an association. Idempotent.
-	//
-	// Returns a wrapper object for the known response body format(s).
-	DissociateRuntimeSessionWithResponse(ctx context.Context, workspaceId WorkspaceId, runtimeSessionId RuntimeSessionId, reqEditors ...RequestEditorFn) (*DissociateRuntimeSessionResponse, error)
-
-	// AssociateRuntimeSessionWithResponse performs a PUT /v1/workspaces/{workspaceId}/runtime-sessions/{runtimeSessionId} (the `AssociateRuntimeSession` operationId) request.
-	//
-	// Explicitly associate a runtime session with a workspace. Idempotent.
-	//
-	// Returns a wrapper object for the known response body format(s).
-	AssociateRuntimeSessionWithResponse(ctx context.Context, workspaceId WorkspaceId, runtimeSessionId RuntimeSessionId, reqEditors ...RequestEditorFn) (*AssociateRuntimeSessionResponse, error)
 }
 
 // GetDiscussionResponse200Headers the declared response headers of an HTTP 200 response for GetDiscussion
@@ -4679,6 +4421,47 @@ func (r ResolveReviewResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r ResolveReviewResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type DeleteReviewResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *Error
+}
+
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r DeleteReviewResponse) GetJSONDefault() *Error {
+	return r.JSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r DeleteReviewResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r DeleteReviewResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r DeleteReviewResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r DeleteReviewResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -5357,6 +5140,95 @@ func (r CaptureRevisionResponse) ContentType() string {
 	return ""
 }
 
+type DissociateRuntimeSessionResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *Error
+}
+
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r DissociateRuntimeSessionResponse) GetJSONDefault() *Error {
+	return r.JSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r DissociateRuntimeSessionResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r DissociateRuntimeSessionResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r DissociateRuntimeSessionResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r DissociateRuntimeSessionResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type AssociateRuntimeSessionResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *RuntimeSession
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *Error
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r AssociateRuntimeSessionResponse) GetJSON200() *RuntimeSession {
+	return r.JSON200
+}
+
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r AssociateRuntimeSessionResponse) GetJSONDefault() *Error {
+	return r.JSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r AssociateRuntimeSessionResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r AssociateRuntimeSessionResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r AssociateRuntimeSessionResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r AssociateRuntimeSessionResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 type ListTopicsResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -6002,328 +5874,6 @@ func (r CreateRepresentationResponse) ContentType() string {
 	return ""
 }
 
-type DiscoverWorkspacesResponse struct {
-	Body         []byte
-	HTTPResponse *http.Response
-	// JSON200 the response for an HTTP 200 `application/json` response
-	JSON200 *[]WorkspaceCandidate
-	// JSONDefault the response for an HTTP default `application/json` response
-	JSONDefault *Error
-}
-
-// GetJSON200 returns the response for an HTTP 200 `application/json` response
-func (r DiscoverWorkspacesResponse) GetJSON200() *[]WorkspaceCandidate {
-	return r.JSON200
-}
-
-// GetJSONDefault returns the response for an HTTP default `application/json` response
-func (r DiscoverWorkspacesResponse) GetJSONDefault() *Error {
-	return r.JSONDefault
-}
-
-// GetBody returns the raw response body bytes
-func (r DiscoverWorkspacesResponse) GetBody() []byte {
-	return r.Body
-}
-
-// Status returns HTTPResponse.Status
-func (r DiscoverWorkspacesResponse) Status() string {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.Status
-	}
-	return http.StatusText(0)
-}
-
-// StatusCode returns HTTPResponse.StatusCode
-func (r DiscoverWorkspacesResponse) StatusCode() int {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.StatusCode
-	}
-	return 0
-}
-
-// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
-func (r DiscoverWorkspacesResponse) ContentType() string {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.Header.Get("Content-Type")
-	}
-	return ""
-}
-
-type ListWorkspacesResponse struct {
-	Body         []byte
-	HTTPResponse *http.Response
-	// JSON200 the response for an HTTP 200 `application/json` response
-	JSON200 *[]Workspace
-	// JSONDefault the response for an HTTP default `application/json` response
-	JSONDefault *Error
-}
-
-// GetJSON200 returns the response for an HTTP 200 `application/json` response
-func (r ListWorkspacesResponse) GetJSON200() *[]Workspace {
-	return r.JSON200
-}
-
-// GetJSONDefault returns the response for an HTTP default `application/json` response
-func (r ListWorkspacesResponse) GetJSONDefault() *Error {
-	return r.JSONDefault
-}
-
-// GetBody returns the raw response body bytes
-func (r ListWorkspacesResponse) GetBody() []byte {
-	return r.Body
-}
-
-// Status returns HTTPResponse.Status
-func (r ListWorkspacesResponse) Status() string {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.Status
-	}
-	return http.StatusText(0)
-}
-
-// StatusCode returns HTTPResponse.StatusCode
-func (r ListWorkspacesResponse) StatusCode() int {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.StatusCode
-	}
-	return 0
-}
-
-// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
-func (r ListWorkspacesResponse) ContentType() string {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.Header.Get("Content-Type")
-	}
-	return ""
-}
-
-type CreateWorkspaceResponse struct {
-	Body         []byte
-	HTTPResponse *http.Response
-	// JSON201 the response for an HTTP 201 `application/json` response
-	JSON201 *Workspace
-	// JSONDefault the response for an HTTP default `application/json` response
-	JSONDefault *Error
-}
-
-// GetJSON201 returns the response for an HTTP 201 `application/json` response
-func (r CreateWorkspaceResponse) GetJSON201() *Workspace {
-	return r.JSON201
-}
-
-// GetJSONDefault returns the response for an HTTP default `application/json` response
-func (r CreateWorkspaceResponse) GetJSONDefault() *Error {
-	return r.JSONDefault
-}
-
-// GetBody returns the raw response body bytes
-func (r CreateWorkspaceResponse) GetBody() []byte {
-	return r.Body
-}
-
-// Status returns HTTPResponse.Status
-func (r CreateWorkspaceResponse) Status() string {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.Status
-	}
-	return http.StatusText(0)
-}
-
-// StatusCode returns HTTPResponse.StatusCode
-func (r CreateWorkspaceResponse) StatusCode() int {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.StatusCode
-	}
-	return 0
-}
-
-// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
-func (r CreateWorkspaceResponse) ContentType() string {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.Header.Get("Content-Type")
-	}
-	return ""
-}
-
-type DeleteWorkspaceResponse struct {
-	Body         []byte
-	HTTPResponse *http.Response
-	// JSONDefault the response for an HTTP default `application/json` response
-	JSONDefault *Error
-}
-
-// GetJSONDefault returns the response for an HTTP default `application/json` response
-func (r DeleteWorkspaceResponse) GetJSONDefault() *Error {
-	return r.JSONDefault
-}
-
-// GetBody returns the raw response body bytes
-func (r DeleteWorkspaceResponse) GetBody() []byte {
-	return r.Body
-}
-
-// Status returns HTTPResponse.Status
-func (r DeleteWorkspaceResponse) Status() string {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.Status
-	}
-	return http.StatusText(0)
-}
-
-// StatusCode returns HTTPResponse.StatusCode
-func (r DeleteWorkspaceResponse) StatusCode() int {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.StatusCode
-	}
-	return 0
-}
-
-// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
-func (r DeleteWorkspaceResponse) ContentType() string {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.Header.Get("Content-Type")
-	}
-	return ""
-}
-
-type GetWorkspaceResponse struct {
-	Body         []byte
-	HTTPResponse *http.Response
-	// JSON200 the response for an HTTP 200 `application/json` response
-	JSON200 *Workspace
-	// JSONDefault the response for an HTTP default `application/json` response
-	JSONDefault *Error
-}
-
-// GetJSON200 returns the response for an HTTP 200 `application/json` response
-func (r GetWorkspaceResponse) GetJSON200() *Workspace {
-	return r.JSON200
-}
-
-// GetJSONDefault returns the response for an HTTP default `application/json` response
-func (r GetWorkspaceResponse) GetJSONDefault() *Error {
-	return r.JSONDefault
-}
-
-// GetBody returns the raw response body bytes
-func (r GetWorkspaceResponse) GetBody() []byte {
-	return r.Body
-}
-
-// Status returns HTTPResponse.Status
-func (r GetWorkspaceResponse) Status() string {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.Status
-	}
-	return http.StatusText(0)
-}
-
-// StatusCode returns HTTPResponse.StatusCode
-func (r GetWorkspaceResponse) StatusCode() int {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.StatusCode
-	}
-	return 0
-}
-
-// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
-func (r GetWorkspaceResponse) ContentType() string {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.Header.Get("Content-Type")
-	}
-	return ""
-}
-
-type DissociateRuntimeSessionResponse struct {
-	Body         []byte
-	HTTPResponse *http.Response
-	// JSONDefault the response for an HTTP default `application/json` response
-	JSONDefault *Error
-}
-
-// GetJSONDefault returns the response for an HTTP default `application/json` response
-func (r DissociateRuntimeSessionResponse) GetJSONDefault() *Error {
-	return r.JSONDefault
-}
-
-// GetBody returns the raw response body bytes
-func (r DissociateRuntimeSessionResponse) GetBody() []byte {
-	return r.Body
-}
-
-// Status returns HTTPResponse.Status
-func (r DissociateRuntimeSessionResponse) Status() string {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.Status
-	}
-	return http.StatusText(0)
-}
-
-// StatusCode returns HTTPResponse.StatusCode
-func (r DissociateRuntimeSessionResponse) StatusCode() int {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.StatusCode
-	}
-	return 0
-}
-
-// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
-func (r DissociateRuntimeSessionResponse) ContentType() string {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.Header.Get("Content-Type")
-	}
-	return ""
-}
-
-type AssociateRuntimeSessionResponse struct {
-	Body         []byte
-	HTTPResponse *http.Response
-	// JSON200 the response for an HTTP 200 `application/json` response
-	JSON200 *RuntimeSession
-	// JSONDefault the response for an HTTP default `application/json` response
-	JSONDefault *Error
-}
-
-// GetJSON200 returns the response for an HTTP 200 `application/json` response
-func (r AssociateRuntimeSessionResponse) GetJSON200() *RuntimeSession {
-	return r.JSON200
-}
-
-// GetJSONDefault returns the response for an HTTP default `application/json` response
-func (r AssociateRuntimeSessionResponse) GetJSONDefault() *Error {
-	return r.JSONDefault
-}
-
-// GetBody returns the raw response body bytes
-func (r AssociateRuntimeSessionResponse) GetBody() []byte {
-	return r.Body
-}
-
-// Status returns HTTPResponse.Status
-func (r AssociateRuntimeSessionResponse) Status() string {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.Status
-	}
-	return http.StatusText(0)
-}
-
-// StatusCode returns HTTPResponse.StatusCode
-func (r AssociateRuntimeSessionResponse) StatusCode() int {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.StatusCode
-	}
-	return 0
-}
-
-// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
-func (r AssociateRuntimeSessionResponse) ContentType() string {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.Header.Get("Content-Type")
-	}
-	return ""
-}
-
 // GetDiscussionWithResponse performs a GET /v1/discussions/{discussionId} (the `GetDiscussion` operationId) request.
 //
 // Returns a wrapper object for the known response body format(s).
@@ -6454,8 +6004,8 @@ func (c *ClientWithResponses) UpdateRepresentationWithResponse(ctx context.Conte
 // ListReviewsWithResponse performs a GET /v1/reviews (the `ListReviews` operationId) request.
 //
 // Returns a wrapper object for the known response body format(s).
-func (c *ClientWithResponses) ListReviewsWithResponse(ctx context.Context, params *ListReviewsParams, reqEditors ...RequestEditorFn) (*ListReviewsResponse, error) {
-	rsp, err := c.ListReviews(ctx, params, reqEditors...)
+func (c *ClientWithResponses) ListReviewsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListReviewsResponse, error) {
+	rsp, err := c.ListReviews(ctx, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
@@ -6486,7 +6036,7 @@ func (c *ClientWithResponses) CreateReviewWithResponse(ctx context.Context, para
 
 // ResolveReviewWithResponse performs a GET /v1/reviews/resolve (the `ResolveReview` operationId) request.
 //
-// Resolve an absolute server-side invocation directory to its discovered workspace and return its sole review. Missing or multiple reviews require explicit selection; never choose another workspace's review.
+// Resolve a server-side directory to exactly one review using its source context or repository membership. Zero or multiple matches require explicit selection.
 //
 // Returns a wrapper object for the known response body format(s).
 func (c *ClientWithResponses) ResolveReviewWithResponse(ctx context.Context, params *ResolveReviewParams, reqEditors ...RequestEditorFn) (*ResolveReviewResponse, error) {
@@ -6495,6 +6045,19 @@ func (c *ClientWithResponses) ResolveReviewWithResponse(ctx context.Context, par
 		return nil, err
 	}
 	return ParseResolveReviewResponse(rsp)
+}
+
+// DeleteReviewWithResponse performs a DELETE /v1/reviews/{reviewId} (the `DeleteReview` operationId) request.
+//
+// Hard-delete this review and its owned Prunelle content/receipts, never project files, Git history or runtimes. Shared source identities/blobs and other reviews are preserved. Repeating an absent ID succeeds.
+//
+// Returns a wrapper object for the known response body format(s).
+func (c *ClientWithResponses) DeleteReviewWithResponse(ctx context.Context, reviewId ReviewId, reqEditors ...RequestEditorFn) (*DeleteReviewResponse, error) {
+	rsp, err := c.DeleteReview(ctx, reviewId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDeleteReviewResponse(rsp)
 }
 
 // GetReviewWithResponse performs a GET /v1/reviews/{reviewId} (the `GetReview` operationId) request.
@@ -6689,17 +6252,56 @@ func (c *ClientWithResponses) ListRevisionsWithResponse(ctx context.Context, rev
 	return ParseListRevisionsResponse(rsp)
 }
 
-// CaptureRevisionWithResponse performs a POST /v1/reviews/{reviewId}/revisions (the `CaptureRevision` operationId) request.
+// CaptureRevisionWithBodyWithResponse performs a POST /v1/reviews/{reviewId}/revisions (the `CaptureRevision` operationId) request,
+// with any type of body and a specified content type.
 //
-// Capture every repository of the review's workspace into a new immutable revision, which becomes the current revision.
+// Capture the declared review repository set using per-repository overrides, then a capture-wide base ref, then the server snapshot default. No fetch or branch switch. A committed idempotent retry returns its original revision even if defaults change.
 //
 // Returns a wrapper object for the known response body format(s).
-func (c *ClientWithResponses) CaptureRevisionWithResponse(ctx context.Context, reviewId ReviewId, params *CaptureRevisionParams, reqEditors ...RequestEditorFn) (*CaptureRevisionResponse, error) {
-	rsp, err := c.CaptureRevision(ctx, reviewId, params, reqEditors...)
+func (c *ClientWithResponses) CaptureRevisionWithBodyWithResponse(ctx context.Context, reviewId ReviewId, params *CaptureRevisionParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CaptureRevisionResponse, error) {
+	rsp, err := c.CaptureRevisionWithBody(ctx, reviewId, params, contentType, body, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
 	return ParseCaptureRevisionResponse(rsp)
+}
+
+// CaptureRevisionWithResponse performs a POST /v1/reviews/{reviewId}/revisions (the `CaptureRevision` operationId) request.
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Capture the declared review repository set using per-repository overrides, then a capture-wide base ref, then the server snapshot default. No fetch or branch switch. A committed idempotent retry returns its original revision even if defaults change.
+func (c *ClientWithResponses) CaptureRevisionWithResponse(ctx context.Context, reviewId ReviewId, params *CaptureRevisionParams, body CaptureRevisionJSONRequestBody, reqEditors ...RequestEditorFn) (*CaptureRevisionResponse, error) {
+	rsp, err := c.CaptureRevision(ctx, reviewId, params, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCaptureRevisionResponse(rsp)
+}
+
+// DissociateRuntimeSessionWithResponse performs a DELETE /v1/reviews/{reviewId}/runtime-sessions/{runtimeSessionId} (the `DissociateRuntimeSession` operationId) request.
+//
+// Remove an association. Idempotent.
+//
+// Returns a wrapper object for the known response body format(s).
+func (c *ClientWithResponses) DissociateRuntimeSessionWithResponse(ctx context.Context, reviewId ReviewId, runtimeSessionId RuntimeSessionId, reqEditors ...RequestEditorFn) (*DissociateRuntimeSessionResponse, error) {
+	rsp, err := c.DissociateRuntimeSession(ctx, reviewId, runtimeSessionId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDissociateRuntimeSessionResponse(rsp)
+}
+
+// AssociateRuntimeSessionWithResponse performs a PUT /v1/reviews/{reviewId}/runtime-sessions/{runtimeSessionId} (the `AssociateRuntimeSession` operationId) request.
+//
+// Explicitly associate a runtime session with a review. Idempotent.
+//
+// Returns a wrapper object for the known response body format(s).
+func (c *ClientWithResponses) AssociateRuntimeSessionWithResponse(ctx context.Context, reviewId ReviewId, runtimeSessionId RuntimeSessionId, reqEditors ...RequestEditorFn) (*AssociateRuntimeSessionResponse, error) {
+	rsp, err := c.AssociateRuntimeSession(ctx, reviewId, runtimeSessionId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseAssociateRuntimeSessionResponse(rsp)
 }
 
 // ListTopicsWithResponse performs a GET /v1/reviews/{reviewId}/topics (the `ListTopics` operationId) request.
@@ -6915,102 +6517,6 @@ func (c *ClientWithResponses) CreateRepresentationWithResponse(ctx context.Conte
 		return nil, err
 	}
 	return ParseCreateRepresentationResponse(rsp)
-}
-
-// DiscoverWorkspacesWithResponse performs a GET /v1/workspace-candidates (the `DiscoverWorkspaces` operationId) request.
-//
-// Read-only discovery of immediate child workspace folders under workspace_root_paths. Configured roots are never workspaces; discovery creates no registration.
-//
-// Returns a wrapper object for the known response body format(s).
-func (c *ClientWithResponses) DiscoverWorkspacesWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*DiscoverWorkspacesResponse, error) {
-	rsp, err := c.DiscoverWorkspaces(ctx, reqEditors...)
-	if err != nil {
-		return nil, err
-	}
-	return ParseDiscoverWorkspacesResponse(rsp)
-}
-
-// ListWorkspacesWithResponse performs a GET /v1/workspaces (the `ListWorkspaces` operationId) request.
-//
-// Returns a wrapper object for the known response body format(s).
-func (c *ClientWithResponses) ListWorkspacesWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListWorkspacesResponse, error) {
-	rsp, err := c.ListWorkspaces(ctx, reqEditors...)
-	if err != nil {
-		return nil, err
-	}
-	return ParseListWorkspacesResponse(rsp)
-}
-
-// CreateWorkspaceWithBodyWithResponse performs a POST /v1/workspaces (the `CreateWorkspace` operationId) request,
-// with any type of body and a specified content type.
-//
-// Returns a wrapper object for the known response body format(s).
-func (c *ClientWithResponses) CreateWorkspaceWithBodyWithResponse(ctx context.Context, params *CreateWorkspaceParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateWorkspaceResponse, error) {
-	rsp, err := c.CreateWorkspaceWithBody(ctx, params, contentType, body, reqEditors...)
-	if err != nil {
-		return nil, err
-	}
-	return ParseCreateWorkspaceResponse(rsp)
-}
-
-// CreateWorkspaceWithResponse performs a POST /v1/workspaces (the `CreateWorkspace` operationId) request.
-// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
-func (c *ClientWithResponses) CreateWorkspaceWithResponse(ctx context.Context, params *CreateWorkspaceParams, body CreateWorkspaceJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateWorkspaceResponse, error) {
-	rsp, err := c.CreateWorkspace(ctx, params, body, reqEditors...)
-	if err != nil {
-		return nil, err
-	}
-	return ParseCreateWorkspaceResponse(rsp)
-}
-
-// DeleteWorkspaceWithResponse performs a DELETE /v1/workspaces/{workspaceId} (the `DeleteWorkspace` operationId) request.
-//
-// Hard-delete workspace-owned Prunelle data, stored content and scoped idempotency receipts. Never delete project files or Git history or stop runtime sessions. The folder remains discoverable. Repeated deletion of an absent ID succeeds; a fresh workspace has a new ID. Past workspace/review events are removed; a workspace.deleted notification remains.
-//
-// Returns a wrapper object for the known response body format(s).
-func (c *ClientWithResponses) DeleteWorkspaceWithResponse(ctx context.Context, workspaceId WorkspaceId, reqEditors ...RequestEditorFn) (*DeleteWorkspaceResponse, error) {
-	rsp, err := c.DeleteWorkspace(ctx, workspaceId, reqEditors...)
-	if err != nil {
-		return nil, err
-	}
-	return ParseDeleteWorkspaceResponse(rsp)
-}
-
-// GetWorkspaceWithResponse performs a GET /v1/workspaces/{workspaceId} (the `GetWorkspace` operationId) request.
-//
-// Returns a wrapper object for the known response body format(s).
-func (c *ClientWithResponses) GetWorkspaceWithResponse(ctx context.Context, workspaceId WorkspaceId, reqEditors ...RequestEditorFn) (*GetWorkspaceResponse, error) {
-	rsp, err := c.GetWorkspace(ctx, workspaceId, reqEditors...)
-	if err != nil {
-		return nil, err
-	}
-	return ParseGetWorkspaceResponse(rsp)
-}
-
-// DissociateRuntimeSessionWithResponse performs a DELETE /v1/workspaces/{workspaceId}/runtime-sessions/{runtimeSessionId} (the `DissociateRuntimeSession` operationId) request.
-//
-// Remove an association. Idempotent.
-//
-// Returns a wrapper object for the known response body format(s).
-func (c *ClientWithResponses) DissociateRuntimeSessionWithResponse(ctx context.Context, workspaceId WorkspaceId, runtimeSessionId RuntimeSessionId, reqEditors ...RequestEditorFn) (*DissociateRuntimeSessionResponse, error) {
-	rsp, err := c.DissociateRuntimeSession(ctx, workspaceId, runtimeSessionId, reqEditors...)
-	if err != nil {
-		return nil, err
-	}
-	return ParseDissociateRuntimeSessionResponse(rsp)
-}
-
-// AssociateRuntimeSessionWithResponse performs a PUT /v1/workspaces/{workspaceId}/runtime-sessions/{runtimeSessionId} (the `AssociateRuntimeSession` operationId) request.
-//
-// Explicitly associate a runtime session with a workspace. Idempotent.
-//
-// Returns a wrapper object for the known response body format(s).
-func (c *ClientWithResponses) AssociateRuntimeSessionWithResponse(ctx context.Context, workspaceId WorkspaceId, runtimeSessionId RuntimeSessionId, reqEditors ...RequestEditorFn) (*AssociateRuntimeSessionResponse, error) {
-	rsp, err := c.AssociateRuntimeSession(ctx, workspaceId, runtimeSessionId, reqEditors...)
-	if err != nil {
-		return nil, err
-	}
-	return ParseAssociateRuntimeSessionResponse(rsp)
 }
 
 // ParseGetDiscussionResponse parses an HTTP response from a GetDiscussionWithResponse call
@@ -7355,6 +6861,35 @@ func ParseResolveReviewResponse(rsp *http.Response) (*ResolveReviewResponse, err
 			return nil, err
 		}
 		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseDeleteReviewResponse parses an HTTP response from a DeleteReviewWithResponse call
+func ParseDeleteReviewResponse(rsp *http.Response) (*DeleteReviewResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &DeleteReviewResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case rsp.StatusCode == 204:
+		break // No content-type
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
 		var dest Error
@@ -7817,6 +7352,68 @@ func ParseCaptureRevisionResponse(rsp *http.Response) (*CaptureRevisionResponse,
 			return nil, err
 		}
 		response.JSON201 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseDissociateRuntimeSessionResponse parses an HTTP response from a DissociateRuntimeSessionWithResponse call
+func ParseDissociateRuntimeSessionResponse(rsp *http.Response) (*DissociateRuntimeSessionResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &DissociateRuntimeSessionResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case rsp.StatusCode == 204:
+		break // No content-type
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseAssociateRuntimeSessionResponse parses an HTTP response from a AssociateRuntimeSessionWithResponse call
+func ParseAssociateRuntimeSessionResponse(rsp *http.Response) (*AssociateRuntimeSessionResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &AssociateRuntimeSessionResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest RuntimeSession
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
 		var dest Error
@@ -8298,229 +7895,6 @@ func ParseCreateRepresentationResponse(rsp *http.Response) (*CreateRepresentatio
 	return response, nil
 }
 
-// ParseDiscoverWorkspacesResponse parses an HTTP response from a DiscoverWorkspacesWithResponse call
-func ParseDiscoverWorkspacesResponse(rsp *http.Response) (*DiscoverWorkspacesResponse, error) {
-	bodyBytes, err := io.ReadAll(rsp.Body)
-	defer func() { _ = rsp.Body.Close() }()
-	if err != nil {
-		return nil, err
-	}
-
-	response := &DiscoverWorkspacesResponse{
-		Body:         bodyBytes,
-		HTTPResponse: rsp,
-	}
-
-	switch {
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
-		var dest []WorkspaceCandidate
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON200 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
-		var dest Error
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSONDefault = &dest
-
-	}
-
-	return response, nil
-}
-
-// ParseListWorkspacesResponse parses an HTTP response from a ListWorkspacesWithResponse call
-func ParseListWorkspacesResponse(rsp *http.Response) (*ListWorkspacesResponse, error) {
-	bodyBytes, err := io.ReadAll(rsp.Body)
-	defer func() { _ = rsp.Body.Close() }()
-	if err != nil {
-		return nil, err
-	}
-
-	response := &ListWorkspacesResponse{
-		Body:         bodyBytes,
-		HTTPResponse: rsp,
-	}
-
-	switch {
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
-		var dest []Workspace
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON200 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
-		var dest Error
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSONDefault = &dest
-
-	}
-
-	return response, nil
-}
-
-// ParseCreateWorkspaceResponse parses an HTTP response from a CreateWorkspaceWithResponse call
-func ParseCreateWorkspaceResponse(rsp *http.Response) (*CreateWorkspaceResponse, error) {
-	bodyBytes, err := io.ReadAll(rsp.Body)
-	defer func() { _ = rsp.Body.Close() }()
-	if err != nil {
-		return nil, err
-	}
-
-	response := &CreateWorkspaceResponse{
-		Body:         bodyBytes,
-		HTTPResponse: rsp,
-	}
-
-	switch {
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
-		var dest Workspace
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON201 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
-		var dest Error
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSONDefault = &dest
-
-	}
-
-	return response, nil
-}
-
-// ParseDeleteWorkspaceResponse parses an HTTP response from a DeleteWorkspaceWithResponse call
-func ParseDeleteWorkspaceResponse(rsp *http.Response) (*DeleteWorkspaceResponse, error) {
-	bodyBytes, err := io.ReadAll(rsp.Body)
-	defer func() { _ = rsp.Body.Close() }()
-	if err != nil {
-		return nil, err
-	}
-
-	response := &DeleteWorkspaceResponse{
-		Body:         bodyBytes,
-		HTTPResponse: rsp,
-	}
-
-	switch {
-	case rsp.StatusCode == 204:
-		break // No content-type
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
-		var dest Error
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSONDefault = &dest
-
-	}
-
-	return response, nil
-}
-
-// ParseGetWorkspaceResponse parses an HTTP response from a GetWorkspaceWithResponse call
-func ParseGetWorkspaceResponse(rsp *http.Response) (*GetWorkspaceResponse, error) {
-	bodyBytes, err := io.ReadAll(rsp.Body)
-	defer func() { _ = rsp.Body.Close() }()
-	if err != nil {
-		return nil, err
-	}
-
-	response := &GetWorkspaceResponse{
-		Body:         bodyBytes,
-		HTTPResponse: rsp,
-	}
-
-	switch {
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
-		var dest Workspace
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON200 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
-		var dest Error
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSONDefault = &dest
-
-	}
-
-	return response, nil
-}
-
-// ParseDissociateRuntimeSessionResponse parses an HTTP response from a DissociateRuntimeSessionWithResponse call
-func ParseDissociateRuntimeSessionResponse(rsp *http.Response) (*DissociateRuntimeSessionResponse, error) {
-	bodyBytes, err := io.ReadAll(rsp.Body)
-	defer func() { _ = rsp.Body.Close() }()
-	if err != nil {
-		return nil, err
-	}
-
-	response := &DissociateRuntimeSessionResponse{
-		Body:         bodyBytes,
-		HTTPResponse: rsp,
-	}
-
-	switch {
-	case rsp.StatusCode == 204:
-		break // No content-type
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
-		var dest Error
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSONDefault = &dest
-
-	}
-
-	return response, nil
-}
-
-// ParseAssociateRuntimeSessionResponse parses an HTTP response from a AssociateRuntimeSessionWithResponse call
-func ParseAssociateRuntimeSessionResponse(rsp *http.Response) (*AssociateRuntimeSessionResponse, error) {
-	bodyBytes, err := io.ReadAll(rsp.Body)
-	defer func() { _ = rsp.Body.Close() }()
-	if err != nil {
-		return nil, err
-	}
-
-	response := &AssociateRuntimeSessionResponse{
-		Body:         bodyBytes,
-		HTTPResponse: rsp,
-	}
-
-	switch {
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
-		var dest RuntimeSession
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON200 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
-		var dest Error
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSONDefault = &dest
-
-	}
-
-	return response, nil
-}
-
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
 
@@ -8546,13 +7920,16 @@ type ServerInterface interface {
 	UpdateRepresentation(w http.ResponseWriter, r *http.Request, representationId string, params UpdateRepresentationParams)
 
 	// (GET /v1/reviews)
-	ListReviews(w http.ResponseWriter, r *http.Request, params ListReviewsParams)
+	ListReviews(w http.ResponseWriter, r *http.Request)
 
 	// (POST /v1/reviews)
 	CreateReview(w http.ResponseWriter, r *http.Request, params CreateReviewParams)
 
 	// (GET /v1/reviews/resolve)
 	ResolveReview(w http.ResponseWriter, r *http.Request, params ResolveReviewParams)
+
+	// (DELETE /v1/reviews/{reviewId})
+	DeleteReview(w http.ResponseWriter, r *http.Request, reviewId ReviewId)
 
 	// (GET /v1/reviews/{reviewId})
 	GetReview(w http.ResponseWriter, r *http.Request, reviewId ReviewId)
@@ -8596,6 +7973,12 @@ type ServerInterface interface {
 	// (POST /v1/reviews/{reviewId}/revisions)
 	CaptureRevision(w http.ResponseWriter, r *http.Request, reviewId ReviewId, params CaptureRevisionParams)
 
+	// (DELETE /v1/reviews/{reviewId}/runtime-sessions/{runtimeSessionId})
+	DissociateRuntimeSession(w http.ResponseWriter, r *http.Request, reviewId ReviewId, runtimeSessionId RuntimeSessionId)
+
+	// (PUT /v1/reviews/{reviewId}/runtime-sessions/{runtimeSessionId})
+	AssociateRuntimeSession(w http.ResponseWriter, r *http.Request, reviewId ReviewId, runtimeSessionId RuntimeSessionId)
+
 	// (GET /v1/reviews/{reviewId}/topics)
 	ListTopics(w http.ResponseWriter, r *http.Request, reviewId ReviewId)
 
@@ -8634,27 +8017,6 @@ type ServerInterface interface {
 
 	// (POST /v1/topics/{topicId}/representations)
 	CreateRepresentation(w http.ResponseWriter, r *http.Request, topicId TopicId, params CreateRepresentationParams)
-
-	// (GET /v1/workspace-candidates)
-	DiscoverWorkspaces(w http.ResponseWriter, r *http.Request)
-
-	// (GET /v1/workspaces)
-	ListWorkspaces(w http.ResponseWriter, r *http.Request)
-
-	// (POST /v1/workspaces)
-	CreateWorkspace(w http.ResponseWriter, r *http.Request, params CreateWorkspaceParams)
-
-	// (DELETE /v1/workspaces/{workspaceId})
-	DeleteWorkspace(w http.ResponseWriter, r *http.Request, workspaceId WorkspaceId)
-
-	// (GET /v1/workspaces/{workspaceId})
-	GetWorkspace(w http.ResponseWriter, r *http.Request, workspaceId WorkspaceId)
-
-	// (DELETE /v1/workspaces/{workspaceId}/runtime-sessions/{runtimeSessionId})
-	DissociateRuntimeSession(w http.ResponseWriter, r *http.Request, workspaceId WorkspaceId, runtimeSessionId RuntimeSessionId)
-
-	// (PUT /v1/workspaces/{workspaceId}/runtime-sessions/{runtimeSessionId})
-	AssociateRuntimeSession(w http.ResponseWriter, r *http.Request, workspaceId WorkspaceId, runtimeSessionId RuntimeSessionId)
 }
 
 // ServerInterfaceWrapper converts contexts to parameters.
@@ -8939,27 +8301,8 @@ func (siw *ServerInterfaceWrapper) UpdateRepresentation(w http.ResponseWriter, r
 // ListReviews operation middleware
 func (siw *ServerInterfaceWrapper) ListReviews(w http.ResponseWriter, r *http.Request) {
 
-	var err error
-	_ = err
-
-	// Parameter object where we will unmarshal all parameters from the context
-	var params ListReviewsParams
-
-	// ------------- Optional query parameter "workspace_id" -------------
-
-	err = runtime.BindQueryParameterWithOptions("form", true, false, "workspace_id", r.URL.Query(), &params.WorkspaceId, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
-	if err != nil {
-		var requiredError *runtime.RequiredParameterError
-		if errors.As(err, &requiredError) {
-			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "workspace_id"})
-		} else {
-			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "workspace_id", Err: err})
-		}
-		return
-	}
-
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.ListReviews(w, r, params)
+		siw.Handler.ListReviews(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -9034,6 +8377,32 @@ func (siw *ServerInterfaceWrapper) ResolveReview(w http.ResponseWriter, r *http.
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ResolveReview(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteReview operation middleware
+func (siw *ServerInterfaceWrapper) DeleteReview(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "reviewId" -------------
+	var reviewId ReviewId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "reviewId", r.PathValue("reviewId"), &reviewId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "reviewId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteReview(w, r, reviewId)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -9519,6 +8888,76 @@ func (siw *ServerInterfaceWrapper) CaptureRevision(w http.ResponseWriter, r *htt
 	handler.ServeHTTP(w, r)
 }
 
+// DissociateRuntimeSession operation middleware
+func (siw *ServerInterfaceWrapper) DissociateRuntimeSession(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "reviewId" -------------
+	var reviewId ReviewId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "reviewId", r.PathValue("reviewId"), &reviewId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "reviewId", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "runtimeSessionId" -------------
+	var runtimeSessionId RuntimeSessionId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "runtimeSessionId", r.PathValue("runtimeSessionId"), &runtimeSessionId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "runtimeSessionId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DissociateRuntimeSession(w, r, reviewId, runtimeSessionId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// AssociateRuntimeSession operation middleware
+func (siw *ServerInterfaceWrapper) AssociateRuntimeSession(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "reviewId" -------------
+	var reviewId ReviewId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "reviewId", r.PathValue("reviewId"), &reviewId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "reviewId", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "runtimeSessionId" -------------
+	var runtimeSessionId RuntimeSessionId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "runtimeSessionId", r.PathValue("runtimeSessionId"), &runtimeSessionId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "runtimeSessionId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.AssociateRuntimeSession(w, r, reviewId, runtimeSessionId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ListTopics operation middleware
 func (siw *ServerInterfaceWrapper) ListTopics(w http.ResponseWriter, r *http.Request) {
 
@@ -9711,15 +9150,15 @@ func (siw *ServerInterfaceWrapper) ListRuntimeSessions(w http.ResponseWriter, r 
 	// Parameter object where we will unmarshal all parameters from the context
 	var params ListRuntimeSessionsParams
 
-	// ------------- Optional query parameter "workspace_id" -------------
+	// ------------- Optional query parameter "review_id" -------------
 
-	err = runtime.BindQueryParameterWithOptions("form", true, false, "workspace_id", r.URL.Query(), &params.WorkspaceId, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "review_id", r.URL.Query(), &params.ReviewId, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
 	if err != nil {
 		var requiredError *runtime.RequiredParameterError
 		if errors.As(err, &requiredError) {
-			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "workspace_id"})
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "review_id"})
 		} else {
-			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "workspace_id", Err: err})
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "review_id", Err: err})
 		}
 		return
 	}
@@ -9977,197 +9416,6 @@ func (siw *ServerInterfaceWrapper) CreateRepresentation(w http.ResponseWriter, r
 	handler.ServeHTTP(w, r)
 }
 
-// DiscoverWorkspaces operation middleware
-func (siw *ServerInterfaceWrapper) DiscoverWorkspaces(w http.ResponseWriter, r *http.Request) {
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.DiscoverWorkspaces(w, r)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
-// ListWorkspaces operation middleware
-func (siw *ServerInterfaceWrapper) ListWorkspaces(w http.ResponseWriter, r *http.Request) {
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.ListWorkspaces(w, r)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
-// CreateWorkspace operation middleware
-func (siw *ServerInterfaceWrapper) CreateWorkspace(w http.ResponseWriter, r *http.Request) {
-
-	var err error
-	_ = err
-
-	// Parameter object where we will unmarshal all parameters from the context
-	var params CreateWorkspaceParams
-
-	headers := r.Header
-
-	// ------------- Optional header parameter "Idempotency-Key" -------------
-	if valueList, found := headers[http.CanonicalHeaderKey("Idempotency-Key")]; found {
-		var IdempotencyKey IdempotencyKey
-		n := len(valueList)
-		if n != 1 {
-			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "Idempotency-Key", Count: n})
-			return
-		}
-
-		err = runtime.BindStyledParameterWithOptions("simple", "Idempotency-Key", valueList[0], &IdempotencyKey, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""})
-		if err != nil {
-			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "Idempotency-Key", Err: err})
-			return
-		}
-
-		params.IdempotencyKey = &IdempotencyKey
-
-	}
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.CreateWorkspace(w, r, params)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
-// DeleteWorkspace operation middleware
-func (siw *ServerInterfaceWrapper) DeleteWorkspace(w http.ResponseWriter, r *http.Request) {
-
-	var err error
-	_ = err
-
-	// ------------- Path parameter "workspaceId" -------------
-	var workspaceId WorkspaceId
-
-	err = runtime.BindStyledParameterWithOptions("simple", "workspaceId", r.PathValue("workspaceId"), &workspaceId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "workspaceId", Err: err})
-		return
-	}
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.DeleteWorkspace(w, r, workspaceId)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
-// GetWorkspace operation middleware
-func (siw *ServerInterfaceWrapper) GetWorkspace(w http.ResponseWriter, r *http.Request) {
-
-	var err error
-	_ = err
-
-	// ------------- Path parameter "workspaceId" -------------
-	var workspaceId WorkspaceId
-
-	err = runtime.BindStyledParameterWithOptions("simple", "workspaceId", r.PathValue("workspaceId"), &workspaceId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "workspaceId", Err: err})
-		return
-	}
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.GetWorkspace(w, r, workspaceId)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
-// DissociateRuntimeSession operation middleware
-func (siw *ServerInterfaceWrapper) DissociateRuntimeSession(w http.ResponseWriter, r *http.Request) {
-
-	var err error
-	_ = err
-
-	// ------------- Path parameter "workspaceId" -------------
-	var workspaceId WorkspaceId
-
-	err = runtime.BindStyledParameterWithOptions("simple", "workspaceId", r.PathValue("workspaceId"), &workspaceId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "workspaceId", Err: err})
-		return
-	}
-
-	// ------------- Path parameter "runtimeSessionId" -------------
-	var runtimeSessionId RuntimeSessionId
-
-	err = runtime.BindStyledParameterWithOptions("simple", "runtimeSessionId", r.PathValue("runtimeSessionId"), &runtimeSessionId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "runtimeSessionId", Err: err})
-		return
-	}
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.DissociateRuntimeSession(w, r, workspaceId, runtimeSessionId)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
-// AssociateRuntimeSession operation middleware
-func (siw *ServerInterfaceWrapper) AssociateRuntimeSession(w http.ResponseWriter, r *http.Request) {
-
-	var err error
-	_ = err
-
-	// ------------- Path parameter "workspaceId" -------------
-	var workspaceId WorkspaceId
-
-	err = runtime.BindStyledParameterWithOptions("simple", "workspaceId", r.PathValue("workspaceId"), &workspaceId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "workspaceId", Err: err})
-		return
-	}
-
-	// ------------- Path parameter "runtimeSessionId" -------------
-	var runtimeSessionId RuntimeSessionId
-
-	err = runtime.BindStyledParameterWithOptions("simple", "runtimeSessionId", r.PathValue("runtimeSessionId"), &runtimeSessionId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "runtimeSessionId", Err: err})
-		return
-	}
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.AssociateRuntimeSession(w, r, workspaceId, runtimeSessionId)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
 type UnescapedCookieParamError struct {
 	ParamName string
 	Err       error
@@ -10289,14 +9537,10 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	}
 
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/health", wrapper.GetHealth)
-	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/workspaces", wrapper.ListWorkspaces)
-	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/workspaces", wrapper.CreateWorkspace)
-	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/workspace-candidates", wrapper.DiscoverWorkspaces)
-	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/v1/workspaces/{workspaceId}", wrapper.DeleteWorkspace)
-	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/workspaces/{workspaceId}", wrapper.GetWorkspace)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/reviews", wrapper.ListReviews)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/reviews", wrapper.CreateReview)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/reviews/resolve", wrapper.ResolveReview)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/v1/reviews/{reviewId}", wrapper.DeleteReview)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/reviews/{reviewId}", wrapper.GetReview)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/reviews/{reviewId}/revisions", wrapper.ListRevisions)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/reviews/{reviewId}/revisions", wrapper.CaptureRevision)
@@ -10330,8 +9574,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/session-backends", wrapper.ListSessionBackends)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/runtime-sessions", wrapper.ListRuntimeSessions)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/runtime-sessions/{runtimeSessionId}", wrapper.GetRuntimeSession)
-	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/v1/workspaces/{workspaceId}/runtime-sessions/{runtimeSessionId}", wrapper.DissociateRuntimeSession)
-	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/v1/workspaces/{workspaceId}/runtime-sessions/{runtimeSessionId}", wrapper.AssociateRuntimeSession)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/v1/reviews/{reviewId}/runtime-sessions/{runtimeSessionId}", wrapper.DissociateRuntimeSession)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/v1/reviews/{reviewId}/runtime-sessions/{runtimeSessionId}", wrapper.AssociateRuntimeSession)
 
 	return m
 }
@@ -10653,7 +9897,6 @@ func (response UpdateRepresentationdefaultJSONResponse) VisitUpdateRepresentatio
 }
 
 type ListReviewsRequestObject struct {
-	Params ListReviewsParams
 }
 
 type ListReviewsResponseObject interface {
@@ -10759,6 +10002,39 @@ type ResolveReviewdefaultJSONResponse struct {
 }
 
 func (response ResolveReviewdefaultJSONResponse) VisitResolveReviewResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteReviewRequestObject struct {
+	ReviewId ReviewId `json:"reviewId"`
+}
+
+type DeleteReviewResponseObject interface {
+	VisitDeleteReviewResponse(w http.ResponseWriter) error
+}
+
+type DeleteReview204Response struct {
+}
+
+func (response DeleteReview204Response) VisitDeleteReviewResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type DeleteReviewdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response DeleteReviewdefaultJSONResponse) VisitDeleteReviewResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -11287,6 +10563,7 @@ func (response ListRevisionsdefaultJSONResponse) VisitListRevisionsResponse(w ht
 type CaptureRevisionRequestObject struct {
 	ReviewId ReviewId `json:"reviewId"`
 	Params   CaptureRevisionParams
+	Body     *CaptureRevisionJSONRequestBody
 }
 
 type CaptureRevisionResponseObject interface {
@@ -11313,6 +10590,80 @@ type CaptureRevisiondefaultJSONResponse struct {
 }
 
 func (response CaptureRevisiondefaultJSONResponse) VisitCaptureRevisionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DissociateRuntimeSessionRequestObject struct {
+	ReviewId         ReviewId         `json:"reviewId"`
+	RuntimeSessionId RuntimeSessionId `json:"runtimeSessionId"`
+}
+
+type DissociateRuntimeSessionResponseObject interface {
+	VisitDissociateRuntimeSessionResponse(w http.ResponseWriter) error
+}
+
+type DissociateRuntimeSession204Response struct {
+}
+
+func (response DissociateRuntimeSession204Response) VisitDissociateRuntimeSessionResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type DissociateRuntimeSessiondefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response DissociateRuntimeSessiondefaultJSONResponse) VisitDissociateRuntimeSessionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AssociateRuntimeSessionRequestObject struct {
+	ReviewId         ReviewId         `json:"reviewId"`
+	RuntimeSessionId RuntimeSessionId `json:"runtimeSessionId"`
+}
+
+type AssociateRuntimeSessionResponseObject interface {
+	VisitAssociateRuntimeSessionResponse(w http.ResponseWriter) error
+}
+
+type AssociateRuntimeSession200JSONResponse RuntimeSession
+
+func (response AssociateRuntimeSession200JSONResponse) VisitAssociateRuntimeSessionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AssociateRuntimeSessiondefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response AssociateRuntimeSessiondefaultJSONResponse) VisitAssociateRuntimeSessionResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -11863,268 +11214,6 @@ func (response CreateRepresentationdefaultJSONResponse) VisitCreateRepresentatio
 	return err
 }
 
-type DiscoverWorkspacesRequestObject struct {
-}
-
-type DiscoverWorkspacesResponseObject interface {
-	VisitDiscoverWorkspacesResponse(w http.ResponseWriter) error
-}
-
-type DiscoverWorkspaces200JSONResponse []WorkspaceCandidate
-
-func (response DiscoverWorkspaces200JSONResponse) VisitDiscoverWorkspacesResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(200)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type DiscoverWorkspacesdefaultJSONResponse struct {
-	Body       Error
-	StatusCode int
-}
-
-func (response DiscoverWorkspacesdefaultJSONResponse) VisitDiscoverWorkspacesResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(response.StatusCode)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type ListWorkspacesRequestObject struct {
-}
-
-type ListWorkspacesResponseObject interface {
-	VisitListWorkspacesResponse(w http.ResponseWriter) error
-}
-
-type ListWorkspaces200JSONResponse []Workspace
-
-func (response ListWorkspaces200JSONResponse) VisitListWorkspacesResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(200)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type ListWorkspacesdefaultJSONResponse struct {
-	Body       Error
-	StatusCode int
-}
-
-func (response ListWorkspacesdefaultJSONResponse) VisitListWorkspacesResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(response.StatusCode)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type CreateWorkspaceRequestObject struct {
-	Params CreateWorkspaceParams
-	Body   *CreateWorkspaceJSONRequestBody
-}
-
-type CreateWorkspaceResponseObject interface {
-	VisitCreateWorkspaceResponse(w http.ResponseWriter) error
-}
-
-type CreateWorkspace201JSONResponse Workspace
-
-func (response CreateWorkspace201JSONResponse) VisitCreateWorkspaceResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(201)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type CreateWorkspacedefaultJSONResponse struct {
-	Body       Error
-	StatusCode int
-}
-
-func (response CreateWorkspacedefaultJSONResponse) VisitCreateWorkspaceResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(response.StatusCode)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type DeleteWorkspaceRequestObject struct {
-	WorkspaceId WorkspaceId `json:"workspaceId"`
-}
-
-type DeleteWorkspaceResponseObject interface {
-	VisitDeleteWorkspaceResponse(w http.ResponseWriter) error
-}
-
-type DeleteWorkspace204Response struct {
-}
-
-func (response DeleteWorkspace204Response) VisitDeleteWorkspaceResponse(w http.ResponseWriter) error {
-	w.WriteHeader(204)
-	return nil
-}
-
-type DeleteWorkspacedefaultJSONResponse struct {
-	Body       Error
-	StatusCode int
-}
-
-func (response DeleteWorkspacedefaultJSONResponse) VisitDeleteWorkspaceResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(response.StatusCode)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type GetWorkspaceRequestObject struct {
-	WorkspaceId WorkspaceId `json:"workspaceId"`
-}
-
-type GetWorkspaceResponseObject interface {
-	VisitGetWorkspaceResponse(w http.ResponseWriter) error
-}
-
-type GetWorkspace200JSONResponse Workspace
-
-func (response GetWorkspace200JSONResponse) VisitGetWorkspaceResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(200)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type GetWorkspacedefaultJSONResponse struct {
-	Body       Error
-	StatusCode int
-}
-
-func (response GetWorkspacedefaultJSONResponse) VisitGetWorkspaceResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(response.StatusCode)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type DissociateRuntimeSessionRequestObject struct {
-	WorkspaceId      WorkspaceId      `json:"workspaceId"`
-	RuntimeSessionId RuntimeSessionId `json:"runtimeSessionId"`
-}
-
-type DissociateRuntimeSessionResponseObject interface {
-	VisitDissociateRuntimeSessionResponse(w http.ResponseWriter) error
-}
-
-type DissociateRuntimeSession204Response struct {
-}
-
-func (response DissociateRuntimeSession204Response) VisitDissociateRuntimeSessionResponse(w http.ResponseWriter) error {
-	w.WriteHeader(204)
-	return nil
-}
-
-type DissociateRuntimeSessiondefaultJSONResponse struct {
-	Body       Error
-	StatusCode int
-}
-
-func (response DissociateRuntimeSessiondefaultJSONResponse) VisitDissociateRuntimeSessionResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(response.StatusCode)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type AssociateRuntimeSessionRequestObject struct {
-	WorkspaceId      WorkspaceId      `json:"workspaceId"`
-	RuntimeSessionId RuntimeSessionId `json:"runtimeSessionId"`
-}
-
-type AssociateRuntimeSessionResponseObject interface {
-	VisitAssociateRuntimeSessionResponse(w http.ResponseWriter) error
-}
-
-type AssociateRuntimeSession200JSONResponse RuntimeSession
-
-func (response AssociateRuntimeSession200JSONResponse) VisitAssociateRuntimeSessionResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(200)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type AssociateRuntimeSessiondefaultJSONResponse struct {
-	Body       Error
-	StatusCode int
-}
-
-func (response AssociateRuntimeSessiondefaultJSONResponse) VisitAssociateRuntimeSessionResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(response.StatusCode)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
 // StrictServerInterface represents all server handlers.
 type StrictServerInterface interface {
 
@@ -12157,6 +11246,9 @@ type StrictServerInterface interface {
 
 	// (GET /v1/reviews/resolve)
 	ResolveReview(ctx context.Context, request ResolveReviewRequestObject) (ResolveReviewResponseObject, error)
+
+	// (DELETE /v1/reviews/{reviewId})
+	DeleteReview(ctx context.Context, request DeleteReviewRequestObject) (DeleteReviewResponseObject, error)
 
 	// (GET /v1/reviews/{reviewId})
 	GetReview(ctx context.Context, request GetReviewRequestObject) (GetReviewResponseObject, error)
@@ -12200,6 +11292,12 @@ type StrictServerInterface interface {
 	// (POST /v1/reviews/{reviewId}/revisions)
 	CaptureRevision(ctx context.Context, request CaptureRevisionRequestObject) (CaptureRevisionResponseObject, error)
 
+	// (DELETE /v1/reviews/{reviewId}/runtime-sessions/{runtimeSessionId})
+	DissociateRuntimeSession(ctx context.Context, request DissociateRuntimeSessionRequestObject) (DissociateRuntimeSessionResponseObject, error)
+
+	// (PUT /v1/reviews/{reviewId}/runtime-sessions/{runtimeSessionId})
+	AssociateRuntimeSession(ctx context.Context, request AssociateRuntimeSessionRequestObject) (AssociateRuntimeSessionResponseObject, error)
+
 	// (GET /v1/reviews/{reviewId}/topics)
 	ListTopics(ctx context.Context, request ListTopicsRequestObject) (ListTopicsResponseObject, error)
 
@@ -12238,27 +11336,6 @@ type StrictServerInterface interface {
 
 	// (POST /v1/topics/{topicId}/representations)
 	CreateRepresentation(ctx context.Context, request CreateRepresentationRequestObject) (CreateRepresentationResponseObject, error)
-
-	// (GET /v1/workspace-candidates)
-	DiscoverWorkspaces(ctx context.Context, request DiscoverWorkspacesRequestObject) (DiscoverWorkspacesResponseObject, error)
-
-	// (GET /v1/workspaces)
-	ListWorkspaces(ctx context.Context, request ListWorkspacesRequestObject) (ListWorkspacesResponseObject, error)
-
-	// (POST /v1/workspaces)
-	CreateWorkspace(ctx context.Context, request CreateWorkspaceRequestObject) (CreateWorkspaceResponseObject, error)
-
-	// (DELETE /v1/workspaces/{workspaceId})
-	DeleteWorkspace(ctx context.Context, request DeleteWorkspaceRequestObject) (DeleteWorkspaceResponseObject, error)
-
-	// (GET /v1/workspaces/{workspaceId})
-	GetWorkspace(ctx context.Context, request GetWorkspaceRequestObject) (GetWorkspaceResponseObject, error)
-
-	// (DELETE /v1/workspaces/{workspaceId}/runtime-sessions/{runtimeSessionId})
-	DissociateRuntimeSession(ctx context.Context, request DissociateRuntimeSessionRequestObject) (DissociateRuntimeSessionResponseObject, error)
-
-	// (PUT /v1/workspaces/{workspaceId}/runtime-sessions/{runtimeSessionId})
-	AssociateRuntimeSession(ctx context.Context, request AssociateRuntimeSessionRequestObject) (AssociateRuntimeSessionResponseObject, error)
 }
 
 type StrictHandlerFunc func(ctx context.Context, w http.ResponseWriter, r *http.Request, request any) (any, error)
@@ -12505,10 +11582,8 @@ func (sh *strictHandler) UpdateRepresentation(w http.ResponseWriter, r *http.Req
 }
 
 // ListReviews operation middleware
-func (sh *strictHandler) ListReviews(w http.ResponseWriter, r *http.Request, params ListReviewsParams) {
+func (sh *strictHandler) ListReviews(w http.ResponseWriter, r *http.Request) {
 	var request ListReviewsRequestObject
-
-	request.Params = params
 
 	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
 		return sh.ssi.ListReviews(ctx, request.(ListReviewsRequestObject))
@@ -12582,6 +11657,32 @@ func (sh *strictHandler) ResolveReview(w http.ResponseWriter, r *http.Request, p
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(ResolveReviewResponseObject); ok {
 		if err := validResponse.VisitResolveReviewResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DeleteReview operation middleware
+func (sh *strictHandler) DeleteReview(w http.ResponseWriter, r *http.Request, reviewId ReviewId) {
+	var request DeleteReviewRequestObject
+
+	request.ReviewId = reviewId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteReview(ctx, request.(DeleteReviewRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteReview")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeleteReviewResponseObject); ok {
+		if err := validResponse.VisitDeleteReviewResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -12959,6 +12060,16 @@ func (sh *strictHandler) CaptureRevision(w http.ResponseWriter, r *http.Request,
 	request.ReviewId = reviewId
 	request.Params = params
 
+	var body CaptureRevisionJSONRequestBody
+	if err := runtime.BindJSONBody(r, &body); err != nil {
+		if !errors.Is(err, io.EOF) {
+			sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+			return
+		}
+	} else {
+		request.Body = &body
+	}
+
 	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
 		return sh.ssi.CaptureRevision(ctx, request.(CaptureRevisionRequestObject))
 	}
@@ -12972,6 +12083,60 @@ func (sh *strictHandler) CaptureRevision(w http.ResponseWriter, r *http.Request,
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(CaptureRevisionResponseObject); ok {
 		if err := validResponse.VisitCaptureRevisionResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DissociateRuntimeSession operation middleware
+func (sh *strictHandler) DissociateRuntimeSession(w http.ResponseWriter, r *http.Request, reviewId ReviewId, runtimeSessionId RuntimeSessionId) {
+	var request DissociateRuntimeSessionRequestObject
+
+	request.ReviewId = reviewId
+	request.RuntimeSessionId = runtimeSessionId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DissociateRuntimeSession(ctx, request.(DissociateRuntimeSessionRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DissociateRuntimeSession")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DissociateRuntimeSessionResponseObject); ok {
+		if err := validResponse.VisitDissociateRuntimeSessionResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// AssociateRuntimeSession operation middleware
+func (sh *strictHandler) AssociateRuntimeSession(w http.ResponseWriter, r *http.Request, reviewId ReviewId, runtimeSessionId RuntimeSessionId) {
+	var request AssociateRuntimeSessionRequestObject
+
+	request.ReviewId = reviewId
+	request.RuntimeSessionId = runtimeSessionId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.AssociateRuntimeSession(ctx, request.(AssociateRuntimeSessionRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "AssociateRuntimeSession")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(AssociateRuntimeSessionResponseObject); ok {
+		if err := validResponse.VisitAssociateRuntimeSessionResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -13348,362 +12513,169 @@ func (sh *strictHandler) CreateRepresentation(w http.ResponseWriter, r *http.Req
 	}
 }
 
-// DiscoverWorkspaces operation middleware
-func (sh *strictHandler) DiscoverWorkspaces(w http.ResponseWriter, r *http.Request) {
-	var request DiscoverWorkspacesRequestObject
-
-	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
-		return sh.ssi.DiscoverWorkspaces(ctx, request.(DiscoverWorkspacesRequestObject))
-	}
-	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "DiscoverWorkspaces")
-	}
-
-	response, err := handler(r.Context(), w, r, request)
-
-	if err != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, err)
-	} else if validResponse, ok := response.(DiscoverWorkspacesResponseObject); ok {
-		if err := validResponse.VisitDiscoverWorkspacesResponse(w); err != nil {
-			sh.options.ResponseErrorHandlerFunc(w, r, err)
-		}
-	} else if response != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
-	}
-}
-
-// ListWorkspaces operation middleware
-func (sh *strictHandler) ListWorkspaces(w http.ResponseWriter, r *http.Request) {
-	var request ListWorkspacesRequestObject
-
-	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
-		return sh.ssi.ListWorkspaces(ctx, request.(ListWorkspacesRequestObject))
-	}
-	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "ListWorkspaces")
-	}
-
-	response, err := handler(r.Context(), w, r, request)
-
-	if err != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, err)
-	} else if validResponse, ok := response.(ListWorkspacesResponseObject); ok {
-		if err := validResponse.VisitListWorkspacesResponse(w); err != nil {
-			sh.options.ResponseErrorHandlerFunc(w, r, err)
-		}
-	} else if response != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
-	}
-}
-
-// CreateWorkspace operation middleware
-func (sh *strictHandler) CreateWorkspace(w http.ResponseWriter, r *http.Request, params CreateWorkspaceParams) {
-	var request CreateWorkspaceRequestObject
-
-	request.Params = params
-
-	var body CreateWorkspaceJSONRequestBody
-	if err := runtime.BindJSONBody(r, &body); err != nil {
-		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
-		return
-	}
-	request.Body = &body
-
-	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
-		return sh.ssi.CreateWorkspace(ctx, request.(CreateWorkspaceRequestObject))
-	}
-	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "CreateWorkspace")
-	}
-
-	response, err := handler(r.Context(), w, r, request)
-
-	if err != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, err)
-	} else if validResponse, ok := response.(CreateWorkspaceResponseObject); ok {
-		if err := validResponse.VisitCreateWorkspaceResponse(w); err != nil {
-			sh.options.ResponseErrorHandlerFunc(w, r, err)
-		}
-	} else if response != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
-	}
-}
-
-// DeleteWorkspace operation middleware
-func (sh *strictHandler) DeleteWorkspace(w http.ResponseWriter, r *http.Request, workspaceId WorkspaceId) {
-	var request DeleteWorkspaceRequestObject
-
-	request.WorkspaceId = workspaceId
-
-	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
-		return sh.ssi.DeleteWorkspace(ctx, request.(DeleteWorkspaceRequestObject))
-	}
-	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "DeleteWorkspace")
-	}
-
-	response, err := handler(r.Context(), w, r, request)
-
-	if err != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, err)
-	} else if validResponse, ok := response.(DeleteWorkspaceResponseObject); ok {
-		if err := validResponse.VisitDeleteWorkspaceResponse(w); err != nil {
-			sh.options.ResponseErrorHandlerFunc(w, r, err)
-		}
-	} else if response != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
-	}
-}
-
-// GetWorkspace operation middleware
-func (sh *strictHandler) GetWorkspace(w http.ResponseWriter, r *http.Request, workspaceId WorkspaceId) {
-	var request GetWorkspaceRequestObject
-
-	request.WorkspaceId = workspaceId
-
-	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
-		return sh.ssi.GetWorkspace(ctx, request.(GetWorkspaceRequestObject))
-	}
-	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "GetWorkspace")
-	}
-
-	response, err := handler(r.Context(), w, r, request)
-
-	if err != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, err)
-	} else if validResponse, ok := response.(GetWorkspaceResponseObject); ok {
-		if err := validResponse.VisitGetWorkspaceResponse(w); err != nil {
-			sh.options.ResponseErrorHandlerFunc(w, r, err)
-		}
-	} else if response != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
-	}
-}
-
-// DissociateRuntimeSession operation middleware
-func (sh *strictHandler) DissociateRuntimeSession(w http.ResponseWriter, r *http.Request, workspaceId WorkspaceId, runtimeSessionId RuntimeSessionId) {
-	var request DissociateRuntimeSessionRequestObject
-
-	request.WorkspaceId = workspaceId
-	request.RuntimeSessionId = runtimeSessionId
-
-	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
-		return sh.ssi.DissociateRuntimeSession(ctx, request.(DissociateRuntimeSessionRequestObject))
-	}
-	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "DissociateRuntimeSession")
-	}
-
-	response, err := handler(r.Context(), w, r, request)
-
-	if err != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, err)
-	} else if validResponse, ok := response.(DissociateRuntimeSessionResponseObject); ok {
-		if err := validResponse.VisitDissociateRuntimeSessionResponse(w); err != nil {
-			sh.options.ResponseErrorHandlerFunc(w, r, err)
-		}
-	} else if response != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
-	}
-}
-
-// AssociateRuntimeSession operation middleware
-func (sh *strictHandler) AssociateRuntimeSession(w http.ResponseWriter, r *http.Request, workspaceId WorkspaceId, runtimeSessionId RuntimeSessionId) {
-	var request AssociateRuntimeSessionRequestObject
-
-	request.WorkspaceId = workspaceId
-	request.RuntimeSessionId = runtimeSessionId
-
-	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
-		return sh.ssi.AssociateRuntimeSession(ctx, request.(AssociateRuntimeSessionRequestObject))
-	}
-	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "AssociateRuntimeSession")
-	}
-
-	response, err := handler(r.Context(), w, r, request)
-
-	if err != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, err)
-	} else if validResponse, ok := response.(AssociateRuntimeSessionResponseObject); ok {
-		if err := validResponse.VisitAssociateRuntimeSessionResponse(w); err != nil {
-			sh.options.ResponseErrorHandlerFunc(w, r, err)
-		}
-	} else if response != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
-	}
-}
-
 // Base64 encoded, compressed with deflate, json marshaled OpenAPI spec.
 // Stored as a slice of fixed-width chunks rather than one concatenated
 // const string: with thousands of chunks the chained `+` fold is several
 // times slower for the Go compiler than parsing a slice literal.
 var swaggerSpec = []string{
-	"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",
-	"evz6+P8HAA==",
+	"7H3tcts6suCroLhbdZIqWk7OnLn3rlP7Q5HkRHVsySPJmTt7nJJhEpIwoUANANpRpfx3H2AfcZ9kq/FB",
+	"ghQpkbLp+GzdX5YlEh+N7kZ/9w8viNebmBEmhXf2w1sRHBKuPg5meAl/QyICTjeSxsw782YrgjgRccID",
+	"gu4JFzRmPvpXEksSdjzf4+RfCeUk9M4kT4jviWBF1hjGkdsN8c48ITllS+/x8dH3NpjjNZFmwj4VQSJg",
+	"wGEI/1OYb4PlyvM9htfwcug+0mQy3xuGZL2JJWHB9ney3d1YL6KEyZNgFQvCUMLovxKCvpEtkiss0Rp/",
+	"IwJhxInklIQIZiZCIoEXBLat1qqBl63WmfIE5nQXuMbfLwhbypV39utf/+p7a8rs/+/9suUvLrEMVrvr",
+	"hmNC8QLJVXoe6nOwwmxJEBXoDgsSoph10MTA6wOK11RKypaISthTwplAv/36H9VbWZzo+fcDeULuKXmo",
+	"PD5uf252dDDqXrTg2QMNR06YpGsyJfvRjhcfazbLLN7QoHJwaX5tSDuciE3MBNG0ynnM4UMQM0mYhI94",
+	"s4logAFNTv8pAFd+OCP+d04W3pn3304z+j/Vv4pTPZqapYBr8ENH7ck8C0N1WbDSs+MwpPAojq54vCFc",
+	"UljeAkeC+N7G+QoWGpI5BxSF/2JGxgvv7I90pyyJIu/R37/OXhySiRri8euj75GIrAmTcxruUkmf4iXH",
+	"a8TikKBhHy1ijvrD7qdJ93I+uBhcDkYzwH09+x8W0L5eBwxOw3JeiNXmFUcIYh5+ULQXmtk42XAiCJPq",
+	"FMom/YBgBvXLZPBlOPg7wixEvXF/MJ90R58G+xelf9kPJH06M3jy8dHFsT/062prOeD57uF8tbN48d0/",
+	"SSC9R99zhjz74RGWrGE0vX7P92bjq2HP873haDYYzTzf632GrXi+dz4c9YejT57vDb4M+4NRD77MNuv5",
+	"XgE8zvQW932vKwHFacymdMlw1BDxcCINtu6Fmn4KsOqehoQFZE5D9T6VZC1KaDJdKOYcb70UZXYeo+tN",
+	"zOXc/bXsbDecxpzKrQviz8NPnz3fuxz0h9eXnu9djAHe16PfR+O/j0phteHxPWGYBQfx5Cp7EtAEa3CS",
+	"0i1Yfjuv2KLEfElkw4OpGquAZha7Mlwy6PW17NosR/cypE5YQLjElGmQ7x+Khl4eCumenYNzoZgfP3cu",
+	"vkVJFzUKeLezYN/7frKMT8yX+l7tFAnDeehEDw07U7fPmbekcpXcdYJ4fYrD5J7wJeGnG54wEkXkVBB+",
+	"T/gpZZJwhqNTPYOCQzcloMaHm2ef55yQk0XM10gDAMGGJZVbH5HOsoMwiuIlZSjmaEPPbpJ37/4SCH0F",
+	"q3+U4LVXbvK9b5SFOQq6vuyOPN/rfirnLoVzVq+Xo0z5CdiTbAPwH3HwjbDwM8GRXDW9blck+EbCOVYr",
+	"AaDDJy/EkpxIuiZ7rxlipYvqRyhbxNVLKiHrgmDBwk1MmUQhkZhGAokkWCEsECff51aqhZsRb+jc0l3H",
+	"K54JyCUSyxy/6I1Ho0FvplnFZNDtfe5+vBgotun+1x9O4VP/ME7oGSxUfBe0Bg4HcMXgsOjkD/QZkcbO",
+	"oNbewxuZcDLRGktDvAHdYa5ujR+HSI2TTSyojPl2bt/KX5j7bp9J+vJHLMiELHYv1MdaFFjYbTuUmAme",
+	"DaEZxXfzFRYlatz0c/fk17/+m9XkhFRC5YJGBBmZvuOVAJ2wcB5RRsz50HWydk8HFr8kSo7Re/6x99wq",
+	"rmBBIhJIEs4l+S7Ln6Bhjug+dqdAVJ8H3X6pWCIk5rLWwgvEl1+sb1UpNX9uWAc0vgP34mbqsfXsvNvC",
+	"J3XCY1DKSclN+ffVVmGFQgcqUESFJCF6oHIVJ9IiiOioXZsTGI66k38oaXw8v+hOlHQ9vf54Oe5fK4Y3",
+	"Gs/m3flk8On6ojuZnw/hS2DnX/fdBD1OsCR9EigGfCRLicNtxZWghz3EK+z0v8Pl/Og7RiEro+97e9i/",
+	"oEJdFQvKQsqWzV4qiL5lxjH9ANLnC8aWkCxwEkmBZKxNMwnnhEkUM1JC1AWMT6FSE1VLT6gltNVzpeA/",
+	"Dh9wPfNBHtJGWZbKLMdiuQJbFokE+YCUguAjrX36SGsHPjL6go+s6qleRrc0vP1wwwp6pxl4jy4P72mJ",
+	"RNsUbjMFGsbLlFoz1G2mU98iEGaMgc7weMP2U9Hmhnn7LSYNAPwyd8RrvgHK9L28tWhnfQe00adYXMpW",
+	"Y5niQRlrD/fpF9iMptRfRMpvSgTnCqZjaNKsqxHn2eEGbfKeSyIEXpKnXUSHTO8uYBrDo7DCNoGRydDH",
+	"wYOyIEpCMk+Y5KCZuBRwF8cRwQxwMMJ3JKqBq5aZNAGvHtu82wTMu3tvGdLOXXActBU7D+licdAabwxB",
+	"IIH0YragyyHbJFJLPupuOigw6ccKL6cGJpAmn7AIqxTse31Gvu+8RmVEDjMxOL9fBEpEgiOk3inVg3as",
+	"hIP/nGXmZGtl7g/Pzx3j8/xiOJ3VtBs2RMYS9GgXIeGLuoiYeVvyKFmLYh1hIG/b0S6bAuw0IT/6xako",
+	"WxA+V4rLd+kcnFrh111RRA++O3ct40IVi3hU5sOhHuJ9ib2hVO6Amb8+fi3Scw6NywSK4o4LAi0RcXRP",
+	"UPAQIrnicbJcgX6AyHcqlKMW3sSUwUd9/MiMhe7IIuYE3eOIhlg9q93zHTT4Di5AKhFAUyinL5IrKtAi",
+	"wkuHjhzubuGeX133TsRRIgnSmHgiaEjMLEgbvj8o57iFMNhszYIJB+GWrtckpFgS5MKxyoBbpnq+wMn/",
+	"YY7embUmlzKgWMRRCPvlLijUnSYO2qofGzEYl9zbZCzKdX3kBaf0m2baddHZ1qIiT5XNpNk7G8z3qAwi",
+	"Wa8xL7dtpHjURBrSL2UDN7mDcgfXDob0HXtNiw7YSntRoDZaw6fRio2pwCADtfu7iKDsUYHeTAZ/ux5M",
+	"Z3NthZi+VQE2tT3IBcSunNI89+T5KhBbn/l8z6/1LGImRCmkgUQqOoUAAz2sjabeVr2Iouc1PVODK3m4",
+	"7Zyd4291MKgebfWzqdqkqN8LXsve+PJSh1J0r64m4y8D5crKnXSpkaVE8G9GqyRcNrhtzXSDcEnKsIvF",
+	"YWGwJis56mag4UGeu+sj7o0vr8YjDe/pYPJlqMJU+t1ZdzobT+Dz364H1/C325uNJ/DUbHCl/nRn8PV4",
+	"9nkwKT2Qurqz8bjt1ciUq1x5ysrIxWrSanNlFqf6kq8+t7Ix3ANvdpwLHq9LuUkKoZ1fZHw4LkMNqx61",
+	"I9Wka2cjLZF2yoSONo8ftjl6jylzq329HnOLVtwEa23rqs8wjHGsjFk8552jQYgesEBrHBKEl5gyUe5Q",
+	"FRLLRLjsYHw1GCl+Ox1ffBmUW7NVDGf5Na0EMeGug5MIS3X1nTlfkxCpUT7oP+DkY99Amcs9oqVW/4Zp",
+	"6doHXcPcdumLnOBgtfOmZaC5CMVfhJ0UIhAxAqPUDeN6aPV6IOk9sSPHD8yOq12RTEdH590W9eWNZBM2",
+	"xj0TDdLQa3BAhEjt3dlBpqjgyAt2bgfVcwSU21FdzpPyhXYYT3ZPtBqOVyvY8ykheqXQyzbXEvBs5FMD",
+	"wJEj3gG6c6EKzvnz8fWoryD7pXsx7M+7k0/XRgrsjUfnF8Oe+ti9ml1PBvPz7hCil3zvajLojUf94Ww4",
+	"HlV8C6LjcKK+vx51r2efB6PZsNed6ScHk8vhdArP9Qej4aBvDncy6l6U8j4TstUsNtbQz+EbXUEmez6b",
+	"blceKbypz6FMbLHG7JYV1xZC3J3w/kOh6sfGHe9Kw0549gw0jslgen2hhOOrQW94DpgzHKugylH34h/T",
+	"4XQ+vp5dXSt1ZTIbnnd7s+eNTT4QfayNcRXxpspiGnO6pMyEmaqIjHi9Bme+us02PA6TAC5b2UGXeIvu",
+	"CCLrjdyWex6sZadxxLAJLrVWHnu26QbqRAnvi9Qv55gW91timDt+oifqeXVZSpH4m0dPlyz9pWB0lGp+",
+	"hEL8WMIMz2lEek7WUMPY0LW5uaoZinospmGNp8pdIyObIYPD0MTLCBV6E+t4ud0AydIJKMsbZx2nhxlg",
+	"HmcBePuZci5c79FX6XI1QKEeOwgK9dQBUIQkIvJ4YMRROM972MqeekI40EEenapZ+wANuDnVT+6641xW",
+	"WhEUlG7TEeYzrHWPzUFT55hSrNlFERdj3SOrx2tcomuHyTigcy7zbr+vBLrLcX94rmW7/uBioCW/yWDU",
+	"vVSfZv+4GhjDohYSZ5Nu7/cK3fdcq5+vNg1rQbmQc0EImx/CyueWnCaTQW82GkynCs7T4aeRMin2rifD",
+	"2T+0rH0+nlx2R71UuPrUvdprQWwvoava2iLIPamXijYcnY+rwv3KzSr94RTUjUH/oImloZxlFf2K40/F",
+	"r3RzDo+wIpmbv9VKxpalnXZ4QJYplKe93cOIv5XC3LG1HM6JUZCzb5SpXUYKaUS8wxQYLfKWvWTf0DzV",
+	"yG75JLdXAQebGJ0MVNvBOj34cTEDa8zoghwOR7u0z71gTGy6tiYwbtcDb+cQSdQ821bsy9ernce3Q+XF",
+	"xD5J5RYBr0VvtPFa+Kkt2jdB8MJPXdi+sTX7CNts1rfo//7v/4Ms+FVNDvgCC0GXjIRo2C/NBCy5tY+m",
+	"RIfL54mwPqvPnVVL6HCMFoeDgGwk3GvzgFNJOMX7xZw/SwJ9URz7OPjc/TJU/treeDSdTbrD0fMbpvZI",
+	"UalZqlQ6UtkIR1wKVoxJh3DsR2Vn25IkM2xTmfmdbJuLDpfOXdIks8gJrmQSPXAqJWHobosws4nqb+R2",
+	"QwMcRTotj643OpkEnGN4SZh820GK81EiECcLwgGaNwwccyiWK8JhvG9kK2yhoQ3hiGS8soMG94RvTVER",
+	"SPnDUnJ6l0jlJlSz6rV8uGHZecKDJnMUCxSSIMLw+Y2pEIEeVoRZQ4GPxh8humGgi6GAIREpQ6J428nl",
+	"L1lkQOtESKTTtLE8kMD0AV2Zc1XVoqJ7IhCV4kZHrIKbXj0uGN6IVSzL8p1S/v/UkJFDRGyxC3gGKQ81",
+	"e83FOI4qtlG10Sr33o5Xr64rDyZ6crmNJrU1yiYrsobGnhwtpRyLiHghCS8Ftw7dLv0pX5etPtt7Rqzf",
+	"c4Mqj+B5N42Mgj+Dq8EI/Lz/MB7K4afriXUNXQ9bsWrsC7kFtX5hCmDNd1Xe69GXwcQawabXV1fjiTaD",
+	"9cZg7uoPe7M61SAAdtklbJaTHqxvzr4OUroHdwyWvY780LLMhnwofHnYzcunjz4hd3THDesSTU1ien1+",
+	"1T0Cak3jW44Y9Dt1MN/qfq/gov8T23CfwUp7zDE79tNds2md0zdWgaMv1336q7O3l7kXW9Isn0d3zJ/b",
+	"rsJY57S0daYkGwHp5BitJdwRW6PEJKdRKVCwolHICcvlJDROKBINDvCIM3d5Uc1XHAR+qpqhQFh1wzo5",
+	"peJJQoLNOm6TxZaaBrN05T91DkIT3AhrXjPtpxwck2RgbSjHpxkcmVmwk5z+0rhq4y8azCtI8CTarEx0",
+	"OwLvVgRbp/z+O8E+WFXq49ARppsufbNCnvgZ+folzKBWwmadK/VgouYhKBqDRD1TqyXKloytLs23a1R6",
+	"1pjxUkPTXvi1FzZ+mUU3v0BibF4Qu8T8Wxg/sA+IExYS7tSJ4/gBfZ5dXpRq4Edl07qZlfUjasoukvxQ",
+	"jl/CpHQ2TtW8TCPGWznh+P4pufG5RPKSEL91fG/Kjyl5O/Vex/GBwD5l3Cimx7w7aBXJ1uMMURPORUi0",
+	"A/Dxnfox7K2OsHBVG2Ab01x7BttX5B99Jdbdg0GkP936Wx3VX2kKziFK+TpbctEWSKgdOr3KnXWetX2O",
+	"HxzPJfrG4gdxhi4H3en1ZNBHb2QcRyhO5CaRaQFojCQREvGEvXU8lm8EIQyFlJNARlvIQ1T+S4gR55Iu",
+	"cCDFWygBeT6YqJE5wSJWuYsxR/9MwuUanLQ+Mt66DpqmXlNngcaBCp5Lt7SqXTDgvFmQNqqpyQ74AMEa",
+	"PjVezyfUYt71JMGPYoV3ob6GwzuB39+AOd1Hdpy3ZVf6HYdcyN1RBpAAox3IMAp4mkMicbDSbX92xgGn",
+	"8DyIk5w5w3ElqIhps96j4svTJ6oVXCHxkoT7VrHLGMCAN5wauXQ4cv4tO82EHZ4jLae376EHzNmOCbxZ",
+	"yksxBn4HRH6GQQ6+OEeRnn4BdDv73N1U7sCdSNp0X/VYVI462mFQk5yr6ukJsU2rJjaNGI1jOS8vytXD",
+	"LGYQhmLLT8FjyOS8awgcUVvF4ko2cdke6x9n6mxr9zBt2fiXKG9fo6rIAdpM520KR7vN1sDpGJmPVl+P",
+	"S3W1QraKMbzHNILSRlX5WkfXzvR2IlTNI2jYFzaKyQmGAtVLrOKHzv9PBuxnUzVekx37OKxzyuh8PWzh",
+	"1pMdkr7rmb19gxi1zN8NkbyiYZmTPsjpPci7LEQJS6kNESZtXcY9yYMqe9o99svu6Lp7AQLTZapIfRqM",
+	"BhNTU6A/mAy1lDwajwalx1uq65XN/hMN8/sNbfXMbMeT4LEm/adi67EWflNJpX3zv+85KDzXqt5+HHLy",
+	"mp5OIFaKT8cv4yJ2RgcuvrVcW++BoSv39ivdWkUiUG1Rwr3i25Ij1MemrmkVHFwjL/kYU7XJ95nX5jMH",
+	"6/keUEyblKl15OQyN1VV7mTvYjxtmC15TM2lMnzOHVZh1xlGuzB0lMKys3hqHSWDcu3h8xGl2wLdi6oZ",
+	"oi4oWxK+4ZTJJngX85CaZpj7YzgPJKkY5bsZ7qYq+17szbNa17ai7Uq5AtLfyEbqDAOw2oUJLBAZgH5I",
+	"8wagoNsWrel3BNOQXAekJpacQ0qxha6fO9P8YTkInkGxPvK2WAIs3+W4YT5MF214HBAhwHQqCV8DINAq",
+	"1tFdW4SR6TaH7nQ7O/RGdbMl331VwDx95S6Kg29vO2gUS4TZDVOJMpBnA3ejuo061h6L1gQzbYq1gwaY",
+	"sVjatM1IFeWJjUH7A6IShbHuBHTD4GX1rl24kPFmQ8KyJBMzfBU52J+Les5k8J8qOnnSBx3msjvqfqpg",
+	"xAHe4DsaUdnkPjAn1bPvll4LwcOBG4x816hQ6mYcbzDkHVnw6tabC0q4aWIIrEohCIpZtO14ZzBsKbtK",
+	"0+ubcLkV5owIMV8ZNlewbMUgwCLzkDpL04Ib6gYTzJVazhNbwmlDO6iLYCwfUEBlainssh1Fm/d2tulL",
+	"J/HDTo5pHaU0wseAJYoDHO0uZpIwYQ175sR+EYoGVfCmahoAOWKOBVD1rIcykKR4do4dZU0kDrEscRqY",
+	"1pQnYkMC8E/ZxpylmbaGznZHOY85WfI4YSHQom7Ajddk/2mkfLdkwLShARYiDqiOhWxW43qnQeh4dDEc",
+	"KdvD+bn5NJ2Nr64OunLUSHOTBdfomEWyXBJgoPN9m9UijUAPq1ikLQZMV4UcUfwikEIcwIMOGpF7wk19",
+	"7RBcWTGQsspWbAKpsivR4ZYF3pjnNn7aJNVaT4BZZYhiEb3ABwrc0sHPHFZUwK/Iiwo0WHJedfu0Fu7P",
+	"thq1mvEN6TWXNdu6Z9IybgVdOWYnggScyOySVo8mOv6/lFUQVbC+rBk0bErLge61T+FOR1EMYhairmuj",
+	"cjKHv63SAij7oJBvw1vf2FlfCACmVzMOSj2aWhstuHYoI7DGbLPFuqhcwLGWUdlBLAdu/eG0N/4y0IEm",
+	"kOs0061Jp73J8GO5dXCqmF8vSwBoQBmVGnmDMVSZtWNfbrXy3BMruTWvw1Yodt2g2DOzFTvKQFHWN6qi",
+	"gFt1SbZsZbnp6sQCP0vIQXOPvEasegvcHwyV7bc6zqBeDT3NYXbGq6fK5im1HX222E3uNXoD6obdHtfX",
+	"4jnD++s3gtjrCVAxoG1XVM61lKrPeo4xGBcPplBXyoaeQZV+p7q+0Zaf0OTnpcI/8/2v6s/a1PtXGhC6",
+	"20frUDBzwXrBQ9Bx1jE0u6N3EYQYOeRV39xZVAa7vdlQtdcZf5yOoTBmueZ3ROLIT+124MZ3F5NVHMeT",
+	"1dpSwFcEnzq4kyPKYuelHA25TrCn2fo1q2nnbrlWi3lqT/NjuoiUl1SsB5GqVbcJo/9qgvuMTXCfoTXk",
+	"vlNpEw/+q0Wk+06bN8qzIUnr+TqPuuFtXGXUtDac7tWwg7pRhHicSCIQ+R6QjUS3p/fvT7Vl4xYZpggF",
+	"x3AUEZ4a9c9uGEa3MzBLBzgiJ9eC8JOLeEnZLQK5l3AkwDi1RekzaArzqq5JGEVxvAE7k5qBCGkF9huW",
+	"Pa/HEegNGJ6MQR3aIBH+toOg0ZRdUy5xIF4gouq3aQQH99QafyOic8O61jWBA6l7Kelev8piH8HilYlc",
+	"VUsj0UKtCWF0m/ojuvB2usE34P+4YbcbenaTvHv3l8CYYU5oqP4nt2/PTPEFHc6IuV2ldt+pebufBqOZ",
+	"r4JdyD0gNvpGyEbtSC2pc8Ngr3rhsDwd/q/Ly2mXi85jIWEHjVm0RatkDR48kdytwTdn+hoCAFRLHWjo",
+	"TdT4t+r/W0TYPYniDencsBt2mUh8Z0rHgTopUIA5B1/jrZEhbj8gQdkyIif2GXh4EzOhKu7JhDOk3ATo",
+	"djDDyzN042n4mPfVP+TGu/VvGGxbyyAiRbbb4eLkEstgdatPQIHpHkcJQW9++/U/Ut2OSh/99v5XbbgU",
+	"EkcEqucZ0hL6NS3sIBGviVR9uXTJEvBS3Q5Dst7EkrBge/I72d6eIU42BEvbZguKnZoFECTwGrpzGWzV",
+	"u9R4Z4r+WRCgN9nA8mRCNhHekvAMSZ6Q27cqwOnX39AqTuAgWAQ+NirT9l6mvTQFctTulmhrGw5oH2pE",
+	"A8IE0VHxqePwzLsczqwJU/+Tca/UoYYMB+heDR2R8Mx713nfeQcvxBvC8IZ6Z95f1FfaeqVYMLAFp73q",
+	"6Y/sn2H4CE+YSnhwyagLcBh6Z94nInNttlJMgUd/ffcujT4yxVPBdaIzsk7/aWLJNKM/LGOksygWuNuX",
+	"Lltwx2ReEK6WAVhaNbx57FQ9YwZWZY2rXkg3eKqoS18OeCngPnLgZ0yDHK+JVMv4o3y47BFnh8PQU03Q",
+	"gUiq25mrdndworDd/KkUZVav6VqGC0WhahmGKD4a28yznGaVUP2YF9WBqB5/GlLpRYavDrEe/QPUeup2",
+	"i3wqEsaitKX+JtrqWzqbGS2JBE85Iw/IMJ9d1NQttLMM8oZ4mfH038m2NfTMLbIRbr5/tjVYEJUgpl5e",
+	"iMwxd7wWsEsLKw7fzy9BCXv8RIDUoh/VIUkbwo085INPUQDslO2Oh4R30ACq9E6nA7t0tAIxgoa36H+m",
+	"z/o37FYNCV+qDwgEaC1D3YLPGn6AG36gntJoKCQneA3XdAIinkoIRrcXWMgT9djJsH/rIxIJcsPMj+qP",
+	"+VLXzWXxQwcNJQKuKlL5kBMcbm/NUnTEAKwCbvHbHzeeXfeNd4ZGj7c37I32pJqdU5kuCuZ4e4YWRAYr",
+	"zb71R6XYgLDBOqgXr9d5MTGIGdPWYYQjek+0nJCnqqna/eDeZD4XiIrCif0rIXybiRA2YzpDxtRqRpn8",
+	"t988/0CRAzOs5nPZuDmI58YvKlVfDzJ20Pw1Ip7o481TT3HA3Qr56sT0q08lEkMPDn1oXfn0h/10QExy",
+	"usO1dp+lc1SISHapTwWGXWyJkKOQwvgVDUpkAPKKDHQvfhhIZ5EGVaA14QUtAtbMUAJWzQiBF/CEgYzf",
+	"yUFKbIUk6wxtCrXmTn/kvzA4dBimxdeaQbZSttTORcV2lHKhmS4HLScglhst6NKUO2dKW13Se+BcgGAw",
+	"UxpPqsaqEk53kiVeo4BabvF7YSG1AKk9gmoeKX6WsJoxhxTnVbBdJQWDfc8E5D2VhmuG1WtT2o5L9tGv",
+	"ChM0ZgLKkY5ZdaLpTbrGU1mqBZJxzpWASUt9aTLGKxac9Rp/ktw8SQ2lVWKzsdc+24Hl0fzUNGWoFJ2t",
+	"/o6NpfZE0JCYgiuAUDJG5DtWHnBgsHpYlIBNTpmSnGhV3XDXxcY1Wd8RLlZ000H/i/AYfl4nkaSbCIys",
+	"Mlg5ljhrg0KCRCSwPCOPdWa1VWhXJlqmiUtV99F+Y/vXVnlpFXIoHSK2QMpsda2hyQ/9wdz42gZYUtcH",
+	"8/BE/4jkCqQMjQ5wLRu7IgmzhiAGSKecBIRuQCljKmR5w2NwXOiepj76RCVaUaEwBvBHB+GKDpquVFcT",
+	"g2LGG0CJOL2L4jvTDFX1WDG7UDZvdenwezBQT1ILK+QJ3Cn1cNiHikMBIaHYRa++2lqKXYWD/63SyWGb",
+	"tIK3IVIKmpnuOflwlbxZtdyXwtPnxsyml8nEYK6Xyui7SH2a6zFTee9306de4uZPZ5vSJcNRHREgfQUJ",
+	"9Y6AdBjbK0VnhujcYeDbURx/M2kyKCQLoLgNj+9MoG6LWtdzHJhTA7zyuLLgwxr3QD4G8imGgGc4+kKF",
+	"thonb9+w/r1XfnypI3DvAfbTp14C6Ha2OuBOV+ajOAqJgMuKC/m8xs0nQL7aFK76iGEweYc0kJAjhtNm",
+	"XeiNWbtWnk1nzJiRtx3UG19eQoYuIyQEPgJhpODhHPztGlpd6Mq9UyOcCWgMFhEs1Nu2pyPcf9kO3U5h",
+	"5OGDuarNuoQZCLGYgQ0xhbe6w7WYsI5D7WkuMTFq6dm+9boVELvKn6SCZGhfrYRYcm3FeF/GHpzn9jII",
+	"57kXYRGOC64Gk8hW5yrl1t/1J2Md441KzXcJmCnBmQUQ6qI2CEK+2k3q7bEuAiB/TbY2AMUW6lTdlgR6",
+	"iPm3KgfcU3zDL0rJx7mI37+QizilZsdF/DL07DYuqCTm5/I51KLkdLIadDxo3xHxHDKV27GmEsjn9qGX",
+	"ALKZrA6M7bq071WHpNmOUq8c7jpWcj/Yh+aZl4C6nqsO0G0DBGS24N5SOjbwdegRVVfSFxzREEtiRFjy",
+	"kDUHx0tMmZDml/3CrbIUqcg5dYHpXrsCIgJU3RKOmcAVBkcNa6cRx6u8nfIt6F/4Tsr1Oy9BQv27CjuI",
+	"ZBbjCFU4087uMs61fX9GrNxD1lk3r2qyNs+8CFnrwWqQtVnVK2ebli4Pu9peTr63s9V1t2nZ3rmyTH2o",
+	"57B2tijK93TtKkVnaXNww0Ed94wg0nhyNoSfOD/E94RzGoIKI3XBLlMN6+SBhkTVlYdwIfOrU6rB1sNC",
+	"BjZQBCqLMNJFx5F4oDJYgeUyiNc6pRvRNIoZcSL5Ng16Vm4FlbaGo4zVk3vCEF3YaUSle99Awqm79TrV",
+	"C7vMlIO37ZSs1CH0SsIU1s+J6nuYhXb6nNjiEqc/eK4WywHH1IRAIx2lrWb1gjooPT1Z4uuh5kmyU/Xl",
+	"sN+nm82CuJo7fCqc7M6fxBH8w88WwKq5SCKrSzBF2xSoShDTA6TF4ExcovEC7QV5ty7En9F1lZ+pwoWV",
+	"7i8sbu8ZT7Ua+bNWq6UuepXEld1CPI6tFcYwYNtvFS4o05wVJF6b3NtBHxMahTqOihMTXZpmCu+eE9zL",
+	"etIXuZTVVHVuZL2mV62xaBMMwkjnyuuuXj6KwFKus9hV0ISTyV5mD7N5z6/YFJbLLHxhjcMgTLUBTEG9",
+	"FR3CXk7m44EoW0fsaNU5v4+3pTKTDdJwBUBbvvRny7PpXbQX1KcQMFLJJrtGCAxVXInrfcruKUV8OoVO",
+	"CbEAkxXBIdJBc/7uEUJFpLoO5mIRoLoRsP6RkUsvGasEcDBFqaowDcD+J0EkHVJ0shtksBOyz7c10Crt",
+	"3wj6CrojUMZOIBl3EIBNmG9UqmcMZe7Us8rTuYjwEsbOijCVYmGx2FJrx5yfqIzFOsAQKsEmw/tXd/gF",
+	"pWK/ISInKZYElRS8ZZD8XBAWc3m0jkxpcCSNl4MjrgpRsYVcfnKASlFurmEuKcICfEdgSLC2/lztaNGC",
+	"YF1Phay8q1+ZTtKeItKYtHZVRgNyM+iJPdQ9CXr509cqSFWNT9/1U1hDvk686aCPdghgn/Y1EpbWDFVc",
+	"ykadZgUYiCpHUar25Mtmvoz+k5+zDq1NWycmfZud/lB/D1CO1VZaI5hKeX+W9k22wq0OXFfF2sTPTzlp",
+	"SmkzDW2vXk7UgpIoFMhk2YA9FbaNIiqkTZJyWkv/IjRUtASDJYLKsx1ki9VY+SUrwhtEmK5zwo+oSp86",
+	"Ul99kayp5orqCyCuzZEyiuorSY0qEv0pGDabZ+3nsLjUSnKVJvBp6k1UWy1sjVdvmO3OZHuhv4V4Q5xa",
+	"tEpMKT7g63qjfYnwGgHsnppfTaJ0+r6NUVoSeahEQNr2/NXh905D9teC3bCwV4/bhdzXatHFVtzJPY42",
+	"USJU+ABh4K4CRWhNhXKmXX65UqmnHXRpvlGhcLrokqkeqmzANwxkGNuBTItEih40o36j/V7INNV7+yGd",
+	"QaVawXimJB7K0l842cRckvCGud3M7FDQle9tWTxtavKdFMDyMl7ZfE5pHd9sbpU/zyR8mNd1wzAzB+ex",
+	"KKvPZaNZsnjpX0Qq+aaeOPSJ3ufyntPsMGmynT+oKg4cUMyig4oHd1qeZipoeULn0xKhXzax8+h86Pcv",
+	"mA+dJXrm86GfjcE9+p7WevQRJTzyzryVlJuz09P3v/57513nXef92b//5X+8UwdiRvhhrQ6mKMCjn35j",
+	"c7EKX5mq/9mXdg3OV27AqPO1qVfhfJN1Efj6+P8GAA==",
 }
 
 // decodeSpec returns the embedded OpenAPI spec as raw JSON bytes,

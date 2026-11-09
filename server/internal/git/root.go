@@ -8,30 +8,12 @@ import (
 	"strings"
 )
 
-// ErrOutsideAllowedRoots reports a repository path outside every configured allowed root.
-var ErrOutsideAllowedRoots = errors.New("path is outside the configured allowed roots")
-
-// ResolveRoot returns the canonical top-level directory of the repository containing path.
-// Both path and the resulting top level must lie inside one of allowedRoots after resolving symlinks.
-func ResolveRoot(ctx context.Context, path string, allowedRoots []string) (string, error) {
-	if len(allowedRoots) == 0 {
-		return "", fmt.Errorf("%w: no workspace_root_paths configured", ErrOutsideAllowedRoots)
-	}
-	canonicalAllowed := make([]string, 0, len(allowedRoots))
-	for _, root := range allowedRoots {
-		resolved, err := canonical(root)
-		if err != nil {
-			return "", fmt.Errorf("allowed root %s: %w", root, err)
-		}
-		canonicalAllowed = append(canonicalAllowed, resolved)
-	}
-
+// ResolveRoot validates a non-bare Git worktree and returns its canonical top-level directory.
+// Filesystem authority belongs to the authenticated server caller, not a discovery-root list.
+func ResolveRoot(ctx context.Context, path string) (string, error) {
 	resolved, err := canonical(path)
 	if err != nil {
 		return "", err
-	}
-	if !withinAny(resolved, canonicalAllowed) {
-		return "", ErrOutsideAllowedRoots
 	}
 	if bare, err := runString(ctx, resolved, "rev-parse", "--is-bare-repository"); err != nil {
 		return "", fmt.Errorf("not a git repository: %w", err)
@@ -45,9 +27,6 @@ func ResolveRoot(ctx context.Context, path string, allowedRoots []string) (strin
 	if top, err = canonical(top); err != nil {
 		return "", err
 	}
-	if !withinAny(top, canonicalAllowed) {
-		return "", ErrOutsideAllowedRoots
-	}
 	return top, nil
 }
 
@@ -57,15 +36,6 @@ func canonical(path string) (string, error) {
 		return "", err
 	}
 	return filepath.EvalSymlinks(abs)
-}
-
-func withinAny(path string, roots []string) bool {
-	for _, root := range roots {
-		if within(path, root) {
-			return true
-		}
-	}
-	return false
 }
 
 // within reports whether path equals root or lies below it. Both must be canonical.

@@ -7,84 +7,24 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"strings"
 
 	"github.com/aduverger/prunelle/server/internal/git"
 	"github.com/aduverger/prunelle/server/internal/store"
 )
 
 func (s *Service) CreateReview(ctx context.Context, req CreateReviewRequest, actor Actor) (Review, error) {
-	if (req.WorkspaceID == "") == (req.WorkspacePath == "") {
-		return Review{}, invalid("provide exactly one of workspace_id or workspace_path")
+	r, err := s.prepareReview(ctx, req)
+	if err != nil {
+		return Review{}, err
 	}
-	title := strings.TrimSpace(req.Title)
-	if req.Title != "" && title == "" {
-		return Review{}, invalid("review title must not be blank")
-	}
-	var candidate *WorkspaceCandidate
-	var prepared Workspace
-	if req.WorkspacePath != "" {
-		resolved, err := s.resolveWorkspace(ctx, req.WorkspacePath)
-		if err != nil {
-			return Review{}, err
-		}
-		candidate = &resolved
-		if req.BaseRef != "" {
-			for i := range candidate.Repositories {
-				candidate.Repositories[i].BaseRef = req.BaseRef
-			}
-		}
-		prepared, err = s.prepareWorkspace(ctx, CreateWorkspaceRequest{Name: candidate.Name, Repositories: candidate.Repositories})
-		if err != nil {
-			return Review{}, err
-		}
-		prepared.RootPath = &candidate.Path
-	} else if req.BaseRef != "" {
-		return Review{}, invalid("base_ref is only supported with workspace_path; existing workspace settings are not changed")
-	}
-	now := s.now()
-	r := Review{ID: store.NewID("rvw"), WorkspaceID: req.WorkspaceID, Title: title, Description: req.Description,
-		Status: "OPEN", CreatedAt: now, UpdatedAt: now}
-	err := s.db.Write(ctx, func(tx *sql.Tx) error {
-		if candidate != nil {
-			id, err := workspaceForCandidate(ctx, tx, *candidate)
-			if err != nil {
-				return err
-			}
-			if id == "" {
-				if err := insertWorkspace(ctx, tx, prepared, actor); err != nil {
-					return err
-				}
-				id = prepared.ID
-			} else {
-				if req.BaseRef != "" {
-					var different int
-					if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM repositories WHERE workspace_id = ? AND base_ref != ?`, id, req.BaseRef).Scan(&different); err != nil {
-						return err
-					}
-					if different != 0 {
-						return invalid("workspace %s already has different base refs; existing settings are not changed", id)
-					}
-				}
-				if _, err := tx.ExecContext(ctx, `UPDATE workspaces SET root_path = ?, updated_at = ? WHERE id = ? AND root_path IS NULL`, candidate.Path, store.FormatTime(now), id); err != nil {
-					return err
-				}
-			}
-			r.WorkspaceID = id
-		}
-		var workspaceName string
-		if err := scanOne(tx.QueryRowContext(ctx, `SELECT name FROM workspaces WHERE id = ?`, r.WorkspaceID), "workspace", r.WorkspaceID, &workspaceName); err != nil {
+	err = s.db.Write(ctx, func(tx *sql.Tx) error {
+		if _, err := tx.ExecContext(ctx, `INSERT INTO reviews (id, context_path, title, description, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)`, r.ID, r.ContextPath, r.Title, r.Description, r.Status, store.FormatTime(r.CreatedAt), store.FormatTime(r.UpdatedAt)); err != nil {
 			return err
 		}
-		if r.Title == "" {
-			r.Title = workspaceName
-		}
-		_, err := tx.ExecContext(ctx, `INSERT INTO reviews (id, workspace_id, title, description, status, created_at, updated_at)
-			VALUES (?, ?, ?, ?, ?, ?, ?)`, r.ID, r.WorkspaceID, r.Title, r.Description, r.Status, store.FormatTime(now), store.FormatTime(now))
-		if err != nil {
+		if err := insertReviewRepositories(ctx, tx, r); err != nil {
 			return err
 		}
-		return recordEvent(ctx, tx, "review.created", r.ID, r.ID, actor, now)
+		return recordEvent(ctx, tx, "review.created", r.ID, r.ID, actor, r.CreatedAt)
 	})
 	return r, err
 }
@@ -112,23 +52,22 @@ func (s *Service) reviewRevision(ctx context.Context, reviewID string, revisionI
 	return revision, nil
 }
 
-const reviewColumns = `id, workspace_id, title, description, status, current_revision_id, created_at, updated_at`
+const reviewColumns = `id, context_path, title, description, status, current_revision_id, created_at, updated_at`
 
 func scanReview(scan func(...any) error) (Review, error) {
 	var r Review
-	var current sql.NullString
+	var current, contextPath sql.NullString
 	var created, updated string
-	if err := scan(&r.ID, &r.WorkspaceID, &r.Title, &r.Description, &r.Status, &current, &created, &updated); err != nil {
+	if err := scan(&r.ID, &contextPath, &r.Title, &r.Description, &r.Status, &current, &created, &updated); err != nil {
 		return Review{}, err
 	}
-	r.CurrentRevisionID = stringPtr(current)
+	r.ContextPath, r.CurrentRevisionID = stringPtr(contextPath), stringPtr(current)
 	r.CreatedAt, r.UpdatedAt = store.ParseTime(created), store.ParseTime(updated)
 	return r, nil
 }
 
-func (s *Service) ListReviews(ctx context.Context, workspaceID *string) ([]Review, error) {
-	rows, err := s.db.Reader().QueryContext(ctx, `SELECT `+reviewColumns+` FROM reviews
-		WHERE ?1 IS NULL OR workspace_id = ?1 ORDER BY created_at, id`, nullString(workspaceID))
+func (s *Service) ListReviews(ctx context.Context) ([]Review, error) {
+	rows, err := s.db.Reader().QueryContext(ctx, `SELECT `+reviewColumns+` FROM reviews ORDER BY created_at, id`)
 	if err != nil {
 		return nil, err
 	}
@@ -141,7 +80,17 @@ func (s *Service) ListReviews(ctx context.Context, workspaceID *string) ([]Revie
 		}
 		reviews = append(reviews, r)
 	}
-	return reviews, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	rows.Close()
+	for i := range reviews {
+		reviews[i].Repositories, err = s.repositories(ctx, reviews[i].ID)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return reviews, nil
 }
 
 func (s *Service) GetReview(ctx context.Context, id string) (Review, error) {
@@ -150,31 +99,36 @@ func (s *Service) GetReview(ctx context.Context, id string) (Review, error) {
 	if err == sql.ErrNoRows {
 		return Review{}, notFound("review", id)
 	}
+	if err != nil {
+		return Review{}, err
+	}
+	r.Repositories, err = s.repositories(ctx, r.ID)
 	return r, err
 }
 
-// CaptureRevision snapshots every repository of the review's workspace into a new revision.
+// CaptureRevision snapshots the review-owned repository set into a new revision.
 // Git runs outside the write transaction; the transaction only inserts the captured rows.
-func (s *Service) CaptureRevision(ctx context.Context, reviewID string, actor Actor) (Revision, error) {
+func (s *Service) CaptureRevision(ctx context.Context, reviewID string, req CaptureRequest, actor Actor) (Revision, error) {
 	rv, err := s.GetReview(ctx, reviewID)
 	if err != nil {
 		return Revision{}, err
 	}
-	repos, err := s.repositories(ctx, rv.WorkspaceID)
+	repos := rv.Repositories
+	baseRefs, err := s.captureBaseRefs(repos, req)
 	if err != nil {
 		return Revision{}, err
 	}
 	snapshots := make([]git.Snapshot, len(repos))
 	var total int64
 	for i, repo := range repos {
-		root, err := git.ResolveRoot(ctx, repo.RootPath, s.allowedRoots)
+		root, err := git.ResolveRoot(ctx, repo.RootPath)
 		if err != nil {
 			return Revision{}, &Error{Code: CodeCaptureFailed, Message: fmt.Sprintf("repository %s: %v", repo.Label, err)}
 		}
 		if root != repo.RootPath {
 			return Revision{}, &Error{Code: CodeCaptureFailed, Message: fmt.Sprintf("repository %s no longer has its registered canonical root", repo.Label)}
 		}
-		snapshots[i], err = git.Capture(ctx, root, git.Options{BaseRef: repo.BaseRef, IncludeUntracked: repo.IncludeUntracked})
+		snapshots[i], err = git.Capture(ctx, root, git.Options{BaseRef: baseRefs[repo.ID], IncludeUntracked: repo.IncludeUntracked})
 		if err != nil {
 			return Revision{}, &Error{Code: CodeCaptureFailed, Message: fmt.Sprintf("repository %s: %v", repo.Label, err)}
 		}
@@ -220,6 +174,35 @@ func (s *Service) CaptureRevision(ctx context.Context, reviewID string, actor Ac
 		return Revision{}, err
 	}
 	return s.GetRevision(ctx, revision.ID)
+}
+
+func (s *Service) captureBaseRefs(repositories []Repository, req CaptureRequest) (map[string]string, error) {
+	base := req.BaseRef
+	if base == "" {
+		base = s.defaultBaseRef
+	}
+	if err := git.ValidateRef(base); err != nil {
+		return nil, invalid("base_ref: %v", err)
+	}
+	refs := make(map[string]string, len(repositories))
+	for _, repository := range repositories {
+		refs[repository.ID] = base
+	}
+	seen := map[string]bool{}
+	for _, override := range req.RepositoryBaseRefs {
+		if _, ok := refs[override.RepositoryID]; !ok {
+			return nil, invalid("repository %s is not a member of this review", override.RepositoryID)
+		}
+		if seen[override.RepositoryID] {
+			return nil, invalid("repository %s has duplicate base-ref overrides", override.RepositoryID)
+		}
+		if err := git.ValidateRef(override.BaseRef); err != nil {
+			return nil, invalid("repository %s base_ref: %v", override.RepositoryID, err)
+		}
+		seen[override.RepositoryID] = true
+		refs[override.RepositoryID] = override.BaseRef
+	}
+	return refs, nil
 }
 
 func insertSnapshot(ctx context.Context, tx *sql.Tx, revisionID, repositoryID string, snap git.Snapshot) error {
@@ -303,8 +286,9 @@ func (s *Service) GetRevision(ctx context.Context, id string) (Revision, error) 
 	rows, err := s.db.Reader().QueryContext(ctx, `SELECT s.repository_id, p.label, s.base_ref, s.base_sha, s.head_sha, s.branch,
 			s.staged_count, s.unstaged_count, s.untracked_count, s.status, s.warnings,
 			(SELECT COUNT(*) FROM snapshot_files f WHERE f.snapshot_id = s.id)
-		FROM repo_snapshots s JOIN repositories p ON p.id = s.repository_id
-		WHERE s.revision_id = ? ORDER BY p.label`, id)
+		FROM repo_snapshots s
+		JOIN review_repositories p ON p.repository_id = s.repository_id AND p.review_id = ?
+		WHERE s.revision_id = ? ORDER BY p.label`, r.ReviewID, id)
 	if err != nil {
 		return Revision{}, err
 	}

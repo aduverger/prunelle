@@ -6,16 +6,17 @@ Each PR starts with its own plan in [`plans/`](plans/), followed by its implemen
 
 ## Scope and PR sequence
 
-| PR | Content |
-| --- | --- |
-| M0a | Go server scaffold, SQLite schema/migrations, Git snapshot capture, review-manifest import, fixture generator (two real Git repos), read API + OpenAPI, Tailscale-identity auth, CI. |
-| M0b | Rex `SessionBackend` spike: discovery, inspection, lifecycle observation, explicit workspace association (API + CLI only). Parallel to M0a. |
-| M1 | Mutations (topics, representations, discussions, messages, decisions), idempotency keys, `ETag`/`If-Match`, SSE events, restart/reconnect guarantees. |
-| M2 | Desktop client: React + Vite web UI in a MyGo shell. Topic tree, Findings, All Source Changes, Text/Diagram/Code/Evidence views, discussions, decisions, perspectives, session panel. |
+| PR  | Content                                                                                                                                                                               |
+| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| M0a | Go server scaffold, SQLite schema/migrations, Git snapshot capture, review-manifest import, fixture generator (two real Git repos), read API + OpenAPI, Tailscale-identity auth, CI.  |
+| M0b | Rex `SessionBackend` spike: discovery, inspection, lifecycle observation, explicit workspace association (API + CLI only). Parallel to M0a.                                           |
+| M1  | Mutations (topics, representations, discussions, messages, decisions), idempotency keys, `ETag`/`If-Match`, SSE events, restart/reconnect guarantees.                                 |
+| M2  | Desktop client: React + Vite web UI in a MyGo shell. Topic tree, Findings, All Source Changes, Text/Diagram/Code/Evidence views, discussions, decisions, perspectives, session panel. |
 
 M3+ (revision-aware review, analysis, Pi adapter) get separate plans.
 
-- **M2b:** [workspace/CLI usability #5](https://github.com/aduverger/prunelle/issues/5), including automatic discovery, context inference and workspace deletion. [Implementation plan and ledger](plans/m2b.md); implemented and locally verified with approved one-level `workspace_root_paths` discovery and hard deletion, not yet published. Complete before M3.
+- **M2b:** [workspace/CLI usability #5](https://github.com/aduverger/prunelle/issues/5), including automatic discovery, context inference and workspace deletion. [Implementation plan and ledger](plans/m2b.md); merged in [PR #8](https://github.com/aduverger/prunelle/pull/8).
+- **Review-owned repositories:** [model revision plan and ledger](plans/review-owned-repositories.md), following M2b: review-owned source/lifecycle, capture-time defaults and no mandatory path allowlist. Recommendations and trust model approved; implementation and local validation complete, publication pending.
 - **M3b:** [Pierre-native code review UI #6](https://github.com/aduverger/prunelle/issues/6): inline comments, stable code scrolling, Highlights, left comment navigation and on-demand decision/integration surfaces. [Implementation plan and ledger](plans/m3b.md); merged in [PR #7](https://github.com/aduverger/prunelle/pull/7). Separate from M2b and M3's revision-aware domain changes.
 
 ## Server
@@ -38,16 +39,16 @@ M3+ (revision-aware review, analysis, Pi adapter) get separate plans.
 - Text files up to 1 MB are stored; binary or larger files are listed with a warning. A revision over ~50 MB of new content fails with an explicit error.
 - Capture verifies repository state before and after; retries, then marks the snapshot inconsistent.
 
-### Workspaces and review content
+### Reviews and review content
 
-- A workspace is a named list of canonical repository roots inside configured `allowed_roots`.
+- A review owns its canonical repository membership and optional cwd context. There is no named workspace lifecycle or required discovery/path allowlist. All authenticated callers are trusted with server-readable Git sources (D10).
 - Review content (topics, intents, changes, findings, evidence, representations, attention) enters through a JSON review manifest: `prunelle review import` or the API, `origin=IMPORTED`. Every record carries its author (actor) and the provenance the author declares (`MEASURED`/`OBSERVED`/`INFERRED`/`UNKNOWN`).
 - Until M4 the coding agent pushes manifests to Prunelle; from M4 Prunelle also calls the agent through `PiAgentAdapter`.
 
 ### Rex
 
 - Through the `rex` CLI (`rex api call`, `rex events --json`), always `--autostart=false`; record Rex API revision.
-- One Rex block = one `RuntimeSession`. `pwd` inside a workspace repo suggests an association; association is always explicit.
+- One Rex block = one `RuntimeSession`. `pwd` inside review source suggests an association; association is always explicit.
 - The server starts and serves reviews without Rex.
 
 ## Client

@@ -40,9 +40,6 @@ func serve(ctx context.Context, cfg config.Config, args []string) error {
 	if err := requireLoopback(cfg.Listen); err != nil {
 		return err
 	}
-	if len(cfg.WorkspaceRootPaths) == 0 {
-		slog.Warn("no workspace_root_paths configured; workspaces cannot be registered")
-	}
 	if err := os.MkdirAll(cfg.DataDir, 0o700); err != nil {
 		return err
 	}
@@ -52,7 +49,7 @@ func serve(ctx context.Context, cfg config.Config, args []string) error {
 	}
 	defer db.Close()
 
-	reviews := review.NewService(db, cfg.WorkspaceRootPaths)
+	reviews := review.NewService(db, cfg.Snapshot.DefaultBaseRef)
 	sessionSvc, err := sessions.NewService(ctx, db, reviews, sessionRegistrations(cfg.SessionBackends))
 	if err != nil {
 		return err

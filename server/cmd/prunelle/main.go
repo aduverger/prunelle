@@ -17,18 +17,15 @@ const usage = `usage: prunelle [--config PATH] COMMAND [ARGS]
 
 Commands:
   serve                                   run the review server
-  workspace add NAME LABEL=PATH...        register a workspace (--base-ref, default main)
-  workspace ls                            list registered workspaces (--discover lists candidates)
-  workspace delete --yes WORKSPACE_ID     permanently delete workspace's Prunelle data, never project files
-  review create [TITLE]                    create a review in cwd's workspace (--workspace ID, --base-ref)
-  review create WORKSPACE_ID TITLE        create with an explicit workspace ID (legacy form)
+  review create [TITLE]                    create an independent review (--path DIR or repeated --repo LABEL=PATH)
   review ls                               list reviews
-  review capture [REVIEW_ID]               capture a revision (default: cwd workspace's sole review)
+  review capture [REVIEW_ID]               capture source (--base-ref REF, --repo-base-ref ID=REF; default: cwd's sole review)
+  review delete --yes REVIEW_ID           permanently delete review data, never project files
   review import REVIEW_ID MANIFEST.json   import a review manifest ("-" reads stdin; --revision)
   sessions backends                       list session backends and their health
-  sessions ls                             list runtime sessions (--workspace ID)
-  sessions link RUNTIME_ID WORKSPACE_ID   associate a runtime session with a workspace
-  sessions unlink RUNTIME_ID WORKSPACE_ID remove that association
+  sessions ls                             list runtime sessions (--review ID)
+  sessions link RUNTIME_ID REVIEW_ID      associate a runtime session with a review
+  sessions unlink RUNTIME_ID REVIEW_ID    remove that association
   events                                  print review changes as they happen (--after SEQUENCE)
   fixture DIR                             build the demo repositories in DIR and seed a review
   fixture --print-manifest                print the demo review manifest
@@ -68,7 +65,7 @@ func run(ctx context.Context, args []string) error {
 	case "serve":
 		return serve(ctx, cfg, rest[1:])
 	case "workspace":
-		return workspaceCommand(ctx, cfg, rest[1:])
+		return errors.New("workspace commands were retired; use review create, capture or delete with a review ID")
 	case "review":
 		return reviewCommand(ctx, cfg, rest[1:])
 	case "sessions":

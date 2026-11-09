@@ -144,8 +144,8 @@ func TestObsoleteTopicReleasesItsFiles(t *testing.T) {
 func TestMutationsRejectRecordsOfAnotherReview(t *testing.T) {
 	e := newEnv(t)
 	ids := e.importFixture(t).IDs
-	other := must[review.Review](t)(e.svc.CreateReview(e.ctx, review.CreateReviewRequest{WorkspaceID: e.review.WorkspaceID, Title: "Other"}, reviewer))
-	must[review.Revision](t)(e.svc.CaptureRevision(e.ctx, other.ID, reviewer))
+	other := must[review.Review](t)(e.svc.CreateReview(e.ctx, review.CreateReviewRequest{Path: *e.review.ContextPath, Title: "Other"}, reviewer))
+	must[review.Revision](t)(e.svc.CaptureRevision(e.ctx, other.ID, review.CaptureRequest{}, reviewer))
 	topic := must[review.Topic](t)(e.svc.CreateTopic(e.ctx, other.ID, review.CreateTopicRequest{Title: "Elsewhere"}, reviewer))
 	foreignFinding := ids["findings"]["F-1"]
 
@@ -314,7 +314,7 @@ func TestDecisionsStayTiedToTheirRevision(t *testing.T) {
 
 	requested := must[review.Decision](t)(e.svc.CreateDecision(e.ctx, e.review.ID, review.CreateDecisionRequest{
 		Decision: "REQUEST_CHANGES", Body: "Guard retries.", FindingIDs: []string{ids["findings"]["F-1"]}, DiscussionIDs: []string{thread.ID}}, reviewer))
-	second := must[review.Revision](t)(e.svc.CaptureRevision(e.ctx, e.review.ID, reviewer))
+	second := must[review.Revision](t)(e.svc.CaptureRevision(e.ctx, e.review.ID, review.CaptureRequest{}, reviewer))
 	approved := must[review.Decision](t)(e.svc.CreateDecision(e.ctx, e.review.ID, review.CreateDecisionRequest{Decision: "APPROVE"}, reviewer))
 
 	decisions := must[[]review.Decision](t)(e.svc.ListDecisions(e.ctx, e.review.ID))
@@ -343,14 +343,14 @@ func TestEveryChangeAppendsOneEventWithItsActor(t *testing.T) {
 			t.Errorf("sequence %d after %d", ev.Sequence, log[i-1].Sequence)
 		}
 	}
-	want := []string{"workspace.created", "review.created", "revision.created", "import.created", "topic.created", "discussion.created", "discussion.updated"}
+	want := []string{"review.created", "revision.created", "import.created", "topic.created", "discussion.created", "discussion.updated"}
 	if !slices.Equal(got, want) {
 		t.Fatalf("events = %v, want %v", got, want)
 	}
-	if imported := log[3]; imported.Actor != events.Actor(importer.Author) || *imported.ReviewID != e.review.ID {
+	if imported := log[2]; imported.Actor != events.Actor(importer.Author) || *imported.ReviewID != e.review.ID {
 		t.Errorf("import event = %+v", imported)
 	}
-	if reply := log[6]; reply.EntityID != d.ID || reply.Actor != events.Actor(reviewer.Author) {
+	if reply := log[5]; reply.EntityID != d.ID || reply.Actor != events.Actor(reviewer.Author) {
 		t.Errorf("reply event = %+v", reply)
 	}
 }

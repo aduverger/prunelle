@@ -359,7 +359,7 @@ test('lost reply responses remain idempotent after resolve, recycling and a canc
   const other = await fetch(`${server}/v1/reviews`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ workspace_id: fixture.review.workspace_id, title: 'Another review' }),
+    body: JSON.stringify({ path: fixture.review.context_path, title: 'Another review' }),
   });
   expect(other.status).toBe(201);
   const otherReview = (await other.json()) as Model['Review'];
@@ -527,7 +527,7 @@ test('an empty CodeView retains its context and footer; integrations only poll w
   const response = await fetch(`${server}/v1/reviews`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ workspace_id: fixture.review.workspace_id, title: 'No snapshot yet' }),
+    body: JSON.stringify({ path: fixture.review.context_path, title: 'No snapshot yet' }),
   });
   expect(response.status).toBe(201);
   const empty = (await response.json()) as Model['Review'];

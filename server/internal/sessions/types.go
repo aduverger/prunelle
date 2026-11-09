@@ -33,21 +33,21 @@ type BackendHealth struct {
 }
 
 type RuntimeSession struct {
-	ID                    string          `json:"id"`
-	BackendID             string          `json:"backend_id"`
-	BackendKind           string          `json:"backend_kind"`
-	ExternalID            string          `json:"external_id"`
-	State                 string          `json:"state"`
-	Label                 string          `json:"label"`
-	Cwd                   *string         `json:"cwd"`
-	Process               *string         `json:"process"`
-	Local                 bool            `json:"local"`
-	HarnessHint           *string         `json:"harness_hint"`
-	Capabilities          []string        `json:"capabilities"`
-	Metadata              json.RawMessage `json:"metadata"`
-	WorkspaceIDs          []string        `json:"workspace_ids"`
-	SuggestedWorkspaceIDs []string        `json:"suggested_workspace_ids"`
-	FirstSeenAt           time.Time       `json:"first_seen_at"`
-	LastSeenAt            time.Time       `json:"last_seen_at"`
-	StateChangedAt        time.Time       `json:"state_changed_at"`
+	ID                 string          `json:"id"`
+	BackendID          string          `json:"backend_id"`
+	BackendKind        string          `json:"backend_kind"`
+	ExternalID         string          `json:"external_id"`
+	State              string          `json:"state"`
+	Label              string          `json:"label"`
+	Cwd                *string         `json:"cwd"`
+	Process            *string         `json:"process"`
+	Local              bool            `json:"local"`
+	HarnessHint        *string         `json:"harness_hint"`
+	Capabilities       []string        `json:"capabilities"`
+	Metadata           json.RawMessage `json:"metadata"`
+	ReviewIDs          []string        `json:"review_ids"`
+	SuggestedReviewIDs []string        `json:"suggested_review_ids"`
+	FirstSeenAt        time.Time       `json:"first_seen_at"`
+	LastSeenAt         time.Time       `json:"last_seen_at"`
+	StateChangedAt     time.Time       `json:"state_changed_at"`
 }
