@@ -1,0 +1,13 @@
+{
+  "name": "Prunelle",
+  "slug": "prunelle",
+  "identifier": "com.aduverger.prunelle",
+  "version": "0.2.0",
+  "buildCommand": "pnpm build",
+  "frontendDist": "dist",
+  "out": "build",
+  "macos": { "minimumSystemVersion": "13.3" },
+  "linux": {
+    "categories": ["Development"]
+  }
+}

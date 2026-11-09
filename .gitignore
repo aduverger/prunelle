@@ -5,3 +5,8 @@
 node_modules/
 dist/
 .DS_Store
+/client/build/
+/client/test-results/
+/client/playwright-report/
+/client/native-smoke.png
+/client/.mygo/

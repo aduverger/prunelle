@@ -9,6 +9,7 @@ Status: early prototype. See [docs/plan.md](docs/plan.md) and the [spec](docs/Pr
 ## Layout
 
 - `server/` - Go review server and `prunelle` CLI
+- `client/` - React + Vite UI and MyGo desktop shell
 - `docs/` - spec, delivery plan, decisions, per-milestone plans
 
 ## Development
@@ -68,6 +69,54 @@ curl -X PATCH localhost:7390/v1/discussions/DISCUSSION_ID -H 'If-Match: "1"' -H 
 ```
 
 `prunelle events` follows changes as they happen (`/v1/events`, server-sent events).
+
+## Desktop client (M2)
+
+Requires Go, Node.js 26 and pnpm 12. On Linux, install GTK 3 and WebKitGTK 4.1 (`sudo apt install libgtk-3-0t64 libwebkit2gtk-4.1-0`). Packaged macOS builds target macOS 13.3+.
+
+With the server running and a review seeded:
+
+```sh
+cd client
+pnpm install --frozen-lockfile
+pnpm build
+pnpm desktop
+```
+
+Use **Server** in the app to connect to `http://127.0.0.1:7390` locally or `https://<machine>.<tailnet>.ts.net` through Tailscale Serve. The desktop fetches through Go; it adds no identity headers or credentials. The API server remains API-only, with no CORS exception.
+
+- Navigate Topics, Findings, or All Source Changes (including Unassigned Changes). Source navigation uses Pierre Trees: arrow keys to navigate, Enter to open, and Ctrl/Cmd+F to search the focused tree. Deleted files have a separate tree so file/directory replacements remain inspectable.
+- Switch Text / Diagram / Code / Evidence, or show two views. Evidence links and diagram nodes trace back to canonical records and stored source. Select line numbers to discuss an exact range.
+- Discussions, replies, resolution and decisions are shared across views. Decisions name an exact revision; request changes selects actionable findings or threads. Comments never start an agent or change code.
+- Perspectives and layout are local preferences. Capture is manual; source can be inspected at older revisions, while topic/representation metadata is the current graph (revision-aware comparison is M3).
+- The sessions panel is optional, polls while open, and allows only explicit workspace association/removal. It has no process-control or agent-chat UI.
+
+Package the desktop app (`build/` is ignored):
+
+```sh
+pnpm package:desktop
+# Cross-build an unsigned macOS app bundle from Linux:
+pnpm package:desktop -platform darwin/arm64 -skip-dmg
+```
+
+Signing/notarization and a native macOS launch still need validation on a Mac.
+
+### Client development and checks
+
+```sh
+# Browser mode is only for development/testing; Vite proxies a fixed API target.
+PRUNELLE_SERVER=http://127.0.0.1:7390 pnpm dev
+pnpm generate             # after changing the server OpenAPI contract
+pnpm format:check && pnpm lint && pnpm test && pnpm build
+pnpm exec playwright install chromium
+pnpm test:e2e
+# Linux native smoke test; also needs xvfb and xauth:
+pnpm test:native
+```
+
+Both integration test commands build the real server and create disposable two-repository reviews. They never connect to the user's Rex server. `test:native` launches the bundled MyGo/WebKit app under Xvfb with isolated app storage and writes the ignored `client/native-smoke.png`. Its automation endpoint is compiled only with the `e2e` build tag, never into ordinary/release builds. The smoke test disables WebKit's sandbox only in that disposable test subprocess (for restricted CI containers).
+
+The [M2 plan](docs/plans/m2.md) records implementation choices and verification.
 
 ## License
 
