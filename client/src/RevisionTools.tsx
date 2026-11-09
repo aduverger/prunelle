@@ -16,6 +16,12 @@ export function ChangeBadge({ change }: { change?: Model['EntityComparison'] }) 
   );
 }
 
+const findingActionLabels = {
+  OPEN: 'Reopen finding',
+  RESOLVED: 'Resolve finding',
+  DISMISSED: 'Dismiss finding',
+};
+
 export function FindingActions({
   api,
   finding,
@@ -52,11 +58,7 @@ export function FindingActions({
                 );
               }}
             >
-              {status === 'OPEN'
-                ? 'Reopen finding'
-                : status === 'RESOLVED'
-                  ? 'Resolve finding'
-                  : 'Dismiss finding'}
+              {findingActionLabels[status]}
             </button>
           ))}
       </div>

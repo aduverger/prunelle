@@ -284,7 +284,11 @@ func (s *Service) DiscussionAnchorStatuses(ctx context.Context, reviewID, target
 		originals := map[string]RevisionView{}
 		for _, discussion := range discussions {
 			status := DiscussionAnchorStatus{DiscussionID: discussion.ID, RevisionID: targetID, Status: "ORIGINAL", Reason: "Open the original revision to inspect this discussion."}
-			if discussion.RevisionID == targetID && discussion.Anchor.Type != "REVIEW" && discussion.Anchor.CodeRange == nil {
+			switch {
+			case discussion.RevisionID == targetID:
+				if discussion.Anchor.Type == "REVIEW" || discussion.Anchor.CodeRange != nil {
+					break
+				}
 				if target.Graph == nil {
 					status.Status = "UNAVAILABLE"
 					status.Reason = "Historical semantic context is unavailable."
@@ -292,52 +296,49 @@ func (s *Service) DiscussionAnchorStatuses(ctx context.Context, reviewID, target
 					status.Status = "UNAVAILABLE"
 					status.Reason = "The original semantic target is absent from this revision's recorded state. Its ID is retained; per-edit snapshots were not recorded."
 				}
-			}
-			if discussion.RevisionID != targetID {
-				if discussion.Anchor.CodeRange != nil {
-					code := discussion.Anchor.CodeRange
-					blobs, err := reader.fileBlobs(ctx, targetID, fileKey{code.RepositoryID, code.Path})
-					if err != nil && err != sql.ErrNoRows {
+			case discussion.Anchor.CodeRange != nil:
+				code := discussion.Anchor.CodeRange
+				blobs, err := reader.fileBlobs(ctx, targetID, fileKey{code.RepositoryID, code.Path})
+				if err != nil && err != sql.ErrNoRows {
+					return err
+				}
+				hash := blobs.head
+				if code.Side == "BASE" {
+					hash = blobs.base
+				}
+				switch {
+				case err != nil || !hash.Valid || blobs.binary || blobs.omitted.Valid:
+					status.Status = "UNAVAILABLE"
+					status.Reason = "This side is not available in the target's stored changed files; that does not prove deletion or resolution."
+				case hash.String == code.BlobHash:
+					status.Status = "UNCHANGED"
+					status.Reason = "Stored content is identical. The original range is retained; the concern is not automatically resolved."
+				default:
+					status.Status = "OUTDATED"
+					status.Reason = "Stored content changed. No line relocation was attempted."
+				}
+			case discussion.Anchor.Type != "REVIEW":
+				original, ok := originals[discussion.RevisionID]
+				if !ok {
+					original, err = reader.revisionView(ctx, reviewID, &discussion.RevisionID)
+					if err != nil {
 						return err
 					}
-					hash := blobs.head
-					if code.Side == "BASE" {
-						hash = blobs.base
-					}
-					switch {
-					case err != nil || !hash.Valid || blobs.binary || blobs.omitted.Valid:
-						status.Status = "UNAVAILABLE"
-						status.Reason = "This side is not available in the target's stored changed files; that does not prove deletion or resolution."
-					case hash.String == code.BlobHash:
-						status.Status = "UNCHANGED"
-						status.Reason = "Stored content is identical. The original range is retained; the concern is not automatically resolved."
-					default:
-						status.Status = "OUTDATED"
-						status.Reason = "Stored content changed. No line relocation was attempted."
-					}
-				} else if discussion.Anchor.Type != "REVIEW" {
-					original, ok := originals[discussion.RevisionID]
-					if !ok {
-						original, err = reader.revisionView(ctx, reviewID, &discussion.RevisionID)
-						if err != nil {
-							return err
-						}
-						originals[discussion.RevisionID] = original
-					}
-					if original.Graph == nil || target.Graph == nil {
-						status.Status = "UNAVAILABLE"
-						status.Reason = "Historical semantic context is unavailable."
-					} else {
-						before, existsBefore := anchorValue(original.Graph, discussion.Anchor)
-						after, existsAfter := anchorValue(target.Graph, discussion.Anchor)
-						if existsBefore && existsAfter && reflect.DeepEqual(before, after) {
-							status.Status = "UNCHANGED"
-							status.Reason = "The anchored semantic content is unchanged; open its original revision for context."
-						} else {
-							status.Status = "OUTDATED"
-							status.Reason = "The anchored semantic content changed or is absent. The original anchor is retained."
-						}
-					}
+					originals[discussion.RevisionID] = original
+				}
+				if original.Graph == nil || target.Graph == nil {
+					status.Status = "UNAVAILABLE"
+					status.Reason = "Historical semantic context is unavailable."
+					break
+				}
+				before, existsBefore := anchorValue(original.Graph, discussion.Anchor)
+				after, existsAfter := anchorValue(target.Graph, discussion.Anchor)
+				if existsBefore && existsAfter && reflect.DeepEqual(before, after) {
+					status.Status = "UNCHANGED"
+					status.Reason = "The anchored semantic content is unchanged; open its original revision for context."
+				} else {
+					status.Status = "OUTDATED"
+					status.Reason = "The anchored semantic content changed or is absent. The original anchor is retained."
 				}
 			}
 			result = append(result, status)

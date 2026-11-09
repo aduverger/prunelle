@@ -101,7 +101,7 @@ export function DiscussionProvider({
   composer,
   openAnchor,
   onDraftChange,
-  anchorStatuses = [],
+  anchorStatuses,
   children,
 }: {
   api: API;
@@ -110,7 +110,7 @@ export function DiscussionProvider({
   composer: Composer;
   openAnchor: (d: Model['Discussion']) => void;
   onDraftChange: (dirty: boolean) => void;
-  anchorStatuses?: Model['DiscussionAnchorStatus'][];
+  anchorStatuses: Model['DiscussionAnchorStatus'][];
   children: React.ReactNode;
 }) {
   const [hosts, setHosts] = useState<Record<string, Host>>({});
@@ -272,17 +272,18 @@ export function CommentIndex({
         </button>
       )}
       {!visible.length && <Notice>No discussions yet.</Notice>}
-      {visible.map((d) => (
-        <button className="comment-link" key={d.id} onClick={() => openAnchor(d)}>
-          <strong>{anchorLabel(d.anchor)}</strong>
-          <span className="badge">{d.status}</span>
-          <span>{d.messages[0]?.body}</span>
-          <small>{discussionRevisionLabel(d, revisions)}</small>
-          <small title={anchorStatuses.find((status) => status.discussion_id === d.id)?.reason}>
-            {anchorStatuses.find((status) => status.discussion_id === d.id)?.status.toLowerCase()}
-          </small>
-        </button>
-      ))}
+      {visible.map((d) => {
+        const anchorStatus = anchorStatuses.find((status) => status.discussion_id === d.id);
+        return (
+          <button className="comment-link" key={d.id} onClick={() => openAnchor(d)}>
+            <strong>{anchorLabel(d.anchor)}</strong>
+            <span className="badge">{d.status}</span>
+            <span>{d.messages[0]?.body}</span>
+            <small>{discussionRevisionLabel(d, revisions)}</small>
+            <small title={anchorStatus?.reason}>{anchorStatus?.status.toLowerCase()}</small>
+          </button>
+        );
+      })}
     </section>
   );
 }

@@ -147,20 +147,8 @@ func (s *Service) frozenTopics(ctx context.Context, revisionID string) ([]Topic,
 	}
 	rows.Close()
 	for i := range topics {
-		topic := &topics[i]
-		for _, link := range []struct {
-			table, column string
-			ids           *[]string
-		}{
-			{"revision_topic_intents", "intent_id", &topic.IntentIDs},
-			{"revision_topic_changes", "change_id", &topic.ChangeIDs},
-			{"revision_topic_findings", "finding_id", &topic.FindingIDs},
-			{"revision_topic_evidence", "evidence_id", &topic.EvidenceIDs},
-		} {
-			*link.ids, err = queryStrings(ctx, s.reader(), `SELECT `+link.column+` FROM `+link.table+` WHERE view_revision_id = ? AND topic_id = ? ORDER BY `+link.column, revisionID, topic.ID)
-			if err != nil {
-				return nil, err
-			}
+		if err := s.loadTopicLinks(ctx, &topics[i], &revisionID); err != nil {
+			return nil, err
 		}
 	}
 	return topics, nil
@@ -323,39 +311,44 @@ func (s *Service) graphRepresentations(ctx context.Context, graph *ReviewGraph, 
 		}
 		for _, rep := range reps {
 			if rep.Type == "CODE_DIFF" {
-				files := []SourceFileRef{}
-				if graph.SourceChanges != nil {
-					for _, repo := range graph.SourceChanges.Repositories {
-						for _, file := range repo.Files {
-							if slices.Contains(file.TopicIDs, topic.ID) {
-								files = append(files, SourceFileRef{RevisionID: *revisionID, RepositoryID: repo.RepositoryID, Path: file.Path})
-							}
-						}
-					}
-				}
-				rep.SourceFiles = &files
-				selectedEvidence := []string{}
-				for _, id := range rep.CodeDiff.EvidenceIDs {
-					for _, evidence := range graph.Evidence {
-						if evidence.ID != id || evidence.CodeRange == nil {
-							continue
-						}
-						if revisionID != nil && (evidence.RevisionID != *revisionID || slices.ContainsFunc(files, func(file SourceFileRef) bool {
-							return file.RepositoryID == evidence.CodeRange.RepositoryID && file.Path == evidence.CodeRange.Path
-						})) {
-							selectedEvidence = append(selectedEvidence, id)
-						}
-					}
-				}
-				rep.CodeDiff = &EvidenceListConfig{EvidenceIDs: selectedEvidence}
-				rep.Available = len(files) > 0 || len(rep.CodeDiff.EvidenceIDs) > 0
-				rep.UnavailableReason = nil
-				if !rep.Available {
-					setAvailability(&rep, false, "No source files are assigned to this topic.")
-				}
+				rep = graph.projectCodeRepresentation(rep)
 			}
 			graph.Representations = append(graph.Representations, rep)
 		}
 	}
 	return nil
+}
+
+func (g *ReviewGraph) projectCodeRepresentation(rep Representation) Representation {
+	files := []SourceFileRef{}
+	if g.SourceChanges != nil {
+		for _, repo := range g.SourceChanges.Repositories {
+			for _, file := range repo.Files {
+				if slices.Contains(file.TopicIDs, rep.TopicID) {
+					files = append(files, SourceFileRef{RevisionID: g.SourceChanges.RevisionID, RepositoryID: repo.RepositoryID, Path: file.Path})
+				}
+			}
+		}
+	}
+	selectedEvidence := []string{}
+	for _, id := range rep.CodeDiff.EvidenceIDs {
+		index := slices.IndexFunc(g.Evidence, func(evidence Evidence) bool { return evidence.ID == id })
+		if index < 0 || g.Evidence[index].CodeRange == nil || g.SourceChanges == nil {
+			continue
+		}
+		evidence := g.Evidence[index]
+		if evidence.RevisionID != g.SourceChanges.RevisionID || slices.ContainsFunc(files, func(file SourceFileRef) bool {
+			return file.RepositoryID == evidence.CodeRange.RepositoryID && file.Path == evidence.CodeRange.Path
+		}) {
+			selectedEvidence = append(selectedEvidence, id)
+		}
+	}
+	rep.SourceFiles = &files
+	rep.CodeDiff = &EvidenceListConfig{EvidenceIDs: selectedEvidence}
+	rep.Available = len(files) > 0 || len(selectedEvidence) > 0
+	rep.UnavailableReason = nil
+	if !rep.Available {
+		setAvailability(&rep, false, "No source files are assigned to this topic.")
+	}
+	return rep
 }

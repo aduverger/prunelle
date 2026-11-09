@@ -61,6 +61,14 @@ function leaveDrafts(hiddenDrafts: boolean) {
   );
 }
 
+function hasComparisonDetail(change: Model['EntityComparison']) {
+  return (
+    change.change !== 'UNCHANGED' ||
+    change.source_status === 'CHANGED' ||
+    change.source_status === 'UNAVAILABLE'
+  );
+}
+
 export function App() {
   const [preferences, setPreferences] = useState(loadPreferences);
   const [address, setAddress] = useState(preferences.server);
@@ -271,14 +279,9 @@ function ReviewPage({
     attention: graph?.attention || [],
   };
   const [topicSelection, setTopicID] = useState<string | null | undefined>(undefined);
-  if (topicSelection === undefined && graph)
-    setTopicID(pref.perspective === 'Source' ? null : data.topics[0]?.id || null);
-  const topicID =
-    topicSelection === undefined
-      ? pref.perspective === 'Source'
-        ? null
-        : data.topics[0]?.id || null
-      : topicSelection;
+  const initialTopicID = pref.perspective === 'Source' ? null : data.topics[0]?.id || null;
+  if (topicSelection === undefined && graph) setTopicID(initialTopicID);
+  const topicID = topicSelection === undefined ? initialTopicID : topicSelection;
   const [baselineChoice, setBaselineChoice] = useState<string | undefined>(undefined);
   const earlierRevisions = data.revisions.filter((r) => revision && r.ordinal < revision.ordinal);
   const baselineID =
@@ -463,6 +466,27 @@ function ReviewPage({
     inspector?.type === 'INTENT' ? data.intents.find((i) => i.id === inspector.id) : null;
   const change =
     inspector?.type === 'CHANGE' ? data.changes.find((c) => c.id === inspector.id) : null;
+  let sourceTopicSummary: React.ReactNode = null;
+  if (sourceFile) {
+    if (!displayedSource?.assignments_available) {
+      sourceTopicSummary = <span className="badge">Topic history unavailable</span>;
+    } else if (sourceFile.unassigned) {
+      sourceTopicSummary = <span className="badge">Unassigned Changes</span>;
+    } else {
+      sourceTopicSummary = sourceFile.topic_ids.map((id) => (
+        <button
+          key={id}
+          className="link"
+          onClick={() => {
+            setRevisionID(displayedSource.revision_id);
+            selectTopic(id);
+          }}
+        >
+          {data.topics.find((topic) => topic.id === id)?.title || id}
+        </button>
+      ));
+    }
+  }
   const sourceMembership = sourceFile && (
     <div className="row source-topics">
       <small>File belongs to:</small>
@@ -472,24 +496,7 @@ function ReviewPage({
         !sourceFile.topic_ids.includes(topic.id) && (
           <small>Selected stored source is not currently assigned to this topic.</small>
         )}
-      {!displayedSource?.assignments_available ? (
-        <span className="badge">Topic history unavailable</span>
-      ) : sourceFile.unassigned ? (
-        <span className="badge">Unassigned Changes</span>
-      ) : (
-        sourceFile.topic_ids.map((id) => (
-          <button
-            key={id}
-            className="link"
-            onClick={() => {
-              setRevisionID(displayedSource!.revision_id);
-              selectTopic(id);
-            }}
-          >
-            {data.topics.find((t) => t.id === id)?.title || id}
-          </button>
-        ))
-      )}
+      {sourceTopicSummary}
       {displayedSource?.assignments_available && (
         <button
           disabled={!view.data?.editable || file?.revisionID !== data.review.current_revision_id}
@@ -575,39 +582,25 @@ function ReviewPage({
             a concern.
           </p>
           <ul>
-            {comparison.data.topics
-              .filter(
-                (item) =>
-                  item.change !== 'UNCHANGED' ||
-                  item.source_status === 'CHANGED' ||
-                  item.source_status === 'UNAVAILABLE',
-              )
-              .map((item) => (
-                <li key={item.id}>
-                  <button className="link" onClick={() => selectTopic(item.id)}>
-                    {data.topics.find((topic) => topic.id === item.id)?.title || item.id}
-                  </button>{' '}
-                  <ChangeBadge change={item} />
-                </li>
-              ))}
-            {comparison.data.findings
-              .filter(
-                (item) =>
-                  item.change !== 'UNCHANGED' ||
-                  item.source_status === 'CHANGED' ||
-                  item.source_status === 'UNAVAILABLE',
-              )
-              .map((item) => (
-                <li key={item.id}>
-                  <button
-                    className="link"
-                    onClick={() => setInspector({ type: 'finding', id: item.id })}
-                  >
-                    {data.findings.find((finding) => finding.id === item.id)?.title || item.id}
-                  </button>{' '}
-                  <ChangeBadge change={item} />
-                </li>
-              ))}
+            {comparison.data.topics.filter(hasComparisonDetail).map((item) => (
+              <li key={item.id}>
+                <button className="link" onClick={() => selectTopic(item.id)}>
+                  {data.topics.find((topic) => topic.id === item.id)?.title || item.id}
+                </button>{' '}
+                <ChangeBadge change={item} />
+              </li>
+            ))}
+            {comparison.data.findings.filter(hasComparisonDetail).map((item) => (
+              <li key={item.id}>
+                <button
+                  className="link"
+                  onClick={() => setInspector({ type: 'finding', id: item.id })}
+                >
+                  {data.findings.find((finding) => finding.id === item.id)?.title || item.id}
+                </button>{' '}
+                <ChangeBadge change={item} />
+              </li>
+            ))}
           </ul>
         </details>
       )}

@@ -75,21 +75,37 @@ func (s *Service) GetTopic(ctx context.Context, id string) (Topic, error) {
 	if err != nil {
 		return Topic{}, err
 	}
-	links := []struct {
-		dest  *[]string
-		query string
-	}{
-		{&t.IntentIDs, `SELECT intent_id FROM topic_intents WHERE topic_id = ? ORDER BY intent_id`},
-		{&t.ChangeIDs, `SELECT change_id FROM topic_changes WHERE topic_id = ? ORDER BY change_id`},
-		{&t.FindingIDs, `SELECT finding_id FROM topic_findings WHERE topic_id = ? ORDER BY finding_id`},
-		{&t.EvidenceIDs, `SELECT evidence_id FROM topic_evidence WHERE topic_id = ? ORDER BY evidence_id`},
-	}
-	for _, l := range links {
-		if *l.dest, err = queryStrings(ctx, s.reader(), l.query, id); err != nil {
-			return Topic{}, err
-		}
+	if err := s.loadTopicLinks(ctx, &t, nil); err != nil {
+		return Topic{}, err
 	}
 	return t, nil
+}
+
+func (s *Service) loadTopicLinks(ctx context.Context, topic *Topic, revisionID *string) error {
+	for _, link := range []struct {
+		table, column string
+		ids           *[]string
+	}{
+		{"topic_intents", "intent_id", &topic.IntentIDs},
+		{"topic_changes", "change_id", &topic.ChangeIDs},
+		{"topic_findings", "finding_id", &topic.FindingIDs},
+		{"topic_evidence", "evidence_id", &topic.EvidenceIDs},
+	} {
+		table := link.table
+		where := "topic_id = ?"
+		args := []any{topic.ID}
+		if revisionID != nil {
+			table = "revision_" + table
+			where += " AND view_revision_id = ?"
+			args = append(args, *revisionID)
+		}
+		ids, err := queryStrings(ctx, s.reader(), "SELECT "+link.column+" FROM "+table+" WHERE "+where+" ORDER BY "+link.column, args...)
+		if err != nil {
+			return err
+		}
+		*link.ids = ids
+	}
+	return nil
 }
 
 func (s *Service) TopicRepresentations(ctx context.Context, topicID string) ([]Representation, error) {
