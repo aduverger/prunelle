@@ -210,9 +210,13 @@ test('Pierre source trees keep repository and revision identity through navigati
 
   await api.getByRole('treeitem', { name: 'review.bin', exact: true }).click();
   await expect(diff).toContainText('api/assets/review.bin');
-  await expect(diff).toContainText('BINARY');
-  await expect(diff.locator('.unavailable-file')).toBeInViewport();
-  await expect(diff.locator('.unavailable-file').locator('diffs-container')).toHaveCount(0);
+  await expect(
+    page.getByRole('heading', { name: 'api/assets/review.bin', exact: true }),
+  ).toBeInViewport();
+  await expect(page.getByText('BINARY', { exact: true })).toBeVisible();
+  await expect(
+    page.getByRole('button', { name: 'Comment on selected lines', exact: true }),
+  ).toBeDisabled();
   await page.getByLabel('Revision', { exact: true }).selectOption(fixture.revision.id);
   await expect(all.getByRole('treeitem', { name: 'review.txt', exact: true })).toHaveCount(0);
   await expect(all.getByRole('treeitem', { selected: true })).toHaveCount(0);

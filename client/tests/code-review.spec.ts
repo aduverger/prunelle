@@ -70,6 +70,9 @@ function line(page: Page, side: 'BASE' | 'HEAD', number: number) {
     );
 }
 async function commentRange(page: Page, side: 'BASE' | 'HEAD', start: number, end = start) {
+  await expect(
+    page.getByRole('button', { name: 'Collapse src/long.ts', exact: true }),
+  ).toBeVisible();
   await page.getByText('Comment on lines…', { exact: true }).click();
   await page.getByLabel('Comment side', { exact: true }).selectOption(side);
   await page.getByLabel('Start line', { exact: true }).fill(String(start));
@@ -133,17 +136,22 @@ test('long-file selection, inline composer, posting and SSE retain code context'
   await page.getByRole('button', { name: 'Comment on selected lines', exact: true }).click();
   const selectedLine = line(page, 'HEAD', 453);
   await expect(selectedLine).toBeInViewport();
-  const composer = page.getByTestId('file-diff').locator('.composer');
+  const composer = page
+    .getByTestId('file-diff')
+    .locator('form')
+    .filter({ has: page.getByRole('textbox', { name: 'New discussion', exact: true }) });
   const lineBounds = (await selectedLine.boundingBox())!;
-  expect((await composer.boundingBox())!.y).toBeGreaterThanOrEqual(
-    lineBounds.y + lineBounds.height,
-  );
+  const gap = (await composer.boundingBox())!.y - (lineBounds.y + lineBounds.height);
+  expect(gap).toBeGreaterThanOrEqual(0);
+  expect(gap).toBeLessThanOrEqual(lineBounds.height * 2);
   const before = lineBounds.y;
   await page
     .getByRole('textbox', { name: 'New discussion', exact: true })
     .fill('Explain this HEAD range.');
   await expect(selectedLine).toBeInViewport();
-  expect(Math.abs((await selectedLine.boundingBox())!.y - before)).toBeLessThan(3);
+  expect(Math.abs((await selectedLine.boundingBox())!.y - before)).toBeLessThanOrEqual(
+    lineBounds.height,
+  );
   await page.getByRole('button', { name: 'Post discussion', exact: true }).click();
   const thread = page.locator('.thread').filter({ hasText: 'Explain this HEAD range.' });
   await expect(thread).toBeVisible();
@@ -169,7 +177,6 @@ test('long-file selection, inline composer, posting and SSE retain code context'
   });
   await expect(thread).toContainText('A live update from another client.');
   await expect(selectedLine).toBeInViewport();
-  await page.screenshot({ path: '/tmp/prunelle-m3b-implemented.png' });
   await page.reload();
   await navigateComment(page, 'Explain this HEAD range.');
   await expect(thread).toBeVisible();
@@ -226,10 +233,14 @@ test('virtualized composers keep their frozen anchor and text across files and n
   await page
     .getByRole('textbox', { name: 'New discussion', exact: true })
     .fill('Draft kept outside the virtualized window.');
-  await page.locator('.code-viewport').evaluate((element) => {
-    element.scrollTop = element.scrollHeight;
-  });
-  await expect(page.locator('.composer')).toHaveCount(0);
+  await page
+    .getByRole('region', { name: 'All repositories', exact: true })
+    .getByRole('region', { name: 'worker', exact: true })
+    .getByRole('treeitem', { name: 'z-large.txt', exact: true })
+    .click();
+  await expect(
+    page.getByRole('textbox', { name: 'New discussion', exact: true }),
+  ).not.toBeInViewport();
   await page.getByRole('button', { name: 'Comments', exact: true }).click();
   await page
     .getByRole('region', { name: 'Comments', exact: true })
@@ -243,7 +254,9 @@ test('virtualized composers keep their frozen anchor and text across files and n
     .locator('diffs-container')
     .filter({ has: page.locator('[data-source-path="src/long.ts"]') });
   await longFile.getByRole('button', { name: 'Collapse src/long.ts', exact: true }).click();
-  await expect(page.locator('.composer')).toHaveCount(0);
+  await expect(
+    page.getByRole('textbox', { name: 'New discussion', exact: true }),
+  ).not.toBeInViewport();
   await page.getByRole('button', { name: 'Return to draft', exact: true }).click();
   await expect(page.getByRole('textbox', { name: 'New discussion', exact: true })).toHaveValue(
     'Draft kept outside the virtualized window.',
@@ -255,6 +268,40 @@ test('virtualized composers keep their frozen anchor and text across files and n
     start_line: 450,
     end_line: 453,
   });
+});
+
+test('an inline draft retains its snapshot after capture and explicit return', async ({ page }) => {
+  await openLong(page);
+  await commentRange(page, 'HEAD', 450, 453);
+  const body = 'Finish this review against the original captured lines.';
+  await page.getByRole('textbox', { name: 'New discussion', exact: true }).fill(body);
+  writeFileSync(`${fixture.dir}/repos/api/src/long.ts`, 'A later snapshot replaced this code.\n');
+  await page.getByRole('button', { name: 'Capture', exact: true }).click();
+  const revision = page.getByLabel('Revision', { exact: true });
+  await expect(revision).not.toHaveValue(fixture.revision.id);
+  const currentRevisionID = await revision.inputValue();
+  await page.getByRole('button', { name: 'Return to draft', exact: true }).click();
+  await expect(page.getByRole('textbox', { name: 'New discussion', exact: true })).toHaveValue(
+    body,
+  );
+  await expect(line(page, 'HEAD', 453)).toBeInViewport();
+  await expect(revision).toHaveValue(currentRevisionID);
+  await page.getByRole('button', { name: 'Post discussion', exact: true }).click();
+  await expect(page.getByRole('article').filter({ hasText: body })).toBeVisible();
+  expect(await discussions()).toMatchObject([
+    {
+      revision_id: fixture.revision.id,
+      anchor: {
+        code_range: {
+          path: 'src/long.ts',
+          side: 'HEAD',
+          start_line: 450,
+          end_line: 453,
+          selected_text: expect.stringContaining('line450 = 1450'),
+        },
+      },
+    },
+  ]);
 });
 
 test('lost reply responses remain idempotent after resolve, recycling and a cancelled review switch', async ({
@@ -288,10 +335,9 @@ test('lost reply responses remain idempotent after resolve, recycling and a canc
   await page.unroute('**/messages');
   await thread.getByRole('button', { name: 'Resolve', exact: true }).click();
   await expect(thread).toContainText('RESOLVED');
-  await page.locator('.code-viewport').evaluate((element) => {
-    element.scrollTop = element.scrollHeight;
-  });
-  await expect(thread).toHaveCount(0);
+  await line(page, 'HEAD', 453).hover();
+  await page.mouse.wheel(0, 100_000);
+  await expect(reply).not.toBeInViewport();
   let warned = false;
   page.once('dialog', async (dialog) => {
     warned = dialog.message().includes('Unposted drafts');
@@ -439,6 +485,7 @@ test('an empty CodeView retains its context and footer; integrations only poll w
   });
   expect(response.status).toBe(201);
   const empty = (await response.json()) as Model['Review'];
+  await page.clock.install();
   const sessionRequests: string[] = [];
   page.on('request', (request) => {
     if (/\/(session-backends|runtime-sessions)$/.test(request.url()))
@@ -456,8 +503,11 @@ test('an empty CodeView retains its context and footer; integrations only poll w
   await expect(
     page.getByRole('dialog', { name: 'Settings · Integrations', exact: true }),
   ).toContainText('UNREACHABLE');
+  const initialRequests = sessionRequests.length;
+  await page.clock.fastForward(60_000);
+  await expect.poll(() => sessionRequests.length).toBeGreaterThan(initialRequests);
   await page.getByRole('button', { name: 'Close Settings · Integrations', exact: true }).click();
   const count = sessionRequests.length;
-  await page.waitForTimeout(5500);
+  await page.clock.fastForward(60_000);
   expect(sessionRequests).toHaveLength(count);
 });

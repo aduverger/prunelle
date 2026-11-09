@@ -146,13 +146,33 @@ try {
     "Array.from(document.querySelectorAll('.code-review .thread')).some(thread => thread.textContent.includes('Native inline code comment') && thread.textContent.includes('HEAD'))",
   );
   const threads = await fixture.get(`/v1/reviews/${fixture.review.id}/discussions`);
-  assert(
-    threads.some(
-      (thread) =>
-        thread.messages[0].body === 'Native inline code comment' &&
-        thread.anchor.code_range?.path === 'docs/async-upload.md' &&
-        thread.anchor.code_range.start_line === 3,
-    ),
+  const inlineThread = threads.find(
+    (thread) => thread.messages[0].body === 'Native inline code comment',
+  );
+  assert(inlineThread, 'Inline comment was not persisted');
+  assert.equal(inlineThread.revision_id, fixture.revision.id);
+  assert.equal(inlineThread.anchor.type, 'CODE_RANGE');
+  const range = inlineThread.anchor.code_range;
+  assert.equal(
+    range.repository_id,
+    fixture.revision.snapshots.find((snapshot) => snapshot.repository_label === 'api')
+      .repository_id,
+  );
+  assert.equal(range.path, 'docs/async-upload.md');
+  assert.equal(range.side, 'HEAD');
+  assert.equal(range.start_line, 3);
+  assert.equal(range.end_line, 3);
+  const externalReply = await globalThis.fetch(
+    `${target}/v1/discussions/${inlineThread.id}/messages`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ body: 'An external reply streamed into native WebKit.' }),
+    },
+  );
+  assert.equal(externalReply.status, 201);
+  await waitFor(
+    "Array.from(document.querySelectorAll('.code-review .thread')).some(thread => thread.textContent.includes('An external reply streamed into native WebKit.'))",
   );
   await evaluate(
     "Array.from(document.querySelectorAll('button')).find(button => button.textContent === 'Review decision').click(); true",
