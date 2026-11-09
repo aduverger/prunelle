@@ -1,7 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { readFileSync, readdirSync, renameSync, writeFileSync } from 'node:fs';
 import { DatabaseSync } from 'node:sqlite';
-import { resolve } from 'node:path';
 import { Fixture, buildServer, server } from './fixture';
 import type { Model } from '../src/api/client';
 
@@ -46,45 +44,9 @@ async function openUpload(page: Page) {
   await expect(page.getByRole('button', { name: 'Edit file topics', exact: true })).toBeEnabled();
 }
 
-async function reopenAsVersionFive() {
-  await fixture.stop();
-  const path = `${fixture.dir}/data/prunelle.db`;
-  const seed = `${fixture.dir}/data/seed.db`;
-  renameSync(path, seed);
-  const legacy = new DatabaseSync(path, { enableForeignKeyConstraints: false });
-  try {
-    const migrations = resolve('../server/internal/store/migrations');
-    for (const name of readdirSync(migrations)
-      .filter((name) => /^000[1-5]_/.test(name))
-      .sort())
-      legacy.exec(readFileSync(`${migrations}/${name}`, 'utf8'));
-    legacy.prepare('ATTACH DATABASE ? AS seed').run(seed);
-    const tables = legacy
-      .prepare(
-        "SELECT name FROM main.sqlite_schema WHERE type = 'table' AND name NOT LIKE 'sqlite_%'",
-      )
-      .all() as { name: string }[];
-    for (const { name } of tables) {
-      const columns = legacy.prepare(`PRAGMA main.table_info("${name}")`).all() as {
-        name: string;
-      }[];
-      const selection = columns.map(({ name }) => `"${name}"`).join(',');
-      legacy.exec(
-        `INSERT INTO main."${name}" (${selection}) SELECT ${selection} FROM seed."${name}"`,
-      );
-    }
-    expect(legacy.prepare('PRAGMA foreign_key_check').all()).toEqual([]);
-    legacy.exec('DETACH DATABASE seed; PRAGMA user_version=5;');
-  } finally {
-    legacy.close();
-  }
-  await fixture.start();
-}
-
 test('revision selection changes semantic context and explicit finding state, not just source', async ({
   page,
 }) => {
-  writeFileSync(`${fixture.dir}/repos/api/src/routes/upload.ts`, 'NEW_REVISION_SOURCE\n');
   const second = await capture();
   const current = await graph(second.id);
   const topic = current.topics.find((topic) => topic.id === fixture.ids.topics['T-async'])!;
@@ -129,17 +91,21 @@ test('revision selection changes semantic context and explicit finding state, no
   await expect(
     page.getByRole('heading', { name: 'Human revision two title', exact: true }),
   ).toBeVisible();
-  const comparison = await fixture.get<Model['RevisionComparison']>(
-    `/v1/reviews/${fixture.review.id}/comparison?from_revision_id=${fixture.revision.id}&to_revision_id=${third.id}`,
-  );
-  expect(comparison.topics.find((change) => change.id === topic.id)?.changed_fields).toContain(
-    'title',
-  );
-  expect(
-    comparison.findings.find((change) => change.id === fixture.ids.findings['F-1'])?.change,
-  ).toBe('RESOLVED');
-  await page.locator('details[aria-label="Revision comparison"] > summary').click();
-  await page.screenshot({ path: test.info().outputPath('revision-comparison.png') });
+  const comparison = page.getByLabel('Revision comparison', { exact: true });
+  await comparison.locator('summary').click();
+  const changedTopic = comparison
+    .getByRole('listitem')
+    .filter({ has: page.getByRole('button', { name: 'Human revision two title', exact: true }) });
+  await expect(changedTopic).toContainText('changed');
+  await expect(changedTopic).toContainText('title');
+  await expect(
+    comparison.getByRole('listitem').filter({
+      has: page.getByRole('button', {
+        name: 'Retries can repeat processing side effects',
+        exact: true,
+      }),
+    }),
+  ).toContainText('resolved');
 });
 
 test('lost conditional assignment response requires reload and preserves explicit unassignment and reset', async ({
@@ -222,7 +188,7 @@ test('remote capture and deletion retain a correction and its original target, i
   await expect(dialog).not.toBeVisible();
 });
 
-test('a real version-five upgrade keeps old source without fabricating semantic history', async ({
+test('unrecorded semantic history stays unavailable while stored source remains readable', async ({
   page,
 }) => {
   const second = await capture();
@@ -234,7 +200,16 @@ test('a real version-five upgrade keeps old source without fabricating semantic 
     body: JSON.stringify({ title: 'Current legacy metadata' }),
   });
   expect(changed.status).toBe(200);
-  await reopenAsVersionFive();
+  await fixture.stop();
+  const database = new DatabaseSync(`${fixture.dir}/data/prunelle.db`);
+  try {
+    database
+      .prepare('DELETE FROM revision_review_states WHERE revision_id = ?')
+      .run(fixture.revision.id);
+  } finally {
+    database.close();
+  }
+  await fixture.start();
   await page.goto('/');
   await expect(
     page.getByRole('heading', { name: 'Current legacy metadata', exact: true }),

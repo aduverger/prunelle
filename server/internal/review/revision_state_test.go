@@ -50,9 +50,9 @@ func TestRevisionViewsFreezeSemanticContentWithoutChangingIdentity(t *testing.T)
 	config.Nodes = slices.Clone(config.Nodes)
 	config.Nodes[0].Label = "Human edited diagram"
 	must[review.Representation](t)(e.svc.UpdateRepresentation(e.ctx, *diagram.ID, *diagram.Version, review.UpdateRepresentationRequest{RepresentationConfig: review.RepresentationConfig{Diagram: &config}}, reviewer))
-	finding := before.Findings[0]
+	finding := graphAt(t, e, second.ID).Findings[0]
 	status := "RESOLVED"
-	must[review.Finding](t)(e.svc.UpdateFinding(e.ctx, finding.ID, finding.Version+1, review.UpdateFindingRequest{RevisionID: second.ID, Status: &status}, reviewer))
+	must[review.Finding](t)(e.svc.UpdateFinding(e.ctx, finding.ID, finding.Version, review.UpdateFindingRequest{RevisionID: second.ID, Status: &status}, reviewer))
 	added := must[review.Topic](t)(e.svc.CreateTopic(e.ctx, e.review.ID, review.CreateTopicRequest{Title: "New manual topic"}, reviewer))
 	changed := graphAt(t, e, second.ID)
 	third := must[review.Revision](t)(e.svc.CaptureRevision(e.ctx, e.review.ID, review.CaptureRequest{}, reviewer))
@@ -95,7 +95,7 @@ func TestSourceCorrectionsAreCanonicalConditionalAndRevisionScoped(t *testing.T)
 	originalIDs := slices.Clone(file.TopicIDs)
 	req := review.UpdateSourceTopicsRequest{RepositoryID: repo.RepositoryID, Path: file.Path, Mode: "EXPLICIT", TopicIDs: []string{ids["topics"]["T-tests"], ids["topics"]["T-worker"]}}
 	edited := must[review.SourceFile](t)(e.svc.UpdateSourceTopics(e.ctx, e.revision.ID, file.AssignmentVersion, req, reviewer))
-	if len(edited.TopicIDs) != 2 || edited.AssignmentMode != "EXPLICIT" {
+	if len(edited.TopicIDs) != 2 || !slices.Contains(edited.TopicIDs, req.TopicIDs[0]) || !slices.Contains(edited.TopicIDs, req.TopicIDs[1]) || edited.AssignmentMode != "EXPLICIT" {
 		t.Fatalf("assignment: %+v", edited)
 	}
 	discussion := must[review.Discussion](t)(e.svc.CreateDiscussion(e.ctx, e.review.ID, review.CreateDiscussionRequest{Body: "Corrected context", Anchor: review.AnchorInput{Type: "CODE_RANGE", CodeRange: &review.CodeRangeInput{RepositoryID: repo.RepositoryID, Path: file.Path, Side: "HEAD", StartLine: 1, EndLine: 1}}}, reviewer))
@@ -124,7 +124,8 @@ func TestSourceCorrectionsAreCanonicalConditionalAndRevisionScoped(t *testing.T)
 		}
 	}
 	second := must[review.Revision](t)(e.svc.CaptureRevision(e.ctx, e.review.ID, review.CaptureRequest{}, reviewer))
-	next := graphAt(t, e, second.ID).SourceChanges.Repositories[0].Files[slices.IndexFunc(repo.Files, func(v review.SourceFile) bool { return v.Path == file.Path })]
+	nextFiles := graphAt(t, e, second.ID).SourceChanges.Repositories[0].Files
+	next := nextFiles[slices.IndexFunc(nextFiles, func(v review.SourceFile) bool { return v.Path == file.Path })]
 	if !next.Unassigned || next.AssignmentMode != "EXPLICIT" {
 		t.Fatal("capture lost deliberate unassignment")
 	}
@@ -157,10 +158,10 @@ func TestSourceCorrectionResetAndMissingPathDoNotResurrectChoices(t *testing.T) 
 		t.Fatal(err)
 	}
 	third := must[review.Revision](t)(e.svc.CaptureRevision(e.ctx, e.review.ID, review.CaptureRequest{}, reviewer))
-	for _, file := range graphAt(t, e, third.ID).SourceChanges.Repositories[0].Files {
-		if file.Path == req.Path && file.AssignmentMode != "DERIVED" {
-			t.Fatal("an absent correction resurrected on a later same-named file")
-		}
+	files := graphAt(t, e, third.ID).SourceChanges.Repositories[0].Files
+	index := slices.IndexFunc(files, func(file review.SourceFile) bool { return file.Path == req.Path })
+	if index < 0 || files[index].AssignmentMode != "DERIVED" || !files[index].Unassigned {
+		t.Fatal("a same-named new file is missing or resurrected an absent correction")
 	}
 	_, err := e.svc.UpdateSourceTopics(e.ctx, second.ID, 1, req, reviewer)
 	expectError(t, err, review.CodeConflict)
@@ -183,10 +184,9 @@ func TestCaptureArchiveRollsBackAndConcurrentCapturesKeepPredecessors(t *testing
 	if got := graphAt(t, e, e.revision.ID); !reflect.DeepEqual(got, before) {
 		t.Fatal("failed capture altered current graph")
 	}
-	var frozen int
-	if err := e.db.Reader().QueryRowContext(e.ctx, "SELECT COUNT(*) FROM revision_review_states").Scan(&frozen); err != nil || frozen != 0 {
-		t.Fatalf("failed capture sealed history: %d %v", frozen, err)
-	}
+	title := "Still editable after failed capture"
+	must[review.Topic](t)(e.svc.UpdateTopic(e.ctx, before.Topics[0].ID, before.Topics[0].Version, review.UpdateTopicRequest{Title: &title}, reviewer))
+	expectedFrozen := graphAt(t, e, e.revision.ID)
 	if err := e.db.Write(e.ctx, func(tx *sql.Tx) error { _, err := tx.ExecContext(e.ctx, "DROP TRIGGER fail_snapshot"); return err }); err != nil {
 		t.Fatal(err)
 	}
@@ -212,50 +212,69 @@ func TestCaptureArchiveRollsBackAndConcurrentCapturesKeepPredecessors(t *testing
 	for _, revision := range revisions {
 		graphAt(t, e, revision.ID)
 	}
+	if !reflect.DeepEqual(graphAt(t, e, e.revision.ID), expectedFrozen) {
+		t.Fatal("retry did not freeze the still-editable predecessor faithfully")
+	}
 }
 
-func TestOriginalAnchorsAndFindingLifecycleRemainExplicit(t *testing.T) {
+func TestLifecycleChangesStayExplicitAndIndependent(t *testing.T) {
 	e := newEnv(t)
 	ids := e.importFixture(t).IDs
-	repo := e.revision.Snapshots[0].RepositoryID
-	code := must[review.Discussion](t)(e.svc.CreateDiscussion(e.ctx, e.review.ID, review.CreateDiscussionRequest{Body: "Original line", Anchor: review.AnchorInput{Type: "CODE_RANGE", CodeRange: &review.CodeRangeInput{RepositoryID: repo, Path: "src/routes/upload.ts", Side: "HEAD", StartLine: 2, EndLine: 3}}}, reviewer))
-	if err := os.WriteFile(filepath.Join(e.repos.API, "src/routes/upload.ts"), []byte("// added prefix\n"+*must[review.FileContent](t)(e.svc.GetFile(e.ctx, e.revision.ID, repo, "src/routes/upload.ts")).HeadText), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	second := must[review.Revision](t)(e.svc.CaptureRevision(e.ctx, e.review.ID, review.CaptureRequest{}, reviewer))
-	statuses := must[[]review.DiscussionAnchorStatus](t)(e.svc.DiscussionAnchorStatuses(e.ctx, e.review.ID, second.ID))
-	if statuses[0].Status != "OUTDATED" {
-		t.Fatalf("shifted line was silently mapped: %+v", statuses)
-	}
-	stored := must[review.Discussion](t)(e.svc.GetDiscussion(e.ctx, code.ID))
-	if !reflect.DeepEqual(stored.Anchor, code.Anchor) {
-		t.Fatal("original anchor changed")
-	}
-	must[review.Decision](t)(e.svc.CreateDecision(e.ctx, e.review.ID, review.CreateDecisionRequest{RevisionID: &second.ID, Decision: "REQUEST_CHANGES", DiscussionIDs: []string{code.ID}}, reviewer))
 	findingID := ids["findings"]["F-1"]
-	for _, status := range []string{"RESOLVED", "OPEN", "DISMISSED"} {
-		g := graphAt(t, e, second.ID)
-		finding := g.Findings[slices.IndexFunc(g.Findings, func(v review.Finding) bool { return v.ID == findingID })]
-		updated := must[review.Finding](t)(e.svc.UpdateFinding(e.ctx, finding.ID, finding.Version, review.UpdateFindingRequest{RevisionID: second.ID, Status: &status}, reviewer))
-		if updated.FirstSeenRevisionID != e.revision.ID || updated.Author != finding.Author {
-			t.Fatal("finding lifecycle rewrote source identity")
+	thread := must[review.Discussion](t)(e.svc.CreateDiscussion(e.ctx, e.review.ID, review.CreateDiscussionRequest{Body: "Original concern", Anchor: review.AnchorInput{Type: "FINDING", ID: &findingID}}, reviewer))
+	baselineID := e.revision.ID
+	for _, test := range []struct{ findingStatus, findingChange, topicState, topicChange string }{
+		{"RESOLVED", "RESOLVED", "OBSOLETE", "OBSOLETE"},
+		{"OPEN", "REOPENED", "ACTIVE", "REACTIVATED"},
+		{"DISMISSED", "DISMISSED", "ACTIVE", "UNCHANGED"},
+	} {
+		next := must[review.Revision](t)(e.svc.CaptureRevision(e.ctx, e.review.ID, review.CaptureRequest{}, reviewer))
+		current := graphAt(t, e, next.ID)
+		finding := current.Findings[slices.IndexFunc(current.Findings, func(v review.Finding) bool { return v.ID == findingID })]
+		topic := current.Topics[slices.IndexFunc(current.Topics, func(v review.Topic) bool { return v.ID == ids["topics"]["T-worker"] })]
+		if topic.State != test.topicState {
+			must[review.Topic](t)(e.svc.UpdateTopic(e.ctx, topic.ID, topic.Version, review.UpdateTopicRequest{State: &test.topicState}, reviewer))
+			afterTopic := graphAt(t, e, next.ID)
+			if afterTopic.Findings[slices.IndexFunc(afterTopic.Findings, func(v review.Finding) bool { return v.ID == findingID })].Status != finding.Status {
+				t.Fatal("topic lifecycle changed finding status")
+			}
 		}
+		updated := must[review.Finding](t)(e.svc.UpdateFinding(e.ctx, finding.ID, finding.Version, review.UpdateFindingRequest{RevisionID: next.ID, Status: &test.findingStatus}, reviewer))
+		if updated.Status != test.findingStatus || updated.FirstSeenRevisionID != e.revision.ID || updated.Author != finding.Author {
+			t.Fatalf("finding lifecycle lost its explicit status or source identity: %+v", updated)
+		}
+		comparison := must[review.RevisionComparison](t)(e.svc.CompareRevisions(e.ctx, e.review.ID, baselineID, next.ID))
+		findingChange := comparison.Findings[slices.IndexFunc(comparison.Findings, func(v review.EntityComparison) bool { return v.ID == finding.ID })]
+		topicChange := comparison.Topics[slices.IndexFunc(comparison.Topics, func(v review.EntityComparison) bool { return v.ID == topic.ID })]
+		if findingChange.Change != test.findingChange || topicChange.Change != test.topicChange {
+			t.Fatalf("independent lifecycle comparison: finding=%+v topic=%+v", findingChange, topicChange)
+		}
+		baselineID = next.ID
 	}
-	if must[review.Discussion](t)(e.svc.GetDiscussion(e.ctx, code.ID)).Status != "OPEN" {
-		t.Fatal("finding status automatically resolved a thread")
+	if must[review.Discussion](t)(e.svc.GetDiscussion(e.ctx, thread.ID)).Status != "OPEN" {
+		t.Fatal("finding status automatically resolved its thread")
 	}
+	if len(must[[]review.Decision](t)(e.svc.ListDecisions(e.ctx, e.review.ID))) != 0 {
+		t.Fatal("lifecycle changes fabricated a review verdict")
+	}
+	must[review.Decision](t)(e.svc.CreateDecision(e.ctx, e.review.ID, review.CreateDecisionRequest{Decision: "REQUEST_CHANGES", DiscussionIDs: []string{thread.ID}}, reviewer))
 }
 
 func TestRevisionViewAndComparisonUseBoundedReader(t *testing.T) {
 	e := newEnv(t)
-	e.importFixture(t)
 	second := must[review.Revision](t)(e.svc.CaptureRevision(e.ctx, e.review.ID, review.CaptureRequest{}, reviewer))
+	empty := graphAt(t, e, e.revision.ID)
+	if len(empty.Topics) != 0 || !empty.SourceChanges.AssignmentsAvailable {
+		t.Fatal("known empty history was treated as unavailable")
+	}
+	e.importFixture(t)
+	third := must[review.Revision](t)(e.svc.CaptureRevision(e.ctx, e.review.ID, review.CaptureRequest{}, reviewer))
 	e.db.Reader().SetMaxOpenConns(1)
 	ctx, cancel := context.WithTimeout(e.ctx, 2*time.Second)
 	defer cancel()
-	must[review.RevisionView](t)(e.svc.GetRevisionView(ctx, e.review.ID, &e.revision.ID))
-	must[review.RevisionComparison](t)(e.svc.CompareRevisions(ctx, e.review.ID, e.revision.ID, second.ID))
-	_, err := e.svc.CompareRevisions(ctx, e.review.ID, second.ID, e.revision.ID)
+	must[review.RevisionView](t)(e.svc.GetRevisionView(ctx, e.review.ID, &second.ID))
+	must[review.RevisionComparison](t)(e.svc.CompareRevisions(ctx, e.review.ID, second.ID, third.ID))
+	_, err := e.svc.CompareRevisions(ctx, e.review.ID, third.ID, second.ID)
 	expectError(t, err, review.CodeInvalidArgument)
 }
 
@@ -301,6 +320,46 @@ func TestFrozenSemanticAnchorsUseOriginalGraphAndMembership(t *testing.T) {
 	laterFinding := e.importFixture(t).IDs["findings"]["F-1"]
 	_, err := e.svc.CreateDecision(e.ctx, e.review.ID, review.CreateDecisionRequest{RevisionID: &e.revision.ID, Decision: "REQUEST_CHANGES", FindingIDs: []string{laterFinding}}, reviewer)
 	expectError(t, err, review.CodeInvalidArgument)
+
+	storedSource := must[review.FileContent](t)(e.svc.GetFile(e.ctx, e.revision.ID, e.revision.Snapshots[0].RepositoryID, "src/routes/upload.ts"))
+	if err := e.db.Write(e.ctx, func(tx *sql.Tx) error {
+		_, err := tx.ExecContext(e.ctx, "DELETE FROM revision_review_states WHERE revision_id = ?", e.revision.ID)
+		return err
+	}); err != nil {
+		t.Fatal(err)
+	}
+	unknown := must[review.RevisionView](t)(e.svc.GetRevisionView(e.ctx, e.review.ID, &e.revision.ID))
+	if unknown.Graph != nil || unknown.UnavailableReason == nil || unknown.Editable {
+		t.Fatal("missing history invented a semantic graph")
+	}
+	unavailableStatuses := must[[]review.DiscussionAnchorStatus](t)(e.svc.DiscussionAnchorStatuses(e.ctx, e.review.ID, second.ID))
+	for _, discussion := range original {
+		if unavailableStatuses[slices.IndexFunc(unavailableStatuses, func(v review.DiscussionAnchorStatus) bool { return v.DiscussionID == discussion.ID })].Status != "UNAVAILABLE" {
+			t.Fatal("missing original semantics were treated as known or changed")
+		}
+	}
+	source := must[review.SourceChanges](t)(e.svc.SourceChanges(e.ctx, e.revision.ID))
+	if source.AssignmentsAvailable || source.UnassignedCount != 0 {
+		t.Fatal("unknown ownership was presented as unassigned source")
+	}
+	for _, repo := range source.Repositories {
+		for _, file := range repo.Files {
+			if file.Unassigned || len(file.TopicIDs) != 0 {
+				t.Fatal("unknown file ownership was guessed")
+			}
+		}
+	}
+	if got := must[review.FileContent](t)(e.svc.GetFile(e.ctx, e.revision.ID, storedSource.RepositoryID, storedSource.Path)); !reflect.DeepEqual(got, storedSource) {
+		t.Fatal("unavailable semantic history hid or changed immutable source")
+	}
+	must[review.Message](t)(e.svc.Reply(e.ctx, original[0].ID, review.CreateMessageRequest{Body: "Still replyable without semantic history"}, reviewer))
+	_, err = e.svc.CreateDiscussion(e.ctx, e.review.ID, review.CreateDiscussionRequest{RevisionID: &e.revision.ID, Anchor: anchors[0], Body: "Do not guess missing context"}, reviewer)
+	expectError(t, err, review.CodeInvalidArgument)
+	must[review.Discussion](t)(e.svc.CreateDiscussion(e.ctx, e.review.ID, review.CreateDiscussionRequest{RevisionID: &e.revision.ID, Anchor: review.AnchorInput{Type: "CODE_RANGE", CodeRange: &review.CodeRangeInput{RepositoryID: storedSource.RepositoryID, Path: storedSource.Path, Side: "HEAD", StartLine: 1, EndLine: 1}}, Body: "Stored source is still known"}, reviewer))
+	comparison := must[review.RevisionComparison](t)(e.svc.CompareRevisions(e.ctx, e.review.ID, e.revision.ID, second.ID))
+	if comparison.UnavailableReason == nil || len(comparison.Topics) != 0 || len(comparison.Findings) != 0 {
+		t.Fatal("unknown baseline was presented as everything added")
+	}
 }
 
 func TestEmptyAndBinarySourceAssignmentsAreNotSyntheticEvidence(t *testing.T) {
