@@ -17,7 +17,8 @@ func (s *Service) CreateReview(ctx context.Context, req CreateReviewRequest, act
 	if (req.WorkspaceID == "") == (req.WorkspacePath == "") {
 		return Review{}, invalid("provide exactly one of workspace_id or workspace_path")
 	}
-	if req.Title != "" && strings.TrimSpace(req.Title) == "" {
+	title := strings.TrimSpace(req.Title)
+	if req.Title != "" && title == "" {
 		return Review{}, invalid("review title must not be blank")
 	}
 	var candidate *WorkspaceCandidate
@@ -28,13 +29,12 @@ func (s *Service) CreateReview(ctx context.Context, req CreateReviewRequest, act
 			return Review{}, err
 		}
 		candidate = &resolved
-		repositories := append([]CreateRepositoryRequest{}, candidate.Repositories...)
 		if req.BaseRef != "" {
-			for i := range repositories {
-				repositories[i].BaseRef = req.BaseRef
+			for i := range candidate.Repositories {
+				candidate.Repositories[i].BaseRef = req.BaseRef
 			}
 		}
-		prepared, err = s.prepareWorkspace(ctx, CreateWorkspaceRequest{Name: candidate.Name, Repositories: repositories})
+		prepared, err = s.prepareWorkspace(ctx, CreateWorkspaceRequest{Name: candidate.Name, Repositories: candidate.Repositories})
 		if err != nil {
 			return Review{}, err
 		}
@@ -43,7 +43,7 @@ func (s *Service) CreateReview(ctx context.Context, req CreateReviewRequest, act
 		return Review{}, invalid("base_ref is only supported with workspace_path; existing workspace settings are not changed")
 	}
 	now := s.now()
-	r := Review{ID: store.NewID("rvw"), WorkspaceID: req.WorkspaceID, Title: strings.TrimSpace(req.Title), Description: req.Description,
+	r := Review{ID: store.NewID("rvw"), WorkspaceID: req.WorkspaceID, Title: title, Description: req.Description,
 		Status: "OPEN", CreatedAt: now, UpdatedAt: now}
 	err := s.db.Write(ctx, func(tx *sql.Tx) error {
 		if candidate != nil {

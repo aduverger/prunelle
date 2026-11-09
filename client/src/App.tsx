@@ -211,13 +211,14 @@ function ReviewLoader(props: {
   setPreferences: React.Dispatch<React.SetStateAction<Preferences>>;
 }) {
   const query = useReview(props.api, props.reviewID);
+  const placeholderMessage = query.error ? 'Review unavailable.' : 'Loading review…';
   return (
     <>
       <ErrorNotice error={query.error} />
       {query.data ? (
         <ReviewPage {...props} data={query.data} />
       ) : (
-        <Notice>{query.error ? 'Review unavailable.' : 'Loading review…'}</Notice>
+        <Notice>{placeholderMessage}</Notice>
       )}
     </>
   );

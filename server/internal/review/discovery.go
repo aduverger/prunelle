@@ -160,18 +160,18 @@ func (s *Service) ResolveReview(ctx context.Context, path string) (Review, error
 	if err != nil {
 		return Review{}, err
 	}
-	if candidate.WorkspaceID == nil {
+	var reviews []Review
+	if candidate.WorkspaceID != nil {
+		reviews, err = s.ListReviews(ctx, candidate.WorkspaceID)
+		if err != nil {
+			return Review{}, err
+		}
+	}
+	switch len(reviews) {
+	case 0:
 		return Review{}, invalid("workspace %s has no reviews; run prunelle review create first", candidate.Path)
-	}
-	reviews, err := s.ListReviews(ctx, candidate.WorkspaceID)
-	if err != nil {
-		return Review{}, err
-	}
-	if len(reviews) == 1 {
+	case 1:
 		return reviews[0], nil
-	}
-	if len(reviews) == 0 {
-		return Review{}, invalid("workspace %s has no reviews; run prunelle review create first", candidate.Path)
 	}
 	details := make([]string, len(reviews))
 	for i, review := range reviews {

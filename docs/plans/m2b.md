@@ -1,12 +1,22 @@
 # M2b — Automatic workspaces and context-aware CLI
 
-**Status: implemented and locally verified on `m2b-workspaces`; not yet committed or published.**
+**Status: implemented on `m2b-workspaces`; undergoing `/ship` simplification, validation and review. Not yet published.**
 
 Issue: [#5](https://github.com/aduverger/prunelle/issues/5). M2b precedes M3. M3b was independently authorized and has merged in [PR #7](https://github.com/aduverger/prunelle/pull/7).
 
 ## Required outcome
 
 From a supported workspace folder, start a review and capture without registering repositories or copying IDs. Use `workspace_root_paths` as workspace-parent directories. Discover only their immediate children; the configured roots are never workspaces. A child is either a Git repository or a folder containing immediate Git repositories. Preserve explicit IDs, immutable historical anchors, existing authentication/attribution and repository files.
+
+## Workspace intent for review and publication
+
+**User requirements and accepted decisions:** remove manual registration/repository enumeration and unnecessary ID copying from starting/capturing reviews. `workspace_root_paths` lists parent directories; discover only immediate children, never the configured roots themselves. Each candidate is one Git repository/worktree or its immediate member repositories. Infer creation from the actual invocation folder and infer capture only for the containing workspace's sole review; zero/multiple reviews must not select an unrelated review. Explicit IDs remain usable from elsewhere. Unused candidates stay out of ordinary navigation but can start their first review. Deletion hard-deletes workspace-owned Prunelle history/content, never project files, Git history or runtime processes. Preserve immutable historical anchors, attribution/human-only decisions, explicit independent retries and in-memory draft safety.
+
+**Accepted scope and operational assumptions:** discovery/context are evaluated on the server filesystem; install/run the CLI from the user's actual project directory, without translating Mac paths or changing to the Prunelle source module. Creation and capture remain separate explicit operations. Retain the existing Go/Linux-first, pure-Go SQLite/single-writer, API-only loopback/Tailscale and React/MyGo architecture. Tests use disposable repositories/storage and disconnected/fake Rex, never user worktrees or live sessions. Native Mac launch/signing, live-tailnet streaming and capacity performance remain unverified. Rejected approaches are recursive depth-zero/one/two discovery, a separate namespace-exclusion setting, and the `workspace_search_paths` name. No archive, auto-fetch/branch switching, filesystem deletion, runtime control, persistent draft/outbox, automatic write retry, source editor or M3 comparison/re-anchoring is introduced.
+
+**Agent choices, not additional user requirements:** optional titles default to the workspace name; existing base-ref/untracked defaults remain, with an initial override. Preserve manual/legacy explicit-ID forms and uniquely matching registrations. Use nullable unique folder identity and atomic registration/first-review creation; retain registered membership and reject changes instead of automatically reconciling them. Reject the obsolete configuration key with guidance. Keep administration in the CLI, preserve selected-review drafts after deletion, and scope completed receipts to support hard deletion without damaging unrelated retries. These choices are preserved for review, not silently promoted into the user's requirements.
+
+**Review-disposition notes:** the membership-freeze/conflict policy is a potential usability mismatch with automatic discovery; the user did not request immutable workspace membership. Obsolete-key rejection is an agent-selected upgrade policy, not an explicitly requested compatibility rule. Hard deletion retains one deletion notification and body-less unknown-outcome claims; review these protocol exceptions against "all Prunelle-related stuff" rather than weakening retry safety or silently changing deletion behavior. The generated TypeScript creation type currently reduces the required-ID/path `oneOf` to `unknown | unknown`; server validation still enforces exclusivity, but static client enforcement is a review gap. None of these behaviors is removed or fixed in simplification.
 
 ## Approved product decisions
 
@@ -130,6 +140,25 @@ Hard deletion, immediate-child-only discovery and the `workspace_root_paths` nam
 - Native Linux MyGo/WebKit smoke passed with bundled production UI, official Go-backed REST/SSE, actual Highlights, Pierre tree navigation, exact stored inline anchors and review decision UI. Browser and native suites ran with ambient Git author/committer variables unset, global/system configuration disabled and `user.useConfigOnly=true`; no OS identity inference masked fixture setup.
 - Initial new-browser failures were test setup mistakes (a `<summary>` queried as a button and a response predicate missing Vite's `/api` prefix), corrected to the existing public summary interaction and actual transport URL. No application behavior or assertions were weakened. An initial new-domain setup used a nonexistent database directory; it now uses its own existing temporary directory.
 - No test listeners remained on 17391/15173. Tests used temporary workspaces/storage and a disconnected/fake Rex backend, not user repositories or live sessions.
+
+## `/ship` simplification pass
+
+Reviewed the complete rebased branch against the intent above and the existing CLI → generated API → review domain → SQLite/event path, including the registered-workspace/session consumers, generated contracts and draft controllers. No repository-local or ancestor `AGENTS.md`/`CLAUDE.md` adds instructions to the existing workspace guidance. Only listed files were edited; tests and public contracts were left unchanged for the following Test/review phases.
+
+### Simplification decisions — least confident first
+
+1. **Use the fresh candidate's repository slice directly.** `resolveWorkspace` constructs a new candidate for each request and shares no discovery cache. Initial base-ref overrides only change that local candidate; registration matching uses canonical paths, not base-ref defaults. Remove the second slice representation rather than adding a preparation/registration abstraction. Git validation remains outside the write transaction and the match is still rechecked inside it.
+2. **Have one zero-review error path.** Load reviews only when a matching registration exists, then select zero/one/many in the same domain function. An unregistered candidate still makes no global review query; existing error messages/details and explicit selection behavior stay intact.
+3. **Normalize the title once and flatten the loader placeholder conditional.** Reuse the trimmed title and a named loading/unavailable message. This changes no defaulting, validation, rendering, selected-review identity or draft lifetime.
+4. **Retain mechanisms with concrete safety requirements.** The nullable unique folder identity and shared prepare/insert path prevent duplicate registration while preserving released manual registrations. Receipt ownership/backfill/cascade and the late-completion guard prevent deleted text from reappearing through replay without clearing unrelated retries. Dependency-ordered deletion, shared-blob reference checks and root revalidation protect actual data/filesystem boundaries. Removing them would change observable guarantees, not merely simplify architecture. No watchers, generic cascade engine, extra UI or persistence framework was added.
+
+### Simplification validation
+
+- `cd server && go vet ./internal/review ./internal/httpapi ./internal/store ./internal/config ./cmd/prunelle && go test -race -count=1 ./internal/review ./internal/httpapi ./internal/store ./internal/config ./cmd/prunelle` — passed, including real CLI create/capture, concurrency, ambiguity, rollback/deletion/recreation and receipt scope/late-completion regressions.
+- `cd client && pnpm format:check && pnpm lint && pnpm test && pnpm build` — passed; both model tests and the typechecked production build succeeded. Existing chunk-size warnings remain visible.
+- Existing `tests/workspaces.spec.ts` under real Playwright/server/Vite with ambient Git identity unset, global/system config disabled and `user.useConfigOnly=true` — **4/4 passed**: unused-candidate creation and code/reply/decision draft retention, failed writes and guarded navigation after deletion.
+- Go/TypeScript generation repeated with before/after SHA-256 checks — both generated files remained byte-identical. Changed Go files, plan formatting and `git diff --check` passed; only the three source files and this ledger changed, with no commit made and no test listeners left running.
+- Broader browser/native/Mac/live-tailnet results above are prior implementation evidence, not newly rerun checks in this focused pass. Test curation and independent review remain next. The intent/disposition notes above explicitly preserve agent-added product choices rather than silently remove them.
 
 ### Remaining verification/release prerequisites
 
