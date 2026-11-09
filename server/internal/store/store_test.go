@@ -52,12 +52,12 @@ func TestReaderCannotWrite(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer db.Close()
-	if _, err := db.Reader().ExecContext(ctx, `INSERT INTO workspaces (id, name, created_at, updated_at) VALUES ('ws_1', 'x', 'now', 'now')`); err == nil || !strings.Contains(err.Error(), "readonly") {
+	if _, err := db.Reader().ExecContext(ctx, `INSERT INTO reviews (id, title, description, status, created_at, updated_at) VALUES ('rvw_1', 'x', '', 'OPEN', 'now', 'now')`); err == nil || !strings.Contains(err.Error(), "readonly") {
 		t.Fatalf("reader connection must reject a valid write as readonly: %v", err)
 	}
 }
 
-func TestWorkspaceMigrationScopesExistingReceipts(t *testing.T) {
+func TestReviewMigrationScopesExistingReceipts(t *testing.T) {
 	ctx := context.Background()
 	dir := t.TempDir()
 	legacy, err := sql.Open("sqlite", dsn(filepath.Join(dir, fileName)))
@@ -92,7 +92,7 @@ func TestWorkspaceMigrationScopesExistingReceipts(t *testing.T) {
 	defer db.Close()
 	for _, key := range []string{"review", "import"} {
 		var owner string
-		if err := db.Reader().QueryRowContext(ctx, `SELECT workspace_id FROM idempotency_keys WHERE key = ?`, key).Scan(&owner); err != nil || owner != "ws_legacy" {
+		if err := db.Reader().QueryRowContext(ctx, `SELECT review_id FROM idempotency_keys WHERE key = ?`, key).Scan(&owner); err != nil || owner != "rvw_legacy" {
 			t.Fatalf("legacy %s receipt owner = %q: %v", key, owner, err)
 		}
 	}

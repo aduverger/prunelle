@@ -4,60 +4,48 @@ import "time"
 
 // These types are the API wire format; api/openapi.yaml maps its schemas to them.
 
-type Workspace struct {
-	ID           string       `json:"id"`
-	Name         string       `json:"name"`
-	RootPath     *string      `json:"root_path"`
-	Repositories []Repository `json:"repositories"`
-	CreatedAt    time.Time    `json:"created_at"`
-	UpdatedAt    time.Time    `json:"updated_at"`
-}
-
 type Repository struct {
 	ID               string `json:"id"`
-	WorkspaceID      string `json:"workspace_id"`
+	ReviewID         string `json:"review_id"`
 	Label            string `json:"label"`
 	RootPath         string `json:"root_path"`
-	BaseRef          string `json:"base_ref"`
 	IncludeUntracked bool   `json:"include_untracked"`
-}
-
-type CreateWorkspaceRequest struct {
-	Name         string                    `json:"name"`
-	Repositories []CreateRepositoryRequest `json:"repositories"`
 }
 
 type CreateRepositoryRequest struct {
 	Label            string `json:"label"`
 	Path             string `json:"path"`
-	BaseRef          string `json:"base_ref"`
 	IncludeUntracked *bool  `json:"include_untracked,omitempty"`
 }
 
 type Review struct {
-	ID                string    `json:"id"`
-	WorkspaceID       string    `json:"workspace_id"`
-	Title             string    `json:"title"`
-	Description       string    `json:"description"`
-	Status            string    `json:"status"`
-	CurrentRevisionID *string   `json:"current_revision_id"`
-	CreatedAt         time.Time `json:"created_at"`
-	UpdatedAt         time.Time `json:"updated_at"`
-}
-
-type WorkspaceCandidate struct {
-	Path         string                    `json:"path"`
-	Name         string                    `json:"name"`
-	Repositories []CreateRepositoryRequest `json:"repositories"`
-	WorkspaceID  *string                   `json:"workspace_id"`
+	ID                string       `json:"id"`
+	ContextPath       *string      `json:"context_path"`
+	Repositories      []Repository `json:"repositories"`
+	Title             string       `json:"title"`
+	Description       string       `json:"description"`
+	Status            string       `json:"status"`
+	CurrentRevisionID *string      `json:"current_revision_id"`
+	CreatedAt         time.Time    `json:"created_at"`
+	UpdatedAt         time.Time    `json:"updated_at"`
 }
 
 type CreateReviewRequest struct {
-	WorkspaceID   string `json:"workspace_id,omitempty"`
-	WorkspacePath string `json:"workspace_path,omitempty"`
-	BaseRef       string `json:"base_ref,omitempty"`
-	Title         string `json:"title,omitempty"`
-	Description   string `json:"description"`
+	Path         string                    `json:"path,omitempty"`
+	InferContext bool                      `json:"infer_context,omitempty"`
+	Repositories []CreateRepositoryRequest `json:"repositories,omitempty"`
+	Title        string                    `json:"title,omitempty"`
+	Description  string                    `json:"description"`
+}
+
+type CaptureRequest struct {
+	BaseRef            string              `json:"base_ref,omitempty"`
+	RepositoryBaseRefs []RepositoryBaseRef `json:"repository_base_refs,omitempty"`
+}
+
+type RepositoryBaseRef struct {
+	RepositoryID string `json:"repository_id"`
+	BaseRef      string `json:"base_ref"`
 }
 
 type Revision struct {

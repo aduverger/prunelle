@@ -141,9 +141,9 @@ func (i *idempotency) complete(caller, key string, response storedResponse) erro
 	return i.db.Write(context.Background(), func(tx *sql.Tx) error {
 		// Deletion can commit after the mutation but before its receipt: do not cache deleted content.
 		_, err := tx.ExecContext(context.Background(), `UPDATE idempotency_keys SET status = ?, headers = ?, body = ?,
-			workspace_id = (SELECT workspace_id FROM resource_workspaces WHERE id = ?)
+			review_id = (SELECT review_id FROM resource_reviews WHERE id = ?)
 			WHERE caller = ? AND key = ? AND (? = ''
-				OR EXISTS (SELECT 1 FROM resource_workspaces WHERE id = ?)
+				OR EXISTS (SELECT 1 FROM resource_reviews WHERE id = ?)
 				OR EXISTS (SELECT 1 FROM runtime_sessions WHERE id = ?))`,
 			response.status, string(headers), response.body, id, caller, key, id, id, id)
 		return err

@@ -108,6 +108,12 @@ func (db *DB) migrate(ctx context.Context) error {
 		return fmt.Errorf("database schema version %d is newer than this server (%d)", version, len(migrations))
 	}
 	for i := version; i < len(migrations); i++ {
+		if i+1 == 5 {
+			if err := db.migrateReviewOwnership(ctx, migrations[i]); err != nil {
+				return fmt.Errorf("migration 5: %w", err)
+			}
+			continue
+		}
 		err := db.Write(ctx, func(tx *sql.Tx) error {
 			if _, err := tx.ExecContext(ctx, migrations[i]); err != nil {
 				return fmt.Errorf("migration %d: %w", i+1, err)

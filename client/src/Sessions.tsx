@@ -3,7 +3,7 @@ import { result, type API } from './api/client';
 import { useSubmit } from './hooks';
 import { ErrorNotice, Notice } from './Views';
 
-export function Sessions({ api, workspaceID }: { api: API; workspaceID: string }) {
+export function Sessions({ api, reviewID }: { api: API; reviewID: string }) {
   const query = useQuery({
     queryKey: ['sessions'],
     queryFn: async ({ signal }) => {
@@ -17,17 +17,17 @@ export function Sessions({ api, workspaceID }: { api: API; workspaceID: string }
   });
   const action = useSubmit();
   function toggleAssociation(runtimeID: string, linked: boolean) {
-    const params = { path: { workspaceId: workspaceID, runtimeSessionId: runtimeID } };
+    const params = { path: { reviewId: reviewID, runtimeSessionId: runtimeID } };
     return action.submit([runtimeID, linked], () => {
       if (linked) {
         return result(
-          api.DELETE('/v1/workspaces/{workspaceId}/runtime-sessions/{runtimeSessionId}', {
+          api.DELETE('/v1/reviews/{reviewId}/runtime-sessions/{runtimeSessionId}', {
             params,
           }),
         );
       }
       return result(
-        api.PUT('/v1/workspaces/{workspaceId}/runtime-sessions/{runtimeSessionId}', { params }),
+        api.PUT('/v1/reviews/{reviewId}/runtime-sessions/{runtimeSessionId}', { params }),
       );
     });
   }
@@ -55,10 +55,10 @@ export function Sessions({ api, workspaceID }: { api: API; workspaceID: string }
         </article>
       ))}
       {query.data?.runtimes.map((r) => {
-        const linked = r.workspace_ids.includes(workspaceID);
-        let associationLabel = 'Not associated with this workspace';
-        if (linked) associationLabel = 'Explicitly associated with this workspace';
-        else if (r.suggested_workspace_ids.includes(workspaceID)) {
+        const linked = r.review_ids.includes(reviewID);
+        let associationLabel = 'Not associated with this review';
+        if (linked) associationLabel = 'Explicitly associated with this review';
+        else if (r.suggested_review_ids.includes(reviewID)) {
           associationLabel = 'Suggested by working directory — not associated';
         }
         return (
@@ -92,7 +92,7 @@ export function Sessions({ api, workspaceID }: { api: API; workspaceID: string }
                 void toggleAssociation(r.id, linked);
               }}
             >
-              {linked ? 'Remove association' : 'Associate with workspace'}
+              {linked ? 'Remove association' : 'Associate with review'}
             </button>
           </article>
         );

@@ -18,7 +18,7 @@ func TestLateReceiptCannotRestoreDeletedContent(t *testing.T) {
 	}
 	defer db.Close()
 	if err := db.Write(ctx, func(tx *sql.Tx) error {
-		_, err := tx.ExecContext(ctx, `INSERT INTO workspaces (id, name, created_at, updated_at) VALUES ('ws_fixture', 'Private title', 'now', 'now')`)
+		_, err := tx.ExecContext(ctx, `INSERT INTO reviews (id, title, description, status, created_at, updated_at) VALUES ('rvw_fixture', 'Private title', '', 'OPEN', 'now', 'now')`)
 		return err
 	}); err != nil {
 		t.Fatal(err)
@@ -27,10 +27,10 @@ func TestLateReceiptCannotRestoreDeletedContent(t *testing.T) {
 	if _, err := cache.claim(ctx, "fixture", "create", "hash"); err != nil {
 		t.Fatal(err)
 	}
-	if err := review.NewService(db, nil).DeleteWorkspace(ctx, "ws_fixture", review.Actor{Author: review.Author{Kind: "HUMAN", ID: "fixture"}, Login: "fixture"}); err != nil {
+	if err := review.NewService(db, "main").DeleteReview(ctx, "rvw_fixture", review.Actor{Author: review.Author{Kind: "HUMAN", ID: "fixture"}, Login: "fixture"}); err != nil {
 		t.Fatal(err)
 	}
-	if err := cache.complete("fixture", "create", storedResponse{status: 201, headers: map[string]string{}, body: []byte(`{"id":"ws_fixture","name":"Private title"}`)}); err != nil {
+	if err := cache.complete("fixture", "create", storedResponse{status: 201, headers: map[string]string{}, body: []byte(`{"id":"rvw_fixture","title":"Private title"}`)}); err != nil {
 		t.Fatal(err)
 	}
 	var status sql.NullInt64

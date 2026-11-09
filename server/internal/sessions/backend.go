@@ -1,5 +1,5 @@
 // Package sessions discovers runtime sessions (processes, terminals) hosted by external session
-// backends such as Rex, and records their explicit association with workspaces. It knows nothing
+// backends such as Rex, and records their explicit association with reviews. It knows nothing
 // about agent conversations; see package agents.
 package sessions
 

@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"net/http/httptest"
 	"os"
 	"os/exec"
@@ -40,7 +39,7 @@ func TestCLIInfersActualInvocationDirectoryAndPreservesExplicitOverrides(t *test
 		t.Fatal(err)
 	}
 	defer db.Close()
-	svc := review.NewService(db, []string{root})
+	svc := review.NewService(db, "origin/main")
 	sessionSvc, err := sessions.NewService(ctx, db, svc, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -53,7 +52,7 @@ func TestCLIInfersActualInvocationDirectoryAndPreservesExplicitOverrides(t *test
 	defer server.Close()
 	outside := t.TempDir()
 	config := filepath.Join(outside, "config.toml")
-	if err := os.WriteFile(config, fmt.Appendf(nil, "workspace_root_paths = [%q]\n", root), 0o600); err != nil {
+	if err := os.WriteFile(config, []byte("[snapshot]\ndefault_base_ref = \"origin/main\"\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	binary := filepath.Join(t.TempDir(), "prunelle")
@@ -72,20 +71,20 @@ func TestCLIInfersActualInvocationDirectoryAndPreservesExplicitOverrides(t *test
 		}
 		return output
 	}
-	run(outside, true, "workspace", "ls", "--discover")
-	workspaces, err := svc.ListWorkspaces(ctx)
-	if err != nil || len(workspaces) != 0 {
-		t.Fatalf("discovery registered metadata: %+v, %v", workspaces, err)
+	run(outside, false, "workspace", "ls")
+	reviews, err := svc.ListReviews(ctx)
+	if err != nil || len(reviews) != 0 {
+		t.Fatalf("reviews created without a command: %+v %v", reviews, err)
 	}
 	noReviews := run(repos.API, false, "review", "capture")
-	if !strings.Contains(string(noReviews), "has no reviews") {
+	if !strings.Contains(string(noReviews), "no reviews") {
 		t.Fatalf("missing-context error = %s", noReviews)
 	}
 	var created review.Review
-	if err := json.Unmarshal(run(filepath.Join(repos.API, "src"), true, "review", "create", "--base-ref", "origin/main"), &created); err != nil {
+	if err := json.Unmarshal(run(filepath.Dir(repos.API), true, "review", "create"), &created); err != nil {
 		t.Fatal(err)
 	}
-	if created.Title != "feature" || created.WorkspaceID == "" {
+	if created.Title != "feature" || created.ContextPath == nil || len(created.Repositories) != 2 {
 		t.Fatalf("inferred creation = %+v", created)
 	}
 	var captured review.Revision
@@ -95,20 +94,34 @@ func TestCLIInfersActualInvocationDirectoryAndPreservesExplicitOverrides(t *test
 	if captured.ReviewID != created.ID || len(captured.Snapshots) != 2 || captured.Snapshots[0].BaseRef != "origin/main" {
 		t.Fatalf("inferred capture = %+v", captured)
 	}
-	if output := run(outside, false, "review", "capture"); !strings.Contains(string(output), "no workspace contains") {
+	if output := run(outside, false, "review", "capture"); !strings.Contains(string(output), "no reviews contain") {
 		t.Fatalf("outside cwd selected global review: %s", output)
 	}
-	run(outside, true, "review", "create", "--workspace", created.WorkspaceID, "Explicit review")
+	run(outside, true, "review", "create", "--path", filepath.Dir(repos.API), "Explicit review")
 	if output := run(repos.API, false, "review", "capture"); !strings.Contains(string(output), "multiple reviews") || !strings.Contains(string(output), created.ID) {
 		t.Fatalf("ambiguity error = %s", output)
 	}
 	run(outside, true, "review", "capture", created.ID)
-	run(outside, true, "review", "create", created.WorkspaceID, "Legacy form")
-	run(outside, false, "workspace", "delete", created.WorkspaceID)
+	run(outside, false, "review", "create", "--base-ref", "main", "Creation is not capture")
+	var manual review.Review
+	if err := json.Unmarshal(run(outside, true, "review", "create", "--repo", "api="+repos.API, "--repo", "worker="+repos.Worker, "Selected repositories"), &manual); err != nil {
+		t.Fatal(err)
+	}
+	if manual.ContextPath != nil || len(manual.Repositories) != 2 {
+		t.Fatalf("inline sources changed: %+v", manual)
+	}
+	var mixed review.Revision
+	if err := json.Unmarshal(run(outside, true, "review", "capture", "--repo-base-ref", manual.Repositories[0].ID+"=main", manual.ID), &mixed); err != nil {
+		t.Fatal(err)
+	}
+	if mixed.Snapshots[0].BaseRef != "main" || mixed.Snapshots[1].BaseRef != "origin/main" {
+		t.Fatalf("CLI overrides lost: %+v", mixed.Snapshots)
+	}
+	run(outside, false, "review", "delete", created.ID)
 	if _, err := svc.GetReview(ctx, created.ID); err != nil {
 		t.Fatalf("unconfirmed deletion changed data: %v", err)
 	}
-	run(outside, true, "workspace", "delete", "--yes", created.WorkspaceID)
+	run(outside, true, "review", "delete", "--yes", created.ID)
 	if _, err := svc.GetReview(ctx, created.ID); err == nil {
 		t.Fatal("confirmed deletion retained review")
 	}
@@ -116,9 +129,9 @@ func TestCLIInfersActualInvocationDirectoryAndPreservesExplicitOverrides(t *test
 	if err := json.Unmarshal(run(filepath.Dir(repos.API), true, "review", "create", "Fresh review"), &fresh); err != nil {
 		t.Fatal(err)
 	}
-	if fresh.WorkspaceID == created.WorkspaceID {
-		t.Fatal("recreation reused deleted workspace")
+	if fresh.ID == created.ID {
+		t.Fatal("recreation reused deleted review")
 	}
-	run(outside, true, "workspace", "delete", "--yes", created.WorkspaceID)
-	run(repos.API, true, "review", "capture")
+	run(outside, true, "review", "delete", "--yes", created.ID)
+	run(repos.API, true, "review", "capture", "--base-ref", "main", fresh.ID)
 }

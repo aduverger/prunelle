@@ -7,9 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"path/filepath"
 	"slices"
-	"strings"
 	"sync"
 	"time"
 
@@ -24,16 +22,16 @@ type Registration struct {
 	Backend Backend
 }
 
-// WorkspaceDirectory reads workspaces; review.Service implements it.
-type WorkspaceDirectory interface {
-	ListWorkspaces(ctx context.Context) ([]review.Workspace, error)
-	GetWorkspace(ctx context.Context, id string) (review.Workspace, error)
+// ReviewDirectory reads reviews; review.Service implements it.
+type ReviewDirectory interface {
+	ListReviews(ctx context.Context) ([]review.Review, error)
+	GetReview(ctx context.Context, id string) (review.Review, error)
 }
 
 type Service struct {
-	db         *store.DB
-	workspaces WorkspaceDirectory
-	now        func() time.Time
+	db      *store.DB
+	reviews ReviewDirectory
+	now     func() time.Time
 
 	mu       sync.Mutex
 	backends []*backendState // enabled backends, in configuration order
@@ -47,8 +45,8 @@ type backendState struct {
 
 // NewService records registrations as session backends (disabling stored backends no longer
 // configured) and marks every runtime not yet re-observed as UNKNOWN.
-func NewService(ctx context.Context, db *store.DB, workspaces WorkspaceDirectory, registrations []Registration) (*Service, error) {
-	s := &Service{db: db, workspaces: workspaces, now: func() time.Time { return time.Now().UTC() }}
+func NewService(ctx context.Context, db *store.DB, reviews ReviewDirectory, registrations []Registration) (*Service, error) {
+	s := &Service{db: db, reviews: reviews, now: func() time.Time { return time.Now().UTC() }}
 	now := store.FormatTime(s.now())
 	err := db.Write(ctx, func(tx *sql.Tx) error {
 		if _, err := tx.ExecContext(ctx, `UPDATE session_backends SET enabled = 0, updated_at = ?`, now); err != nil {
@@ -307,16 +305,16 @@ func (s *Service) ListBackends(ctx context.Context) ([]SessionBackend, error) {
 const runtimeColumns = `r.id, r.backend_id, b.kind, r.external_id, r.state, r.label, r.cwd, r.process, r.local, r.harness_hint,
 	r.metadata, r.first_seen_at, r.last_seen_at, r.state_changed_at`
 
-// ListRuntimeSessions returns runtimes, only those associated with workspaceID when set.
-func (s *Service) ListRuntimeSessions(ctx context.Context, workspaceID *string) ([]RuntimeSession, error) {
+// ListRuntimeSessions returns runtimes, only those associated with reviewID when set.
+func (s *Service) ListRuntimeSessions(ctx context.Context, reviewID *string) ([]RuntimeSession, error) {
 	query := `SELECT ` + runtimeColumns + ` FROM runtime_sessions r JOIN session_backends b ON b.id = r.backend_id`
 	var args []any
-	if workspaceID != nil {
-		if _, err := s.workspaces.GetWorkspace(ctx, *workspaceID); err != nil {
+	if reviewID != nil {
+		if _, err := s.reviews.GetReview(ctx, *reviewID); err != nil {
 			return nil, err
 		}
-		query += ` JOIN workspace_runtime_sessions w ON w.runtime_session_id = r.id WHERE w.workspace_id = ?`
-		args = append(args, *workspaceID)
+		query += ` JOIN review_runtime_sessions w ON w.runtime_session_id = r.id WHERE w.review_id = ?`
+		args = append(args, *reviewID)
 	}
 	query += ` ORDER BY r.state = 'STOPPED', r.label, r.id`
 	runtimes, err := s.queryRuntimes(ctx, query, args...)
@@ -366,55 +364,49 @@ func (s *Service) queryRuntimes(ctx context.Context, query string, args ...any) 
 	return runtimes, rows.Err()
 }
 
-// addAssociations fills explicit workspace associations and suggestions: a local runtime whose
-// working directory lies inside a workspace repository suggests that workspace.
+// Working-directory matches are suggestions only; runtime associations remain explicit.
 func (s *Service) addAssociations(ctx context.Context, runtimes []RuntimeSession) error {
 	if len(runtimes) == 0 {
 		return nil
 	}
-	workspaces, err := s.workspaces.ListWorkspaces(ctx)
+	reviews, err := s.reviews.ListReviews(ctx)
 	if err != nil {
 		return err
 	}
 	for i := range runtimes {
 		r := &runtimes[i]
-		r.WorkspaceIDs, err = queryIDs(ctx, s.db.Reader(), `SELECT workspace_id FROM workspace_runtime_sessions
-			WHERE runtime_session_id = ? ORDER BY workspace_id`, r.ID)
+		r.ReviewIDs, err = queryIDs(ctx, s.db.Reader(), `SELECT review_id FROM review_runtime_sessions
+			WHERE runtime_session_id = ? ORDER BY review_id`, r.ID)
 		if err != nil {
 			return err
 		}
-		r.SuggestedWorkspaceIDs = []string{}
+		r.SuggestedReviewIDs = []string{}
 		if !r.Local || r.Cwd == nil {
 			continue
 		}
-		for _, ws := range workspaces {
-			if slices.Contains(r.WorkspaceIDs, ws.ID) {
+		for _, candidate := range reviews {
+			if slices.Contains(r.ReviewIDs, candidate.ID) {
 				continue
 			}
-			if slices.ContainsFunc(ws.Repositories, func(repo review.Repository) bool { return within(*r.Cwd, repo.RootPath) }) {
-				r.SuggestedWorkspaceIDs = append(r.SuggestedWorkspaceIDs, ws.ID)
+			if candidate.ContainsRepositoryPath(*r.Cwd) {
+				r.SuggestedReviewIDs = append(r.SuggestedReviewIDs, candidate.ID)
 			}
 		}
 	}
 	return nil
 }
 
-func within(path, root string) bool {
-	rel, err := filepath.Rel(root, filepath.Clean(path))
-	return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) && !filepath.IsAbs(rel)
-}
-
-// Associate links a runtime session to a workspace. Repeating it is harmless.
-func (s *Service) Associate(ctx context.Context, workspaceID, runtimeID string) (RuntimeSession, error) {
-	if _, err := s.workspaces.GetWorkspace(ctx, workspaceID); err != nil {
+// Associate links a runtime session to a review. Repeating it is harmless.
+func (s *Service) Associate(ctx context.Context, reviewID, runtimeID string) (RuntimeSession, error) {
+	if _, err := s.reviews.GetReview(ctx, reviewID); err != nil {
 		return RuntimeSession{}, err
 	}
 	if _, err := s.GetRuntimeSession(ctx, runtimeID); err != nil {
 		return RuntimeSession{}, err
 	}
 	err := s.db.Write(ctx, func(tx *sql.Tx) error {
-		_, err := tx.ExecContext(ctx, `INSERT INTO workspace_runtime_sessions (workspace_id, runtime_session_id, created_at)
-			VALUES (?, ?, ?) ON CONFLICT DO NOTHING`, workspaceID, runtimeID, store.FormatTime(s.now()))
+		_, err := tx.ExecContext(ctx, `INSERT INTO review_runtime_sessions (review_id, runtime_session_id, created_at)
+			VALUES (?, ?, ?) ON CONFLICT DO NOTHING`, reviewID, runtimeID, store.FormatTime(s.now()))
 		return err
 	})
 	if err != nil {
@@ -423,17 +415,17 @@ func (s *Service) Associate(ctx context.Context, workspaceID, runtimeID string) 
 	return s.GetRuntimeSession(ctx, runtimeID)
 }
 
-// Dissociate removes a workspace association; removing a missing one is harmless.
-func (s *Service) Dissociate(ctx context.Context, workspaceID, runtimeID string) error {
-	if _, err := s.workspaces.GetWorkspace(ctx, workspaceID); err != nil {
+// Dissociate removes a review association; removing a missing one is harmless.
+func (s *Service) Dissociate(ctx context.Context, reviewID, runtimeID string) error {
+	if _, err := s.reviews.GetReview(ctx, reviewID); err != nil {
 		return err
 	}
 	if _, err := s.GetRuntimeSession(ctx, runtimeID); err != nil {
 		return err
 	}
 	return s.db.Write(ctx, func(tx *sql.Tx) error {
-		_, err := tx.ExecContext(ctx, `DELETE FROM workspace_runtime_sessions WHERE workspace_id = ? AND runtime_session_id = ?`,
-			workspaceID, runtimeID)
+		_, err := tx.ExecContext(ctx, `DELETE FROM review_runtime_sessions WHERE review_id = ? AND runtime_session_id = ?`,
+			reviewID, runtimeID)
 		return err
 	})
 }

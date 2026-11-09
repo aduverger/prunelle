@@ -2,7 +2,6 @@ package git
 
 import (
 	"context"
-	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -276,32 +275,19 @@ func TestResolveRoot(t *testing.T) {
 	r := newTestRepo(t)
 	r.write("sub/a.txt", "a\n")
 	r.commitAll("base")
-	allowed := filepath.Dir(r.root)
-
-	got, err := ResolveRoot(ctx, filepath.Join(r.root, "sub"), []string{allowed})
+	got, err := ResolveRoot(ctx, filepath.Join(r.root, "sub"))
 	if err != nil || got != r.root {
 		t.Fatalf("ResolveRoot(sub) = %q, %v", got, err)
 	}
-	if _, err := ResolveRoot(ctx, r.root, nil); !errors.Is(err, ErrOutsideAllowedRoots) {
-		t.Fatalf("no allowed roots: %v", err)
-	}
-	other := t.TempDir()
-	if _, err := ResolveRoot(ctx, r.root, []string{other}); !errors.Is(err, ErrOutsideAllowedRoots) {
-		t.Fatalf("outside allowed root: %v", err)
-	}
-	link := filepath.Join(other, "link")
+	link := filepath.Join(t.TempDir(), "link")
 	if err := os.Symlink(r.root, link); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := ResolveRoot(ctx, link, []string{other}); !errors.Is(err, ErrOutsideAllowedRoots) {
-		t.Fatalf("symlink escape: %v", err)
+	if got, err := ResolveRoot(ctx, link); err != nil || got != r.root {
+		t.Fatalf("canonical alias = %q, %v", got, err)
 	}
-	notRepo := filepath.Join(allowed, "plain")
-	if err := os.Mkdir(notRepo, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := ResolveRoot(ctx, notRepo, []string{notRepo}); err == nil {
-		t.Fatal("expected error for non-repository")
+	if _, err := ResolveRoot(ctx, t.TempDir()); err == nil {
+		t.Fatal("non-repository source accepted")
 	}
 }
 

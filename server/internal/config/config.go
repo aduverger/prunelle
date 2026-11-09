@@ -11,16 +11,21 @@ import (
 	"strings"
 
 	"github.com/BurntSushi/toml"
+	"github.com/aduverger/prunelle/server/internal/git"
 )
 
 const DefaultListen = "127.0.0.1:7390"
 
 type Config struct {
-	Listen             string           `toml:"listen"`
-	DataDir            string           `toml:"data_dir"`
-	WorkspaceRootPaths []string         `toml:"workspace_root_paths"`
-	AllowedLogins      []string         `toml:"allowed_logins"`
-	SessionBackends    []SessionBackend `toml:"session_backends"`
+	Listen          string           `toml:"listen"`
+	DataDir         string           `toml:"data_dir"`
+	Snapshot        Snapshot         `toml:"snapshot"`
+	AllowedLogins   []string         `toml:"allowed_logins"`
+	SessionBackends []SessionBackend `toml:"session_backends"`
+}
+
+type Snapshot struct {
+	DefaultBaseRef string `toml:"default_base_ref"`
 }
 
 // SessionBackend configures an external session provider. Only REX is implemented.
@@ -49,14 +54,17 @@ func Load(path string) (Config, error) {
 	if err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return Config{}, fmt.Errorf("read config %s: %w", path, err)
 	}
-	if metadata.IsDefined("allowed_roots") {
-		return Config{}, errors.New("allowed_roots was replaced by workspace_root_paths: configure the parent directories whose immediate children are workspaces")
+	if metadata.IsDefined("allowed_roots") || metadata.IsDefined("workspace_root_paths") || metadata.IsDefined("workspace") {
+		return Config{}, errors.New("workspace configuration was retired: remove root lists and use [snapshot].default_base_ref; authenticated callers can review any server-readable Git source")
+	}
+	if !metadata.IsDefined("snapshot", "default_base_ref") {
+		cfg.Snapshot.DefaultBaseRef = "main"
+	}
+	if err := git.ValidateRef(cfg.Snapshot.DefaultBaseRef); err != nil {
+		return Config{}, fmt.Errorf("snapshot.default_base_ref: %w", err)
 	}
 	home, _ := os.UserHomeDir()
 	cfg.DataDir = expandHome(cfg.DataDir, home)
-	for i, root := range cfg.WorkspaceRootPaths {
-		cfg.WorkspaceRootPaths[i] = expandHome(root, home)
-	}
 	if cfg.Listen == "" {
 		cfg.Listen = DefaultListen
 	}

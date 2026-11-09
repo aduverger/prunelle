@@ -44,16 +44,12 @@ func newEnv(t *testing.T) *env {
 	if err != nil {
 		t.Fatal(err)
 	}
-	svc := review.NewService(db, []string{reposDir})
-	ws, err := svc.CreateWorkspace(ctx, fixture.WorkspaceRequest(repos), reviewer)
+	svc := review.NewService(db, "main")
+	rv, err := svc.CreateReview(ctx, fixture.ReviewRequest(repos), reviewer)
 	if err != nil {
 		t.Fatal(err)
 	}
-	rv, err := svc.CreateReview(ctx, review.CreateReviewRequest{WorkspaceID: ws.ID, Title: fixture.ReviewTitle}, reviewer)
-	if err != nil {
-		t.Fatal(err)
-	}
-	revision, err := svc.CaptureRevision(ctx, rv.ID, reviewer)
+	revision, err := svc.CaptureRevision(ctx, rv.ID, review.CaptureRequest{}, reviewer)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -291,7 +287,7 @@ func TestOldRevisionKeepsItsContentAfterWorktreeChanges(t *testing.T) {
 	if err := os.WriteFile(upload, []byte("// rewritten\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	second, err := e.svc.CaptureRevision(e.ctx, e.review.ID, reviewer)
+	second, err := e.svc.CaptureRevision(e.ctx, e.review.ID, review.CaptureRequest{}, reviewer)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -366,20 +362,15 @@ func TestImportRejectsInvalidManifestWithoutWriting(t *testing.T) {
 	}
 }
 
-func TestCreateWorkspaceRejectsRepositoryOutsideAllowedRoots(t *testing.T) {
+func TestCreateReviewRejectsNonRepositorySource(t *testing.T) {
 	e := newEnv(t)
-	req := fixture.WorkspaceRequest(e.repos)
-	req.Repositories[0].Path = t.TempDir()
-	_, err := e.svc.CreateWorkspace(e.ctx, req, reviewer)
-	var reviewErr *review.Error
-	if !errors.As(err, &reviewErr) || reviewErr.Code != review.CodeInvalidArgument || !strings.Contains(err.Error(), "allowed roots") {
-		t.Fatalf("err = %v", err)
-	}
+	_, err := e.svc.CreateReview(e.ctx, review.CreateReviewRequest{Repositories: []review.CreateRepositoryRequest{{Label: "invalid", Path: t.TempDir()}}}, reviewer)
+	expectError(t, err, review.CodeInvalidArgument, "repository invalid")
 }
 
 func TestImportRequiresARevisionOfTheSameReview(t *testing.T) {
 	e := newEnv(t)
-	other, err := e.svc.CreateReview(e.ctx, review.CreateReviewRequest{WorkspaceID: e.review.WorkspaceID, Title: "Other"}, reviewer)
+	other, err := e.svc.CreateReview(e.ctx, review.CreateReviewRequest{Path: *e.review.ContextPath, Title: "Other"}, reviewer)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -399,7 +390,7 @@ func TestEmptyFileHasEmptyContentNotMissingContent(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(e.repos.Worker, "worker", "__init__.py"), nil, 0o644); err != nil {
 		t.Fatal(err)
 	}
-	revision, err := e.svc.CaptureRevision(e.ctx, e.review.ID, reviewer)
+	revision, err := e.svc.CaptureRevision(e.ctx, e.review.ID, review.CaptureRequest{}, reviewer)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -421,7 +412,7 @@ func TestCaptureOverRevisionLimitFailsWithoutStoringARevision(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	_, err := e.svc.CaptureRevision(e.ctx, e.review.ID, reviewer)
+	_, err := e.svc.CaptureRevision(e.ctx, e.review.ID, review.CaptureRequest{}, reviewer)
 	var reviewErr *review.Error
 	if !errors.As(err, &reviewErr) || reviewErr.Code != review.CodeCaptureFailed {
 		t.Fatalf("err = %v", err)

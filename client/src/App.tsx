@@ -71,10 +71,6 @@ export function App() {
     queryKey: ['reviews'],
     queryFn: ({ signal }) => result(api.GET('/v1/reviews', { signal })),
   });
-  const workspaces = useQuery({
-    queryKey: ['workspaces'],
-    queryFn: ({ signal }) => result(api.GET('/v1/workspaces', { signal })),
-  });
   useEffect(() => {
     try {
       localStorage.setItem('prunelle.preferences', JSON.stringify(preferences));
@@ -128,7 +124,6 @@ export function App() {
           )}
           {reviews.data?.map((r) => (
             <option key={r.id} value={r.id}>
-              {workspaces.data?.find((w) => w.id === r.workspace_id)?.name || r.workspace_id} /{' '}
               {r.title}
             </option>
           ))}
@@ -190,7 +185,7 @@ export function App() {
           <Notice>
             {reviews.isPending
               ? 'Connecting to the review server…'
-              : 'No reviews yet. From a workspace folder on the server, run prunelle review create, then prunelle review capture.'}
+              : 'No reviews yet. From a source folder on the server, run prunelle review create, then prunelle review capture.'}
           </Notice>
           {!desktop && (
             <p>
@@ -427,8 +422,8 @@ function ReviewPage({
           </summary>
           {revision.snapshots.map((s) => (
             <div key={s.repository_id}>
-              <strong>{s.repository_label}</strong> · {s.branch} · {s.base_sha.slice(0, 8)} →{' '}
-              {s.head_sha.slice(0, 8)} · {s.file_count} files
+              <strong>{s.repository_label}</strong> · {s.branch} · {s.base_ref} ·{' '}
+              {s.base_sha.slice(0, 8)} → {s.head_sha.slice(0, 8)} · {s.file_count} files
               {s.warnings.map((w, i) => (
                 <p className="error" key={i}>
                   {w}
@@ -550,6 +545,9 @@ function ReviewPage({
         <div>
           <div className="eyebrow">FEATURE REVIEW · {data.review.status}</div>
           <h1>{data.review.title}</h1>
+          <small>
+            {data.review.repositories.map((repository) => repository.label).join(' · ')}
+          </small>
         </div>
         <div className="spacer" />
         <label className="compact">
@@ -890,7 +888,7 @@ function ReviewPage({
         title="Settings · Integrations"
         close={() => setPanel(null)}
       >
-        {panel === 'sessions' && <Sessions api={api} workspaceID={data.review.workspace_id} />}
+        {panel === 'sessions' && <Sessions api={api} reviewID={data.review.id} />}
       </ReviewDialog>
     </DiscussionProvider>
   );

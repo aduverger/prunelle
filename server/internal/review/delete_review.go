@@ -6,17 +6,17 @@ import (
 	"errors"
 )
 
-const workspaceDeletionScope = `WITH
-	owned_reviews AS (SELECT id FROM reviews WHERE workspace_id = ?1),
+const reviewDeletionScope = `WITH
+	owned_reviews AS (SELECT id FROM reviews WHERE id = ?1),
 	owned_revisions AS (SELECT id FROM revisions WHERE review_id IN (SELECT id FROM owned_reviews)),
 	owned_topics AS (SELECT id FROM topics WHERE review_id IN (SELECT id FROM owned_reviews)),
 	owned_discussions AS (SELECT id FROM discussions WHERE review_id IN (SELECT id FROM owned_reviews)),
 	owned_decisions AS (SELECT id FROM decisions WHERE review_id IN (SELECT id FROM owned_reviews)) `
 
-func (s *Service) DeleteWorkspace(ctx context.Context, id string, actor Actor) error {
+func (s *Service) DeleteReview(ctx context.Context, id string, actor Actor) error {
 	return s.db.Write(ctx, func(tx *sql.Tx) error {
 		var exists int
-		err := tx.QueryRowContext(ctx, `SELECT 1 FROM workspaces WHERE id = ?`, id).Scan(&exists)
+		err := tx.QueryRowContext(ctx, `SELECT 1 FROM reviews WHERE id = ?`, id).Scan(&exists)
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil
 		}
@@ -48,18 +48,24 @@ func (s *Service) DeleteWorkspace(ctx context.Context, id string, actor Actor) e
 			`DELETE FROM intents WHERE review_id IN (SELECT id FROM owned_reviews)`,
 			`DELETE FROM topics WHERE review_id IN (SELECT id FROM owned_reviews)`,
 			`DELETE FROM imports WHERE review_id IN (SELECT id FROM owned_reviews)`,
-			`UPDATE reviews SET current_revision_id = NULL WHERE workspace_id = ?1`,
+			`UPDATE reviews SET current_revision_id = NULL WHERE id = ?1`,
 			`DELETE FROM snapshot_files WHERE snapshot_id IN (SELECT id FROM repo_snapshots WHERE revision_id IN (SELECT id FROM owned_revisions))`,
 			`DELETE FROM repo_snapshots WHERE revision_id IN (SELECT id FROM owned_revisions)`,
 			`DELETE FROM revisions WHERE review_id IN (SELECT id FROM owned_reviews)`,
-			`DELETE FROM reviews WHERE workspace_id = ?1`,
-			`DELETE FROM repositories WHERE workspace_id = ?1`,
-			`DELETE FROM workspace_runtime_sessions WHERE workspace_id = ?1`,
-			`DELETE FROM workspaces WHERE id = ?1`,
+			`DELETE FROM review_runtime_sessions WHERE review_id = ?1`,
+			`DELETE FROM review_repositories WHERE review_id = ?1`,
+			`DELETE FROM reviews WHERE id = ?1`,
 		} {
-			if _, err := tx.ExecContext(ctx, workspaceDeletionScope+query, id); err != nil {
+			if _, err := tx.ExecContext(ctx, reviewDeletionScope+query, id); err != nil {
 				return err
 			}
+		}
+		if _, err := tx.ExecContext(ctx, `DELETE FROM repositories WHERE
+			NOT EXISTS (SELECT 1 FROM review_repositories WHERE repository_id = repositories.id)
+			AND NOT EXISTS (SELECT 1 FROM repo_snapshots WHERE repository_id = repositories.id)
+			AND NOT EXISTS (SELECT 1 FROM evidence_code_ranges WHERE repository_id = repositories.id)
+			AND NOT EXISTS (SELECT 1 FROM discussion_code_ranges WHERE repository_id = repositories.id)`); err != nil {
+			return err
 		}
 		if _, err := tx.ExecContext(ctx, `DELETE FROM blobs WHERE
 			NOT EXISTS (SELECT 1 FROM snapshot_files WHERE base_blob = blobs.hash OR head_blob = blobs.hash)
@@ -67,6 +73,6 @@ func (s *Service) DeleteWorkspace(ctx context.Context, id string, actor Actor) e
 			AND NOT EXISTS (SELECT 1 FROM discussion_code_ranges WHERE blob_hash = blobs.hash)`); err != nil {
 			return err
 		}
-		return recordEvent(ctx, tx, "workspace.deleted", id, "", actor, s.now())
+		return recordEvent(ctx, tx, "review.deleted", id, "", actor, s.now())
 	})
 }

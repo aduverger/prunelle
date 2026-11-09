@@ -51,13 +51,18 @@ func newTestServer(t *testing.T, allowedLogins []string, backends ...sessions.Re
 // startTestServer serves the API from the database in root; stop shuts the server and database down.
 func startTestServer(t *testing.T, root string, allowedLogins []string, backends ...sessions.Registration) *testServer {
 	t.Helper()
+	return startTestServerWithDefault(t, root, "main", allowedLogins, backends...)
+}
+
+func startTestServerWithDefault(t *testing.T, root, baseRef string, allowedLogins []string, backends ...sessions.Registration) *testServer {
+	t.Helper()
 	ctx := context.Background()
 	db, err := store.Open(ctx, root)
 	if err != nil {
 		t.Fatal(err)
 	}
 	reposDir := filepath.Join(root, "repos")
-	reviews := review.NewService(db, []string{reposDir})
+	reviews := review.NewService(db, baseRef)
 	sessionSvc, err := sessions.NewService(ctx, db, reviews, backends)
 	if err != nil {
 		t.Fatal(err)
@@ -148,11 +153,9 @@ func (s *testServer) seed(t *testing.T) (review.Review, review.Revision, review.
 	t.Helper()
 	ctx := context.Background()
 	repos := must(fixture.BuildRepos(s.reposDir))
-	ws := must(s.client.CreateWorkspaceWithResponse(ctx, nil, fixture.WorkspaceRequest(repos)))
-	expectStatus(t, ws.StatusCode(), http.StatusCreated, ws.Body)
-	rv := must(s.client.CreateReviewWithResponse(ctx, nil, review.CreateReviewRequest{WorkspaceID: ws.JSON201.ID, Title: fixture.ReviewTitle}))
+	rv := must(s.client.CreateReviewWithResponse(ctx, nil, fixture.ReviewRequest(repos)))
 	expectStatus(t, rv.StatusCode(), http.StatusCreated, rv.Body)
-	revision := must(s.client.CaptureRevisionWithResponse(ctx, rv.JSON201.ID, nil))
+	revision := must(s.client.CaptureRevisionWithResponse(ctx, rv.JSON201.ID, nil, review.CaptureRequest{}))
 	expectStatus(t, revision.StatusCode(), http.StatusCreated, revision.Body)
 	imported := must(s.client.ImportManifestWithResponse(ctx, rv.JSON201.ID, nil, review.ImportRequest{Manifest: fixture.Manifest()}))
 	expectStatus(t, imported.StatusCode(), http.StatusCreated, imported.Body)
@@ -167,11 +170,10 @@ func TestFixtureReviewOverHTTP(t *testing.T) {
 	health := must(s.client.GetHealthWithResponse(ctx))
 	expectStatus(t, health.StatusCode(), http.StatusOK, health.Body)
 
-	workspaces := must(s.client.ListWorkspacesWithResponse(ctx))
-	if len(*workspaces.JSON200) != 1 || len((*workspaces.JSON200)[0].Repositories) != 2 {
-		t.Fatalf("workspaces = %s", workspaces.Body)
+	if len(rv.Repositories) != 2 {
+		t.Fatalf("review repository scope = %+v", rv.Repositories)
 	}
-	reviews := must(s.client.ListReviewsWithResponse(ctx, &api.ListReviewsParams{WorkspaceId: &rv.WorkspaceID}))
+	reviews := must(s.client.ListReviewsWithResponse(ctx))
 	if len(*reviews.JSON200) != 1 || *(*reviews.JSON200)[0].CurrentRevisionID != revision.ID {
 		t.Fatalf("reviews = %s", reviews.Body)
 	}
@@ -261,14 +263,14 @@ func TestAccessPolicy(t *testing.T) {
 		remoteAddr string
 		want       int
 	}{
-		{name: "local process", path: "/v1/workspaces", want: http.StatusOK},
-		{name: "rebound foreign host", path: "/v1/workspaces", headers: map[string]string{"Host": "evil.example:7390"}, want: http.StatusForbidden},
-		{name: "rebound foreign host with spoofed proxy headers", path: "/v1/workspaces", headers: map[string]string{"Host": "evil.example:7390", "X-Forwarded-For": "100.101.1.2", "Tailscale-User-Login": ownerLogin}, want: http.StatusForbidden},
-		{name: "owner through serve by MagicDNS name", path: "/v1/workspaces", headers: map[string]string{"Host": "devbox.tail1234.ts.net", "X-Forwarded-For": "100.101.1.2", "Tailscale-User-Login": ownerLogin}, want: http.StatusOK},
-		{name: "owner through serve", path: "/v1/workspaces", headers: map[string]string{"X-Forwarded-For": "100.101.1.2", "Tailscale-User-Login": ownerLogin}, want: http.StatusOK},
-		{name: "allowed login", path: "/v1/workspaces", headers: map[string]string{"X-Forwarded-For": "100.101.1.2", "Tailscale-User-Login": "friend@example.com"}, want: http.StatusOK},
-		{name: "other login", path: "/v1/workspaces", headers: map[string]string{"X-Forwarded-For": "100.101.1.2", "Tailscale-User-Login": "stranger@example.com"}, want: http.StatusForbidden},
-		{name: "tagged device through serve", path: "/v1/workspaces", headers: map[string]string{"X-Forwarded-For": "100.101.1.2", "X-Forwarded-Proto": "https"}, want: http.StatusUnauthorized},
+		{name: "local process", path: "/v1/reviews", want: http.StatusOK},
+		{name: "rebound foreign host", path: "/v1/reviews", headers: map[string]string{"Host": "evil.example:7390"}, want: http.StatusForbidden},
+		{name: "rebound foreign host with spoofed proxy headers", path: "/v1/reviews", headers: map[string]string{"Host": "evil.example:7390", "X-Forwarded-For": "100.101.1.2", "Tailscale-User-Login": ownerLogin}, want: http.StatusForbidden},
+		{name: "owner through serve by MagicDNS name", path: "/v1/reviews", headers: map[string]string{"Host": "devbox.tail1234.ts.net", "X-Forwarded-For": "100.101.1.2", "Tailscale-User-Login": ownerLogin}, want: http.StatusOK},
+		{name: "owner through serve", path: "/v1/reviews", headers: map[string]string{"X-Forwarded-For": "100.101.1.2", "Tailscale-User-Login": ownerLogin}, want: http.StatusOK},
+		{name: "allowed login", path: "/v1/reviews", headers: map[string]string{"X-Forwarded-For": "100.101.1.2", "Tailscale-User-Login": "friend@example.com"}, want: http.StatusOK},
+		{name: "other login", path: "/v1/reviews", headers: map[string]string{"X-Forwarded-For": "100.101.1.2", "Tailscale-User-Login": "stranger@example.com"}, want: http.StatusForbidden},
+		{name: "tagged device through serve", path: "/v1/reviews", headers: map[string]string{"X-Forwarded-For": "100.101.1.2", "X-Forwarded-Proto": "https"}, want: http.StatusUnauthorized},
 		{name: "health is public", path: "/v1/health", headers: map[string]string{"X-Forwarded-For": "100.101.1.2"}, want: http.StatusOK},
 	}
 	for _, tc := range cases {
@@ -303,7 +305,7 @@ func TestAccessPolicy(t *testing.T) {
 func TestNonLoopbackConnectionsAreRejected(t *testing.T) {
 	auth := httpapi.NewAuthorizer(nil, func(context.Context) (string, error) { return "", errors.New("no tailscale") })
 	handler := auth.Middleware(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) }))
-	req := httptest.NewRequest(http.MethodGet, "/v1/workspaces", nil)
+	req := httptest.NewRequest(http.MethodGet, "/v1/reviews", nil)
 	req.RemoteAddr = "100.64.1.2:4567"
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
@@ -317,7 +319,7 @@ func TestUnknownOwnerAdmitsOnlyAllowedLogins(t *testing.T) {
 	auth := httpapi.NewAuthorizer([]string{"friend@example.com"}, func(context.Context) (string, error) { return "", errors.New("no tailscale") })
 	handler := auth.Middleware(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) }))
 	for login, want := range map[string]int{ownerLogin: http.StatusForbidden, "friend@example.com": http.StatusOK} {
-		req := httptest.NewRequest(http.MethodGet, "/v1/workspaces", nil)
+		req := httptest.NewRequest(http.MethodGet, "/v1/reviews", nil)
 		req.RemoteAddr = "127.0.0.1:4567"
 		req.Host = "devbox.tail1234.ts.net"
 		req.Header.Set("X-Forwarded-For", "100.101.1.2")

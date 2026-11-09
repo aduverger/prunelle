@@ -82,70 +82,19 @@ func apiError(resp apiResponse) error {
 	return errors.New(msg)
 }
 
-func workspaceCommand(ctx context.Context, cfg config.Config, args []string) error {
-	if len(args) == 0 {
-		return errors.New("usage: prunelle workspace add|ls|delete")
-	}
-	flags, client := clientFlags("workspace "+args[0], cfg)
-	baseRef := flags.String("base-ref", "main", "base ref for every repository (add)")
-	discover := flags.Bool("discover", false, "list discovered workspace folders without registering them (ls)")
-	yes := flags.Bool("yes", false, "confirm permanent deletion of all Prunelle data for the workspace (delete)")
-	if err := flags.Parse(args[1:]); err != nil {
-		return err
-	}
-	c, err := client()
-	if err != nil {
-		return err
-	}
-	switch args[0] {
-	case "ls":
-		if flags.NArg() != 0 {
-			return errors.New("usage: prunelle workspace ls [--discover]")
-		}
-		if *discover {
-			return output(c.DiscoverWorkspacesWithResponse(ctx))
-		}
-		return output(c.ListWorkspacesWithResponse(ctx))
-	case "delete":
-		if flags.NArg() != 1 {
-			return errors.New("usage: prunelle workspace delete --yes WORKSPACE_ID")
-		}
-		if !*yes {
-			return errors.New("this permanently deletes all Prunelle reviews, snapshots, discussions and decisions for the workspace, not project files; confirm with workspace delete --yes WORKSPACE_ID")
-		}
-		resp, err := c.DeleteWorkspaceWithResponse(ctx, flags.Arg(0))
-		return checked(resp, err)
-	case "add":
-		rest := flags.Args()
-		if len(rest) < 2 {
-			return errors.New("usage: prunelle workspace add NAME LABEL=PATH...")
-		}
-		req := review.CreateWorkspaceRequest{Name: rest[0]}
-		for _, spec := range rest[1:] {
-			label, path, ok := strings.Cut(spec, "=")
-			if !ok {
-				return fmt.Errorf("repository %q must be LABEL=PATH", spec)
-			}
-			abs, err := filepath.Abs(path)
-			if err != nil {
-				return err
-			}
-			req.Repositories = append(req.Repositories, review.CreateRepositoryRequest{Label: label, Path: abs, BaseRef: *baseRef})
-		}
-		return output(c.CreateWorkspaceWithResponse(ctx, nil, req))
-	}
-	return fmt.Errorf("unknown workspace command %q", args[0])
-}
-
 func reviewCommand(ctx context.Context, cfg config.Config, args []string) error {
 	if len(args) == 0 {
-		return errors.New("usage: prunelle review create|ls|capture|import")
+		return errors.New("usage: prunelle review create|ls|capture|import|delete")
 	}
 	flags, client := clientFlags("review "+args[0], cfg)
 	description := flags.String("description", "", "review description (create)")
-	revision := flags.String("revision", "", "revision to import into (import; default current)")
-	workspace := flags.String("workspace", "", "explicit workspace ID (create; default infer from cwd)")
-	baseRef := flags.String("base-ref", "", "initial automatic workspace base ref (create; default main)")
+	revision := flags.String("revision", "", "revision to import into (default current)")
+	path := flags.String("path", "", "explicit source folder (create; default infer from cwd)")
+	baseRef := flags.String("base-ref", "", "capture-wide base ref (capture; default server [snapshot] setting)")
+	yes := flags.Bool("yes", false, "confirm permanent deletion of this review's Prunelle data")
+	var repositorySpecs, refSpecs []string
+	flags.Func("repo", "explicit LABEL=PATH repository (create; repeatable)", func(value string) error { repositorySpecs = append(repositorySpecs, value); return nil })
+	flags.Func("repo-base-ref", "REPOSITORY_ID=REF override (capture; repeatable)", func(value string) error { refSpecs = append(refSpecs, value); return nil })
 	if err := flags.Parse(args[1:]); err != nil {
 		return err
 	}
@@ -154,33 +103,49 @@ func reviewCommand(ctx context.Context, cfg config.Config, args []string) error 
 		return err
 	}
 	rest := flags.Args()
-	if args[0] != "create" && (*workspace != "" || *baseRef != "") {
-		return errors.New("--workspace and --base-ref are only supported by review create")
+	if args[0] != "capture" && (*baseRef != "" || len(refSpecs) > 0) {
+		return errors.New("base refs are capture inputs; use review capture --base-ref or --repo-base-ref")
+	}
+	if args[0] != "create" && (*path != "" || len(repositorySpecs) > 0) {
+		return errors.New("--path and --repo are only supported by review create")
 	}
 	switch {
-	case args[0] == "ls":
-		return output(c.ListReviewsWithResponse(ctx, &api.ListReviewsParams{}))
-	case args[0] == "create" && len(rest) <= 2:
-		req := review.CreateReviewRequest{WorkspaceID: *workspace, Description: *description, BaseRef: *baseRef}
-		if len(rest) == 2 {
-			if *workspace != "" {
-				return errors.New("do not combine --workspace with the legacy positional workspace ID")
-			}
-			req.WorkspaceID, req.Title = rest[0], rest[1]
-		} else if len(rest) == 1 {
+	case args[0] == "ls" && len(rest) == 0:
+		return output(c.ListReviewsWithResponse(ctx))
+	case args[0] == "create" && len(rest) <= 1:
+		req := review.CreateReviewRequest{Description: *description}
+		if len(rest) == 1 {
 			req.Title = rest[0]
 		}
-		if req.WorkspaceID == "" {
-			req.WorkspacePath, err = os.Getwd()
-			if err != nil {
-				return err
+		if len(repositorySpecs) > 0 {
+			if *path != "" {
+				return errors.New("choose --path or --repo, not both")
 			}
+			for _, spec := range repositorySpecs {
+				label, path, ok := strings.Cut(spec, "=")
+				if !ok || path == "" {
+					return fmt.Errorf("repository %q must be LABEL=PATH", spec)
+				}
+				abs, err := filepath.Abs(path)
+				if err != nil {
+					return err
+				}
+				req.Repositories = append(req.Repositories, review.CreateRepositoryRequest{Label: label, Path: abs})
+			}
+		} else if *path != "" {
+			req.Path, err = filepath.Abs(*path)
+		} else {
+			req.Path, err = os.Getwd()
+			req.InferContext = true
+		}
+		if err != nil {
+			return err
 		}
 		return output(c.CreateReviewWithResponse(ctx, nil, req))
 	case args[0] == "capture" && len(rest) <= 1:
-		id := ""
+		reviewID := ""
 		if len(rest) == 1 {
-			id = rest[0]
+			reviewID = rest[0]
 		} else {
 			cwd, err := os.Getwd()
 			if err != nil {
@@ -190,9 +155,23 @@ func reviewCommand(ctx context.Context, cfg config.Config, args []string) error 
 			if err := checked(resolved, err); err != nil {
 				return err
 			}
-			id = resolved.JSON200.ID
+			reviewID = resolved.JSON200.ID
 		}
-		return output(c.CaptureRevisionWithResponse(ctx, id, nil))
+		req := review.CaptureRequest{BaseRef: *baseRef}
+		for _, spec := range refSpecs {
+			id, ref, ok := strings.Cut(spec, "=")
+			if !ok || id == "" || ref == "" {
+				return fmt.Errorf("base-ref override %q must be REPOSITORY_ID=REF", spec)
+			}
+			req.RepositoryBaseRefs = append(req.RepositoryBaseRefs, review.RepositoryBaseRef{RepositoryID: id, BaseRef: ref})
+		}
+		return output(c.CaptureRevisionWithResponse(ctx, reviewID, nil, req))
+	case args[0] == "delete" && len(rest) == 1:
+		if !*yes {
+			return errors.New("this permanently deletes the review's Prunelle data, never project files; confirm with review delete --yes REVIEW_ID")
+		}
+		response, err := c.DeleteReviewWithResponse(ctx, rest[0])
+		return checked(response, err)
 	case args[0] == "import" && len(rest) == 2:
 		manifest, err := readManifest(rest[1])
 		if err != nil {
@@ -204,7 +183,7 @@ func reviewCommand(ctx context.Context, cfg config.Config, args []string) error 
 		}
 		return output(c.ImportManifestWithResponse(ctx, rest[0], nil, req))
 	}
-	return fmt.Errorf("unknown or incomplete review command %q", strings.Join(args, " "))
+	return fmt.Errorf("unknown or incomplete review command %q; review create takes only an optional title, not a workspace ID", strings.Join(args, " "))
 }
 
 func readManifest(path string) (review.Manifest, error) {
@@ -253,16 +232,11 @@ func fixtureCommand(ctx context.Context, cfg config.Config, args []string) error
 	if err != nil {
 		return err
 	}
-	ws, err := c.CreateWorkspaceWithResponse(ctx, nil, fixture.WorkspaceRequest(repos))
-	if err := checked(ws, err); err != nil {
-		return fmt.Errorf("register workspace (is %s inside workspace_root_paths?): %w", dir, err)
-	}
-	rv, err := c.CreateReviewWithResponse(ctx, nil, review.CreateReviewRequest{WorkspaceID: ws.JSON201.ID, Title: fixture.ReviewTitle,
-		Description: "Demo review generated by `prunelle fixture`."})
+	rv, err := c.CreateReviewWithResponse(ctx, nil, fixture.ReviewRequest(repos))
 	if err := checked(rv, err); err != nil {
 		return err
 	}
-	revision, err := c.CaptureRevisionWithResponse(ctx, rv.JSON201.ID, nil)
+	revision, err := c.CaptureRevisionWithResponse(ctx, rv.JSON201.ID, nil, review.CaptureRequest{BaseRef: fixture.BaseBranch})
 	if err := checked(revision, err); err != nil {
 		return err
 	}
@@ -274,7 +248,7 @@ func sessionsCommand(ctx context.Context, cfg config.Config, args []string) erro
 		return errors.New("usage: prunelle sessions backends|ls|link|unlink")
 	}
 	flags, client := clientFlags("sessions "+args[0], cfg)
-	workspace := flags.String("workspace", "", "only sessions associated with this workspace (ls)")
+	reviewID := flags.String("review", "", "only sessions associated with this review (ls)")
 	if err := flags.Parse(args[1:]); err != nil {
 		return err
 	}
@@ -288,8 +262,8 @@ func sessionsCommand(ctx context.Context, cfg config.Config, args []string) erro
 		return output(c.ListSessionBackendsWithResponse(ctx))
 	case args[0] == "ls":
 		params := &api.ListRuntimeSessionsParams{}
-		if *workspace != "" {
-			params.WorkspaceId = workspace
+		if *reviewID != "" {
+			params.ReviewId = reviewID
 		}
 		return output(c.ListRuntimeSessionsWithResponse(ctx, params))
 	case args[0] == "link" && len(rest) == 2:

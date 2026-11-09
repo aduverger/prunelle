@@ -49,7 +49,7 @@ func TestShutdownFinishesInFlightChangesAndEndsEventStreams(t *testing.T) {
 	}
 	addr := probe.Addr().String()
 	probe.Close()
-	cfg := config.Config{Listen: addr, DataDir: filepath.Join(root, "data"), WorkspaceRootPaths: []string{filepath.Join(root, "repos")}}
+	cfg := config.Config{Listen: addr, DataDir: filepath.Join(root, "data"), Snapshot: config.Snapshot{DefaultBaseRef: "main"}}
 	ctx, stop := context.WithCancel(context.Background())
 	defer stop()
 	served := make(chan error, 1)
@@ -67,8 +67,8 @@ func TestShutdownFinishesInFlightChangesAndEndsEventStreams(t *testing.T) {
 	}
 	defer stream.Body.Close()
 
-	// Start creating a workspace, but hold back the end of the body until the server is stopping.
-	body, err := json.Marshal(fixture.WorkspaceRequest(repos))
+	// Start creating a review, but hold back the end of the body until the server is stopping.
+	body, err := json.Marshal(fixture.ReviewRequest(repos))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -77,7 +77,7 @@ func TestShutdownFinishesInFlightChangesAndEndsEventStreams(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer conn.Close()
-	fmt.Fprintf(conn, "POST /v1/workspaces HTTP/1.1\r\nHost: %s\r\nContent-Type: application/json\r\nContent-Length: %d\r\n\r\n%s", addr, len(body), body[:10])
+	fmt.Fprintf(conn, "POST /v1/reviews HTTP/1.1\r\nHost: %s\r\nContent-Type: application/json\r\nContent-Length: %d\r\n\r\n%s", addr, len(body), body[:10])
 	time.Sleep(100 * time.Millisecond)
 	stop()
 	time.Sleep(100 * time.Millisecond)

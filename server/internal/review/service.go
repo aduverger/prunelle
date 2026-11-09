@@ -1,4 +1,4 @@
-// Package review owns the review domain: workspaces, reviews, revisions, manifest import,
+// Package review owns the review domain: reviews, repositories, revisions, manifest import,
 // and the read model served by the API.
 package review
 
@@ -19,13 +19,16 @@ import (
 const MaxRevisionContentBytes = 50 << 20
 
 type Service struct {
-	db           *store.DB
-	allowedRoots []string
-	now          func() time.Time
+	db             *store.DB
+	defaultBaseRef string
+	now            func() time.Time
 }
 
-func NewService(db *store.DB, allowedRoots []string) *Service {
-	return &Service{db: db, allowedRoots: allowedRoots, now: func() time.Time { return time.Now().UTC() }}
+func NewService(db *store.DB, defaultBaseRef string) *Service {
+	if defaultBaseRef == "" {
+		defaultBaseRef = "main"
+	}
+	return &Service{db: db, defaultBaseRef: defaultBaseRef, now: func() time.Time { return time.Now().UTC() }}
 }
 
 // Error codes map to HTTP statuses in the API layer.

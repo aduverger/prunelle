@@ -17,13 +17,13 @@ import (
 )
 
 type env struct {
-	ctx       context.Context
-	db        *store.DB
-	reviews   *review.Service
-	workspace review.Workspace
-	repos     fixture.Repos
-	fake      *sessionstest.Fake
-	svc       *sessions.Service
+	ctx     context.Context
+	db      *store.DB
+	reviews *review.Service
+	review  review.Review
+	repos   fixture.Repos
+	fake    *sessionstest.Fake
+	svc     *sessions.Service
 }
 
 func newEnv(t *testing.T, runtimes ...sessions.Observed) *env {
@@ -43,12 +43,12 @@ func newEnv(t *testing.T, runtimes ...sessions.Observed) *env {
 	if err != nil {
 		t.Fatal(err)
 	}
-	reviews := review.NewService(db, []string{reposDir})
-	ws, err := reviews.CreateWorkspace(ctx, fixture.WorkspaceRequest(repos), review.Actor{Author: review.Author{Kind: "HUMAN", ID: "owner"}, Login: "owner"})
+	reviews := review.NewService(db, "main")
+	rv, err := reviews.CreateReview(ctx, fixture.ReviewRequest(repos), review.Actor{Author: review.Author{Kind: "HUMAN", ID: "owner"}, Login: "owner"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	e := &env{ctx: ctx, db: db, reviews: reviews, workspace: ws, repos: repos, fake: sessionstest.NewFake(runtimes...)}
+	e := &env{ctx: ctx, db: db, reviews: reviews, review: rv, repos: repos, fake: sessionstest.NewFake(runtimes...)}
 	e.svc = e.newService(t, e.fake)
 	return e
 }
@@ -202,48 +202,52 @@ func TestAssociationIsExplicitAndSuggestionsComeFromLocalCwd(t *testing.T) {
 	e := newEnv(t, piRuntime(""), sessions.Observed{ExternalID: "s/remote", State: sessions.StateOnline, Label: "remote", Local: false})
 	e.fake.Set(piRuntime(filepath.Join(e.repos.Worker, "worker")))
 	e.fake.Set(sessions.Observed{ExternalID: "s/remote", State: sessions.StateOnline, Label: "remote", Cwd: e.repos.API, Local: false})
+	e.fake.Set(sessions.Observed{ExternalID: "s/container", State: sessions.StateOnline, Label: "container", Cwd: filepath.Dir(e.repos.API), Local: true})
 	if err := e.svc.Sync(e.ctx, e.backendID(t)); err != nil {
 		t.Fatal(err)
 	}
 	pi := e.runtimes(t)["s/pi"]
-	if len(pi.WorkspaceIDs) != 0 || !slices.Equal(pi.SuggestedWorkspaceIDs, []string{e.workspace.ID}) {
-		t.Fatalf("pi associations = %v suggested = %v", pi.WorkspaceIDs, pi.SuggestedWorkspaceIDs)
+	if len(pi.ReviewIDs) != 0 || !slices.Equal(pi.SuggestedReviewIDs, []string{e.review.ID}) {
+		t.Fatalf("pi associations = %v suggested = %v", pi.ReviewIDs, pi.SuggestedReviewIDs)
 	}
-	if remote := e.runtimes(t)["s/remote"]; len(remote.SuggestedWorkspaceIDs) != 0 {
-		t.Errorf("remote runtime suggested %v", remote.SuggestedWorkspaceIDs)
+	if remote := e.runtimes(t)["s/remote"]; len(remote.SuggestedReviewIDs) != 0 {
+		t.Errorf("remote runtime suggested %v", remote.SuggestedReviewIDs)
 	}
-	associated, err := e.svc.ListRuntimeSessions(e.ctx, &e.workspace.ID)
+	if container := e.runtimes(t)["s/container"]; len(container.SuggestedReviewIDs) != 0 {
+		t.Errorf("container cwd broadened repository suggestions: %v", container.SuggestedReviewIDs)
+	}
+	associated, err := e.svc.ListRuntimeSessions(e.ctx, &e.review.ID)
 	if err != nil || len(associated) != 0 {
 		t.Fatalf("associated before link = %v, %v", associated, err)
 	}
 
-	linked, err := e.svc.Associate(e.ctx, e.workspace.ID, pi.ID)
+	linked, err := e.svc.Associate(e.ctx, e.review.ID, pi.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !slices.Equal(linked.WorkspaceIDs, []string{e.workspace.ID}) || len(linked.SuggestedWorkspaceIDs) != 0 {
-		t.Errorf("after link = %v / %v", linked.WorkspaceIDs, linked.SuggestedWorkspaceIDs)
+	if !slices.Equal(linked.ReviewIDs, []string{e.review.ID}) || len(linked.SuggestedReviewIDs) != 0 {
+		t.Errorf("after link = %v / %v", linked.ReviewIDs, linked.SuggestedReviewIDs)
 	}
-	if _, err := e.svc.Associate(e.ctx, e.workspace.ID, pi.ID); err != nil {
+	if _, err := e.svc.Associate(e.ctx, e.review.ID, pi.ID); err != nil {
 		t.Errorf("repeat link: %v", err)
 	}
-	associated, err = e.svc.ListRuntimeSessions(e.ctx, &e.workspace.ID)
+	associated, err = e.svc.ListRuntimeSessions(e.ctx, &e.review.ID)
 	if err != nil || len(associated) != 1 || associated[0].ID != pi.ID {
 		t.Fatalf("associated = %+v, %v", associated, err)
 	}
 
-	if err := e.svc.Dissociate(e.ctx, e.workspace.ID, pi.ID); err != nil {
+	if err := e.svc.Dissociate(e.ctx, e.review.ID, pi.ID); err != nil {
 		t.Fatal(err)
 	}
-	if got := e.runtimes(t)["s/pi"]; len(got.WorkspaceIDs) != 0 {
-		t.Errorf("after unlink = %v", got.WorkspaceIDs)
+	if got := e.runtimes(t)["s/pi"]; len(got.ReviewIDs) != 0 {
+		t.Errorf("after unlink = %v", got.ReviewIDs)
 	}
 
 	var reviewErr *review.Error
-	if _, err := e.svc.Associate(e.ctx, "ws_missing", pi.ID); !errors.As(err, &reviewErr) || reviewErr.Code != review.CodeNotFound {
-		t.Errorf("unknown workspace: %v", err)
+	if _, err := e.svc.Associate(e.ctx, "rvw_missing", pi.ID); !errors.As(err, &reviewErr) || reviewErr.Code != review.CodeNotFound {
+		t.Errorf("unknown review: %v", err)
 	}
-	if _, err := e.svc.Associate(e.ctx, e.workspace.ID, "rts_missing"); !errors.As(err, &reviewErr) || reviewErr.Code != review.CodeNotFound {
+	if _, err := e.svc.Associate(e.ctx, e.review.ID, "rts_missing"); !errors.As(err, &reviewErr) || reviewErr.Code != review.CodeNotFound {
 		t.Errorf("unknown runtime: %v", err)
 	}
 }

@@ -14,7 +14,7 @@ info:
     Mutable resources carry a `version`; single-resource responses return it as `ETag: "<version>"`,
     and updates require `If-Match` with that value (428 without it, 412 when stale).
     Requests that create something accept an `Idempotency-Key`: repeating the key with the same
-    request returns the stored response (`Idempotent-Replayed: true`) for 24 hours unless its owning workspace is explicitly deleted.
+    request returns the stored response (`Idempotent-Replayed: true`) for 24 hours unless its owning review is explicitly deleted.
   license:
     name: MIT
     identifier: MIT
@@ -22,7 +22,6 @@ servers:
   - url: http://127.0.0.1:7390
 tags:
   - name: system
-  - name: workspaces
   - name: reviews
   - name: revisions
   - name: content
@@ -40,79 +39,13 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Health" }
-  /v1/workspaces:
-    get:
-      tags: [workspaces]
-      operationId: listWorkspaces
-      responses:
-        "200":
-          description: All workspaces.
-          content:
-            application/json:
-              schema: { type: array, items: { $ref: "#/components/schemas/Workspace" } }
-        default: { $ref: "#/components/responses/Error" }
-    post:
-      tags: [workspaces]
-      operationId: createWorkspace
-      parameters:
-        - $ref: "#/components/parameters/IdempotencyKey"
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: { $ref: "#/components/schemas/CreateWorkspaceRequest" }
-      responses:
-        "201":
-          description: Created workspace.
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/Workspace" }
-        default: { $ref: "#/components/responses/Error" }
-  /v1/workspace-candidates:
-    get:
-      tags: [workspaces]
-      operationId: discoverWorkspaces
-      description: Read-only discovery of immediate child workspace folders under workspace_root_paths. Configured roots are never workspaces; discovery creates no registration.
-      responses:
-        "200":
-          description: Workspace candidates, including folders without reviews.
-          content:
-            application/json:
-              schema: { type: array, items: { $ref: "#/components/schemas/WorkspaceCandidate" } }
-        default: { $ref: "#/components/responses/Error" }
-  /v1/workspaces/{workspaceId}:
-    parameters:
-      - $ref: "#/components/parameters/WorkspaceId"
-    get:
-      tags: [workspaces]
-      operationId: getWorkspace
-      responses:
-        "200":
-          description: The workspace.
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/Workspace" }
-        default: { $ref: "#/components/responses/Error" }
-    delete:
-      tags: [workspaces]
-      operationId: deleteWorkspace
-      description: Hard-delete workspace-owned Prunelle data, stored content and scoped idempotency receipts. Never delete project files or Git history or stop runtime sessions. The folder remains discoverable. Repeated deletion of an absent ID succeeds; a fresh workspace has a new ID. Past workspace/review events are removed; a workspace.deleted notification remains.
-      responses:
-        "204":
-          description: Workspace deleted, or already absent.
-        default: { $ref: "#/components/responses/Error" }
   /v1/reviews:
     get:
       tags: [reviews]
       operationId: listReviews
-      parameters:
-        - name: workspace_id
-          in: query
-          required: false
-          schema: { type: string }
       responses:
         "200":
-          description: Reviews, optionally of one workspace.
+          description: Reviews with their owned repository context.
           content:
             application/json:
               schema: { type: array, items: { $ref: "#/components/schemas/Review" } }
@@ -138,7 +71,7 @@ paths:
     get:
       tags: [reviews]
       operationId: resolveReview
-      description: Resolve an absolute server-side invocation directory to its discovered workspace and return its sole review. Missing or multiple reviews require explicit selection; never choose another workspace's review.
+      description: Resolve a server-side directory to exactly one review using its source context or repository membership. Zero or multiple matches require explicit selection.
       parameters:
         - name: path
           in: query
@@ -146,7 +79,7 @@ paths:
           schema: { type: string, minLength: 1 }
       responses:
         "200":
-          description: The sole review in the resolved workspace.
+          description: The sole matching review.
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Review" }
@@ -163,6 +96,14 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Review" }
+        default: { $ref: "#/components/responses/Error" }
+    delete:
+      tags: [reviews]
+      operationId: deleteReview
+      description: Hard-delete this review and its owned Prunelle content/receipts, never project files, Git history or runtimes. Shared source identities/blobs and other reviews are preserved. Repeating an absent ID succeeds.
+      responses:
+        "204":
+          description: Review deleted or already absent.
         default: { $ref: "#/components/responses/Error" }
   /v1/reviews/{reviewId}/revisions:
     parameters:
@@ -182,7 +123,12 @@ paths:
       operationId: captureRevision
       parameters:
         - $ref: "#/components/parameters/IdempotencyKey"
-      description: Capture every repository of the review's workspace into a new immutable revision, which becomes the current revision.
+      description: Capture the declared review repository set using per-repository overrides, then a capture-wide base ref, then the server snapshot default. No fetch or branch switch. A committed idempotent retry returns its original revision even if defaults change.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CaptureRequest" }
       responses:
         "201":
           description: Captured revision.
@@ -673,10 +619,10 @@ paths:
       tags: [sessions]
       operationId: listRuntimeSessions
       parameters:
-        - name: workspace_id
+        - name: review_id
           in: query
           required: false
-          description: Only runtime sessions explicitly associated with this workspace.
+          description: Only runtime sessions explicitly associated with this review.
           schema: { type: string }
       responses:
         "200":
@@ -698,14 +644,14 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/RuntimeSession" }
         default: { $ref: "#/components/responses/Error" }
-  /v1/workspaces/{workspaceId}/runtime-sessions/{runtimeSessionId}:
+  /v1/reviews/{reviewId}/runtime-sessions/{runtimeSessionId}:
     parameters:
-      - $ref: "#/components/parameters/WorkspaceId"
+      - $ref: "#/components/parameters/ReviewId"
       - $ref: "#/components/parameters/RuntimeSessionId"
     put:
       tags: [sessions]
       operationId: associateRuntimeSession
-      description: Explicitly associate a runtime session with a workspace. Idempotent.
+      description: Explicitly associate a runtime session with a review. Idempotent.
       responses:
         "200":
           description: The associated runtime session.
@@ -724,11 +670,6 @@ paths:
 
 components:
   parameters:
-    WorkspaceId:
-      name: workspaceId
-      in: path
-      required: true
-      schema: { type: string }
     ReviewId:
       name: reviewId
       in: path
@@ -809,80 +750,40 @@ components:
       enum: [MEASURED, OBSERVED, INFERRED, UNKNOWN]
       description: "How the author knows: MEASURED (tool output such as a test run), OBSERVED (seen directly in code or artifacts), INFERRED (reasoning or judgment), UNKNOWN. Stored as the author declares it."
 
-    Workspace:
-      x-go-type: review.Workspace
-      x-go-type-import: { path: github.com/aduverger/prunelle/server/internal/review }
-      type: object
-      required: [id, name, root_path, repositories, created_at, updated_at]
-      additionalProperties: false
-      properties:
-        id: { type: string }
-        name: { type: string }
-        root_path: { type: [string, "null"], description: Canonical workspace folder; null for a manual registration not yet associated with a discovered folder. }
-        repositories: { type: array, items: { $ref: "#/components/schemas/Repository" } }
-        created_at: { type: string, format: date-time }
-        updated_at: { type: string, format: date-time }
-
     Repository:
       x-go-type: review.Repository
       x-go-type-import: { path: github.com/aduverger/prunelle/server/internal/review }
       type: object
-      required: [id, workspace_id, label, root_path, base_ref, include_untracked]
+      required: [id, review_id, label, root_path, include_untracked]
       additionalProperties: false
       properties:
         id: { type: string }
-        workspace_id: { type: string }
+        review_id: { type: string }
         label: { type: string }
-        root_path: { type: string, description: Canonical repository root on the server. }
-        base_ref: { type: string }
+        root_path: { type: string, description: Canonical source path on the server. }
         include_untracked: { type: boolean }
-
-    CreateWorkspaceRequest:
-      x-go-type: review.CreateWorkspaceRequest
-      x-go-type-import: { path: github.com/aduverger/prunelle/server/internal/review }
-      type: object
-      required: [name, repositories]
-      additionalProperties: false
-      properties:
-        name: { type: string, minLength: 1 }
-        repositories:
-          type: array
-          minItems: 1
-          items: { $ref: "#/components/schemas/CreateRepositoryRequest" }
 
     CreateRepositoryRequest:
       x-go-type: review.CreateRepositoryRequest
       x-go-type-import: { path: github.com/aduverger/prunelle/server/internal/review }
       type: object
-      required: [label, path, base_ref]
+      required: [label, path]
       additionalProperties: false
       properties:
         label: { type: string, minLength: 1 }
-        path: { type: string, description: Canonical repository path on the server; must lie inside workspace_root_paths. }
-        base_ref: { type: string, minLength: 1 }
-        include_untracked: { type: boolean, default: true }
-
-    WorkspaceCandidate:
-      x-go-type: review.WorkspaceCandidate
-      x-go-type-import: { path: github.com/aduverger/prunelle/server/internal/review }
-      type: object
-      required: [path, name, repositories, workspace_id]
-      additionalProperties: false
-      properties:
-        path: { type: string }
-        name: { type: string }
-        repositories: { type: array, items: { $ref: "#/components/schemas/CreateRepositoryRequest" } }
-        workspace_id: { type: [string, "null"], description: Existing matching registration, if any. }
+        path: { type: string, minLength: 1 }
+        include_untracked: { type: boolean }
 
     Review:
       x-go-type: review.Review
       x-go-type-import: { path: github.com/aduverger/prunelle/server/internal/review }
       type: object
-      required: [id, workspace_id, title, description, status, current_revision_id, created_at, updated_at]
+      required: [id, context_path, repositories, title, description, status, current_revision_id, created_at, updated_at]
       additionalProperties: false
       properties:
         id: { type: string }
-        workspace_id: { type: string }
+        context_path: { type: [string, "null"] }
+        repositories: { type: array, items: { $ref: "#/components/schemas/Repository" } }
         title: { type: string }
         description: { type: string }
         status: { type: string, enum: [OPEN, CLOSED] }
@@ -896,14 +797,40 @@ components:
       type: object
       additionalProperties: false
       oneOf:
-        - required: [workspace_id]
-        - required: [workspace_path]
+        - required: [path]
+          properties:
+            path: { type: string, minLength: 1 }
+            repositories: { type: "null" }
+        - required: [repositories]
+          properties:
+            path: { type: "null" }
+            repositories: { type: array, minItems: 1, items: { $ref: "#/components/schemas/CreateRepositoryRequest" } }
+            infer_context: { enum: [false] }
       properties:
-        workspace_id: { type: string, minLength: 1 }
-        workspace_path: { type: string, minLength: 1, description: Absolute server-side invocation directory. Its discovered workspace is registered atomically with the review if needed. }
-        base_ref: { type: string, minLength: 1, description: Initial automatic-registration base ref (default main). Existing settings must agree and are never rewritten. Only valid with workspace_path. }
-        title: { type: string, minLength: 1, description: Defaults to the workspace name when omitted. }
+        path: { type: [string, "null"], minLength: 1, description: Absolute server-side source target; a repository or container of immediate repositories. }
+        infer_context: { type: boolean, description: Resolve cwd through one existing containing review context before validating source. Explicit paths omit this flag. }
+        repositories: { type: [array, "null"], minItems: 1, items: { $ref: "#/components/schemas/CreateRepositoryRequest" } }
+        title: { type: string, minLength: 1, description: Defaults to the source folder or repository labels. }
         description: { type: string }
+
+    RepositoryBaseRef:
+      x-go-type: review.RepositoryBaseRef
+      x-go-type-import: { path: github.com/aduverger/prunelle/server/internal/review }
+      type: object
+      required: [repository_id, base_ref]
+      additionalProperties: false
+      properties:
+        repository_id: { type: string, minLength: 1 }
+        base_ref: { type: string, minLength: 1 }
+
+    CaptureRequest:
+      x-go-type: review.CaptureRequest
+      x-go-type-import: { path: github.com/aduverger/prunelle/server/internal/review }
+      type: object
+      additionalProperties: false
+      properties:
+        base_ref: { type: string, minLength: 1 }
+        repository_base_refs: { type: array, items: { $ref: "#/components/schemas/RepositoryBaseRef" } }
 
     Revision:
       x-go-type: review.Revision
@@ -1512,7 +1439,7 @@ components:
       x-go-type: events.Event
       x-go-type-import: { path: github.com/aduverger/prunelle/server/internal/events }
       description: |
-        A change to refetch. Types: workspace.created, review.created, revision.created, import.created,
+        A change to refetch. Types: review.created, review.deleted, revision.created, import.created,
         topic.created, topic.updated (edit or move; refetch the topic list, sibling positions may change),
         representation.created, representation.updated, discussion.created, discussion.updated
         (status change or reply), decision.created.
@@ -1795,7 +1722,7 @@ components:
         agent conversation. UNKNOWN means the backend cannot currently be observed; it does not
         mean the process stopped.
       type: object
-      required: [id, backend_id, backend_kind, external_id, state, label, cwd, process, local, harness_hint, capabilities, metadata, workspace_ids, suggested_workspace_ids, first_seen_at, last_seen_at, state_changed_at]
+      required: [id, backend_id, backend_kind, external_id, state, label, cwd, process, local, harness_hint, capabilities, metadata, review_ids, suggested_review_ids, first_seen_at, last_seen_at, state_changed_at]
       additionalProperties: false
       properties:
         id: { type: string, description: Prunelle-owned ID. }
@@ -1810,11 +1737,11 @@ components:
         harness_hint: { type: [string, "null"], description: "Coding harness the runtime appears to run, e.g. pi. A hint, not an agent identity." }
         capabilities: { type: array, items: { $ref: "#/components/schemas/SessionCapability" } }
         metadata: { type: object, description: Backend-specific details. }
-        workspace_ids: { type: array, items: { type: string }, description: Explicit associations. }
-        suggested_workspace_ids:
+        review_ids: { type: array, items: { type: string }, description: Explicit associations. }
+        suggested_review_ids:
           type: array
           items: { type: string }
-          description: Workspaces whose repositories contain the runtime's local cwd. Never applied automatically.
+          description: Reviews whose source contains the runtime's local cwd. Never applied automatically.
         first_seen_at: { type: string, format: date-time }
         last_seen_at: { type: string, format: date-time }
         state_changed_at: { type: string, format: date-time }

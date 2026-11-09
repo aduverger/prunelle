@@ -47,3 +47,15 @@ Rex documents its API methods but not a wire protocol. The Rex backend runs `rex
 **Decision:** M2 keeps MyGo, pinned at v0.8.3 with matching runtime/fetch packages. Its official Go-backed fetch plugin supports both REST and streamed SSE, including cancellation. The shell restricts API requests to loopback HTTP(S) or `https://*.ts.net`, refuses redirects, and adds no authentication headers. Tailscale Serve still authenticates the user; the human-facing UI never sends `Prunelle-Agent`.
 **Why:** reuse the existing API and Tailscale access policy without adding server CORS settings, a new credential, or a second review server. Development/Playwright browser requests go through a fixed Vite proxy target instead. Both use generated OpenAPI types and the same UI.
 **Cost:** MyGo is pre-1.0. The bundled Linux/WebKit path is tested; macOS builds are cross-built but native launch/signing/notarization require a Mac. The frontend targets Safari 16.4+, so packaged macOS builds declare macOS 13.3+. No Electron fallback is needed for this slice.
+
+## D10. Reviews own repository scope; capture owns comparison inputs
+
+**Decision:** retire workspace management and shared mutable repository configuration. Reviews are the product entrypoint; their repository membership and runtime associations are independent. Working folders are optional CLI context, not a second named object or a required discovery-root configuration. Explicit source paths/inline sets create reviews on demand; ambiguous cwd capture requires a review ID.
+
+**Capture:** resolve per-repository override, capture-wide override, `[snapshot].default_base_ref`, then built-in `main`. Persist chosen refs/resolved SHAs in immutable repository snapshots, not as mutable workspace defaults. No fetch/branch switching or hidden fallback. Configuration reload requires restarting the server; committed idempotent captures remain replayable unchanged.
+
+**Authorization:** the owner explicitly accepted that all authenticated callers, including `allowed_logins`, may request any Git source readable by the server account. Canonical Git validation remains, but there is no configured path allowlist. Authentication, attribution and human-only decisions are unchanged.
+
+**Migration:** preserve historical repository IDs shared by old reviews through review-local memberships, rather than clone IDs or rewrite anchors. Migrate runtime links to every existing review that previously saw them. Retain old base preferences only as owned migration-audit metadata, never as capture defaults and remove workspace-only API/CLI contracts in a coordinated upgrade. The offline startup table rebuild validates foreign keys before commit and restores enforcement before serving; it is not a live request mode.
+
+**Tradeoff:** there is no first-use heuristic for an unknown parent grouping. Target a multi-repo container explicitly; later cwd inference uses known review context. This avoids a parallel registry, namespace exclusions or arbitrary selection. Repository search/catalog and membership-editing UI are not added.
