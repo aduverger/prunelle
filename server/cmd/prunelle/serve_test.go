@@ -49,7 +49,7 @@ func TestShutdownFinishesInFlightChangesAndEndsEventStreams(t *testing.T) {
 	}
 	addr := probe.Addr().String()
 	probe.Close()
-	cfg := config.Config{Listen: addr, DataDir: filepath.Join(root, "data"), AllowedRoots: []string{filepath.Join(root, "repos")}}
+	cfg := config.Config{Listen: addr, DataDir: filepath.Join(root, "data"), WorkspaceRootPaths: []string{filepath.Join(root, "repos")}}
 	ctx, stop := context.WithCancel(context.Background())
 	defer stop()
 	served := make(chan error, 1)

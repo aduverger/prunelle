@@ -313,6 +313,9 @@ type CreateDiscussionRequest = review.CreateDiscussionRequest
 // CreateMessageRequest defines model for CreateMessageRequest.
 type CreateMessageRequest = review.CreateMessageRequest
 
+// CreateRepositoryRequest defines model for CreateRepositoryRequest.
+type CreateRepositoryRequest = review.CreateRepositoryRequest
+
 // CreateRepresentationRequest defines model for CreateRepresentationRequest.
 type CreateRepresentationRequest = review.CreateRepresentationRequest
 
@@ -490,6 +493,9 @@ type UpdateTopicRequest = review.UpdateTopicRequest
 // Workspace defines model for Workspace.
 type Workspace = review.Workspace
 
+// WorkspaceCandidate defines model for WorkspaceCandidate.
+type WorkspaceCandidate = review.WorkspaceCandidate
+
 // DiscussionId defines model for DiscussionId.
 type DiscussionId = string
 
@@ -547,6 +553,11 @@ type ListReviewsParams struct {
 type CreateReviewParams struct {
 	// IdempotencyKey Client-chosen unique key that makes a retried request safe.
 	IdempotencyKey *IdempotencyKey `json:"Idempotency-Key,omitempty"`
+}
+
+// ResolveReviewParams defines parameters for ResolveReview.
+type ResolveReviewParams struct {
+	Path string `form:"path" json:"path"`
 }
 
 // ListChangesParams defines parameters for ListChanges.
@@ -794,6 +805,11 @@ type ClientInterface interface {
 	// Takes a body of the `application/json` content type.
 	CreateReview(ctx context.Context, params *CreateReviewParams, body CreateReviewJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// ResolveReview performs a GET /v1/reviews/resolve (the `ResolveReview` operationId) request.
+	//
+	// Resolve an absolute server-side invocation directory to its discovered workspace and return its sole review. Missing or multiple reviews require explicit selection; never choose another workspace's review.
+	ResolveReview(ctx context.Context, params *ResolveReviewParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// GetReview performs a GET /v1/reviews/{reviewId} (the `GetReview` operationId) request.
 	GetReview(ctx context.Context, reviewId ReviewId, reqEditors ...RequestEditorFn) (*http.Response, error)
 
@@ -956,6 +972,11 @@ type ClientInterface interface {
 	// Add a MANUAL representation authored against the review's current revision. Give the config matching the type; references are record IDs of the review.
 	CreateRepresentation(ctx context.Context, topicId TopicId, params *CreateRepresentationParams, body CreateRepresentationJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// DiscoverWorkspaces performs a GET /v1/workspace-candidates (the `DiscoverWorkspaces` operationId) request.
+	//
+	// Read-only discovery of immediate child workspace folders under workspace_root_paths. Configured roots are never workspaces; discovery creates no registration.
+	DiscoverWorkspaces(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// ListWorkspaces performs a GET /v1/workspaces (the `ListWorkspaces` operationId) request.
 	ListWorkspaces(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 
@@ -966,6 +987,11 @@ type ClientInterface interface {
 	// CreateWorkspace performs a POST /v1/workspaces (the `CreateWorkspace` operationId) request.
 	// Takes a body of the `application/json` content type.
 	CreateWorkspace(ctx context.Context, params *CreateWorkspaceParams, body CreateWorkspaceJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// DeleteWorkspace performs a DELETE /v1/workspaces/{workspaceId} (the `DeleteWorkspace` operationId) request.
+	//
+	// Hard-delete workspace-owned Prunelle data, stored content and scoped idempotency receipts. Never delete project files or Git history or stop runtime sessions. The folder remains discoverable. Repeated deletion of an absent ID succeeds; a fresh workspace has a new ID. Past workspace/review events are removed; a workspace.deleted notification remains.
+	DeleteWorkspace(ctx context.Context, workspaceId WorkspaceId, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetWorkspace performs a GET /v1/workspaces/{workspaceId} (the `GetWorkspace` operationId) request.
 	GetWorkspace(ctx context.Context, workspaceId WorkspaceId, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -1165,6 +1191,21 @@ func (c *Client) CreateReviewWithBody(ctx context.Context, params *CreateReviewP
 // Takes a body of the `application/json` content type.
 func (c *Client) CreateReview(ctx context.Context, params *CreateReviewParams, body CreateReviewJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewCreateReviewRequest(c.Server, params, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ResolveReview performs a GET /v1/reviews/resolve (the `ResolveReview` operationId) request.
+//
+// Resolve an absolute server-side invocation directory to its discovered workspace and return its sole review. Missing or multiple reviews require explicit selection; never choose another workspace's review.
+func (c *Client) ResolveReview(ctx context.Context, params *ResolveReviewParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewResolveReviewRequest(c.Server, params)
 	if err != nil {
 		return nil, err
 	}
@@ -1677,6 +1718,21 @@ func (c *Client) CreateRepresentation(ctx context.Context, topicId TopicId, para
 	return c.Client.Do(req)
 }
 
+// DiscoverWorkspaces performs a GET /v1/workspace-candidates (the `DiscoverWorkspaces` operationId) request.
+//
+// Read-only discovery of immediate child workspace folders under workspace_root_paths. Configured roots are never workspaces; discovery creates no registration.
+func (c *Client) DiscoverWorkspaces(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDiscoverWorkspacesRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 // ListWorkspaces performs a GET /v1/workspaces (the `ListWorkspaces` operationId) request.
 func (c *Client) ListWorkspaces(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewListWorkspacesRequest(c.Server)
@@ -1708,6 +1764,21 @@ func (c *Client) CreateWorkspaceWithBody(ctx context.Context, params *CreateWork
 // Takes a body of the `application/json` content type.
 func (c *Client) CreateWorkspace(ctx context.Context, params *CreateWorkspaceParams, body CreateWorkspaceJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewCreateWorkspaceRequest(c.Server, params, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// DeleteWorkspace performs a DELETE /v1/workspaces/{workspaceId} (the `DeleteWorkspace` operationId) request.
+//
+// Hard-delete workspace-owned Prunelle data, stored content and scoped idempotency receipts. Never delete project files or Git history or stop runtime sessions. The folder remains discoverable. Repeated deletion of an absent ID succeeds; a fresh workspace has a new ID. Past workspace/review events are removed; a workspace.deleted notification remains.
+func (c *Client) DeleteWorkspace(ctx context.Context, workspaceId WorkspaceId, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDeleteWorkspaceRequest(c.Server, workspaceId)
 	if err != nil {
 		return nil, err
 	}
@@ -2215,6 +2286,56 @@ func NewCreateReviewRequestWithBody(server string, params *CreateReviewParams, c
 			req.Header.Set("Idempotency-Key", headerParam0)
 		}
 
+	}
+
+	return req, nil
+}
+
+// NewResolveReviewRequest constructs an http.Request for the ResolveReview method
+func NewResolveReviewRequest(server string, params *ResolveReviewParams) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/reviews/resolve")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if queryFrag, err := runtime.StyleParamWithOptions("form", true, "path", params.Path, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+			return nil, err
+		} else {
+			for _, qp := range strings.Split(queryFrag, "&") {
+				rawQueryFragments = append(rawQueryFragments, qp)
+			}
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
 	}
 
 	return req, nil
@@ -3420,6 +3541,33 @@ func NewCreateRepresentationRequestWithBody(server string, topicId TopicId, para
 	return req, nil
 }
 
+// NewDiscoverWorkspacesRequest constructs an http.Request for the DiscoverWorkspaces method
+func NewDiscoverWorkspacesRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/workspace-candidates")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewListWorkspacesRequest constructs an http.Request for the ListWorkspaces method
 func NewListWorkspacesRequest(server string) (*http.Request, error) {
 	var err error
@@ -3497,6 +3645,40 @@ func NewCreateWorkspaceRequestWithBody(server string, params *CreateWorkspacePar
 			req.Header.Set("Idempotency-Key", headerParam0)
 		}
 
+	}
+
+	return req, nil
+}
+
+// NewDeleteWorkspaceRequest constructs an http.Request for the DeleteWorkspace method
+func NewDeleteWorkspaceRequest(server string, workspaceId WorkspaceId) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "workspaceId", workspaceId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/workspaces/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodDelete, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
 	}
 
 	return req, nil
@@ -3744,6 +3926,13 @@ type ClientWithResponsesInterface interface {
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	CreateReviewWithResponse(ctx context.Context, params *CreateReviewParams, body CreateReviewJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateReviewResponse, error)
 
+	// ResolveReviewWithResponse performs a GET /v1/reviews/resolve (the `ResolveReview` operationId) request.
+	//
+	// Resolve an absolute server-side invocation directory to its discovered workspace and return its sole review. Missing or multiple reviews require explicit selection; never choose another workspace's review.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	ResolveReviewWithResponse(ctx context.Context, params *ResolveReviewParams, reqEditors ...RequestEditorFn) (*ResolveReviewResponse, error)
+
 	// GetReviewWithResponse performs a GET /v1/reviews/{reviewId} (the `GetReview` operationId) request.
 	//
 	// Returns a wrapper object for the known response body format(s).
@@ -3960,6 +4149,13 @@ type ClientWithResponsesInterface interface {
 	// Add a MANUAL representation authored against the review's current revision. Give the config matching the type; references are record IDs of the review.
 	CreateRepresentationWithResponse(ctx context.Context, topicId TopicId, params *CreateRepresentationParams, body CreateRepresentationJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateRepresentationResponse, error)
 
+	// DiscoverWorkspacesWithResponse performs a GET /v1/workspace-candidates (the `DiscoverWorkspaces` operationId) request.
+	//
+	// Read-only discovery of immediate child workspace folders under workspace_root_paths. Configured roots are never workspaces; discovery creates no registration.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	DiscoverWorkspacesWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*DiscoverWorkspacesResponse, error)
+
 	// ListWorkspacesWithResponse performs a GET /v1/workspaces (the `ListWorkspaces` operationId) request.
 	//
 	// Returns a wrapper object for the known response body format(s).
@@ -3974,6 +4170,13 @@ type ClientWithResponsesInterface interface {
 	// CreateWorkspaceWithResponse performs a POST /v1/workspaces (the `CreateWorkspace` operationId) request.
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	CreateWorkspaceWithResponse(ctx context.Context, params *CreateWorkspaceParams, body CreateWorkspaceJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateWorkspaceResponse, error)
+
+	// DeleteWorkspaceWithResponse performs a DELETE /v1/workspaces/{workspaceId} (the `DeleteWorkspace` operationId) request.
+	//
+	// Hard-delete workspace-owned Prunelle data, stored content and scoped idempotency receipts. Never delete project files or Git history or stop runtime sessions. The folder remains discoverable. Repeated deletion of an absent ID succeeds; a fresh workspace has a new ID. Past workspace/review events are removed; a workspace.deleted notification remains.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	DeleteWorkspaceWithResponse(ctx context.Context, workspaceId WorkspaceId, reqEditors ...RequestEditorFn) (*DeleteWorkspaceResponse, error)
 
 	// GetWorkspaceWithResponse performs a GET /v1/workspaces/{workspaceId} (the `GetWorkspace` operationId) request.
 	//
@@ -4428,6 +4631,54 @@ func (r CreateReviewResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r CreateReviewResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type ResolveReviewResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *Review
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *Error
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ResolveReviewResponse) GetJSON200() *Review {
+	return r.JSON200
+}
+
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r ResolveReviewResponse) GetJSONDefault() *Error {
+	return r.JSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r ResolveReviewResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ResolveReviewResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ResolveReviewResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ResolveReviewResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -5751,6 +6002,54 @@ func (r CreateRepresentationResponse) ContentType() string {
 	return ""
 }
 
+type DiscoverWorkspacesResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *[]WorkspaceCandidate
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *Error
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r DiscoverWorkspacesResponse) GetJSON200() *[]WorkspaceCandidate {
+	return r.JSON200
+}
+
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r DiscoverWorkspacesResponse) GetJSONDefault() *Error {
+	return r.JSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r DiscoverWorkspacesResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r DiscoverWorkspacesResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r DiscoverWorkspacesResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r DiscoverWorkspacesResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 type ListWorkspacesResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -5841,6 +6140,47 @@ func (r CreateWorkspaceResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r CreateWorkspaceResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type DeleteWorkspaceResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *Error
+}
+
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r DeleteWorkspaceResponse) GetJSONDefault() *Error {
+	return r.JSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r DeleteWorkspaceResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r DeleteWorkspaceResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r DeleteWorkspaceResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r DeleteWorkspaceResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -6142,6 +6482,19 @@ func (c *ClientWithResponses) CreateReviewWithResponse(ctx context.Context, para
 		return nil, err
 	}
 	return ParseCreateReviewResponse(rsp)
+}
+
+// ResolveReviewWithResponse performs a GET /v1/reviews/resolve (the `ResolveReview` operationId) request.
+//
+// Resolve an absolute server-side invocation directory to its discovered workspace and return its sole review. Missing or multiple reviews require explicit selection; never choose another workspace's review.
+//
+// Returns a wrapper object for the known response body format(s).
+func (c *ClientWithResponses) ResolveReviewWithResponse(ctx context.Context, params *ResolveReviewParams, reqEditors ...RequestEditorFn) (*ResolveReviewResponse, error) {
+	rsp, err := c.ResolveReview(ctx, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseResolveReviewResponse(rsp)
 }
 
 // GetReviewWithResponse performs a GET /v1/reviews/{reviewId} (the `GetReview` operationId) request.
@@ -6564,6 +6917,19 @@ func (c *ClientWithResponses) CreateRepresentationWithResponse(ctx context.Conte
 	return ParseCreateRepresentationResponse(rsp)
 }
 
+// DiscoverWorkspacesWithResponse performs a GET /v1/workspace-candidates (the `DiscoverWorkspaces` operationId) request.
+//
+// Read-only discovery of immediate child workspace folders under workspace_root_paths. Configured roots are never workspaces; discovery creates no registration.
+//
+// Returns a wrapper object for the known response body format(s).
+func (c *ClientWithResponses) DiscoverWorkspacesWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*DiscoverWorkspacesResponse, error) {
+	rsp, err := c.DiscoverWorkspaces(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDiscoverWorkspacesResponse(rsp)
+}
+
 // ListWorkspacesWithResponse performs a GET /v1/workspaces (the `ListWorkspaces` operationId) request.
 //
 // Returns a wrapper object for the known response body format(s).
@@ -6595,6 +6961,19 @@ func (c *ClientWithResponses) CreateWorkspaceWithResponse(ctx context.Context, p
 		return nil, err
 	}
 	return ParseCreateWorkspaceResponse(rsp)
+}
+
+// DeleteWorkspaceWithResponse performs a DELETE /v1/workspaces/{workspaceId} (the `DeleteWorkspace` operationId) request.
+//
+// Hard-delete workspace-owned Prunelle data, stored content and scoped idempotency receipts. Never delete project files or Git history or stop runtime sessions. The folder remains discoverable. Repeated deletion of an absent ID succeeds; a fresh workspace has a new ID. Past workspace/review events are removed; a workspace.deleted notification remains.
+//
+// Returns a wrapper object for the known response body format(s).
+func (c *ClientWithResponses) DeleteWorkspaceWithResponse(ctx context.Context, workspaceId WorkspaceId, reqEditors ...RequestEditorFn) (*DeleteWorkspaceResponse, error) {
+	rsp, err := c.DeleteWorkspace(ctx, workspaceId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDeleteWorkspaceResponse(rsp)
 }
 
 // GetWorkspaceWithResponse performs a GET /v1/workspaces/{workspaceId} (the `GetWorkspace` operationId) request.
@@ -6943,6 +7322,39 @@ func ParseCreateReviewResponse(rsp *http.Response) (*CreateReviewResponse, error
 			return nil, err
 		}
 		response.JSON201 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseResolveReviewResponse parses an HTTP response from a ResolveReviewWithResponse call
+func ParseResolveReviewResponse(rsp *http.Response) (*ResolveReviewResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ResolveReviewResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest Review
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
 		var dest Error
@@ -7886,6 +8298,39 @@ func ParseCreateRepresentationResponse(rsp *http.Response) (*CreateRepresentatio
 	return response, nil
 }
 
+// ParseDiscoverWorkspacesResponse parses an HTTP response from a DiscoverWorkspacesWithResponse call
+func ParseDiscoverWorkspacesResponse(rsp *http.Response) (*DiscoverWorkspacesResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &DiscoverWorkspacesResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest []WorkspaceCandidate
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
 // ParseListWorkspacesResponse parses an HTTP response from a ListWorkspacesWithResponse call
 func ParseListWorkspacesResponse(rsp *http.Response) (*ListWorkspacesResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -7939,6 +8384,35 @@ func ParseCreateWorkspaceResponse(rsp *http.Response) (*CreateWorkspaceResponse,
 			return nil, err
 		}
 		response.JSON201 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseDeleteWorkspaceResponse parses an HTTP response from a DeleteWorkspaceWithResponse call
+func ParseDeleteWorkspaceResponse(rsp *http.Response) (*DeleteWorkspaceResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &DeleteWorkspaceResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case rsp.StatusCode == 204:
+		break // No content-type
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
 		var dest Error
@@ -8077,6 +8551,9 @@ type ServerInterface interface {
 	// (POST /v1/reviews)
 	CreateReview(w http.ResponseWriter, r *http.Request, params CreateReviewParams)
 
+	// (GET /v1/reviews/resolve)
+	ResolveReview(w http.ResponseWriter, r *http.Request, params ResolveReviewParams)
+
 	// (GET /v1/reviews/{reviewId})
 	GetReview(w http.ResponseWriter, r *http.Request, reviewId ReviewId)
 
@@ -8158,11 +8635,17 @@ type ServerInterface interface {
 	// (POST /v1/topics/{topicId}/representations)
 	CreateRepresentation(w http.ResponseWriter, r *http.Request, topicId TopicId, params CreateRepresentationParams)
 
+	// (GET /v1/workspace-candidates)
+	DiscoverWorkspaces(w http.ResponseWriter, r *http.Request)
+
 	// (GET /v1/workspaces)
 	ListWorkspaces(w http.ResponseWriter, r *http.Request)
 
 	// (POST /v1/workspaces)
 	CreateWorkspace(w http.ResponseWriter, r *http.Request, params CreateWorkspaceParams)
+
+	// (DELETE /v1/workspaces/{workspaceId})
+	DeleteWorkspace(w http.ResponseWriter, r *http.Request, workspaceId WorkspaceId)
 
 	// (GET /v1/workspaces/{workspaceId})
 	GetWorkspace(w http.ResponseWriter, r *http.Request, workspaceId WorkspaceId)
@@ -8518,6 +9001,39 @@ func (siw *ServerInterfaceWrapper) CreateReview(w http.ResponseWriter, r *http.R
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.CreateReview(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ResolveReview operation middleware
+func (siw *ServerInterfaceWrapper) ResolveReview(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ResolveReviewParams
+
+	// ------------- Required query parameter "path" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "path", r.URL.Query(), &params.Path, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "path"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "path", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ResolveReview(w, r, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -9461,6 +9977,20 @@ func (siw *ServerInterfaceWrapper) CreateRepresentation(w http.ResponseWriter, r
 	handler.ServeHTTP(w, r)
 }
 
+// DiscoverWorkspaces operation middleware
+func (siw *ServerInterfaceWrapper) DiscoverWorkspaces(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DiscoverWorkspaces(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ListWorkspaces operation middleware
 func (siw *ServerInterfaceWrapper) ListWorkspaces(w http.ResponseWriter, r *http.Request) {
 
@@ -9507,6 +10037,32 @@ func (siw *ServerInterfaceWrapper) CreateWorkspace(w http.ResponseWriter, r *htt
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.CreateWorkspace(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteWorkspace operation middleware
+func (siw *ServerInterfaceWrapper) DeleteWorkspace(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "workspaceId" -------------
+	var workspaceId WorkspaceId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "workspaceId", r.PathValue("workspaceId"), &workspaceId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "workspaceId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteWorkspace(w, r, workspaceId)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -9735,9 +10291,12 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/health", wrapper.GetHealth)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/workspaces", wrapper.ListWorkspaces)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/workspaces", wrapper.CreateWorkspace)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/workspace-candidates", wrapper.DiscoverWorkspaces)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/v1/workspaces/{workspaceId}", wrapper.DeleteWorkspace)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/workspaces/{workspaceId}", wrapper.GetWorkspace)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/reviews", wrapper.ListReviews)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/reviews", wrapper.CreateReview)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/reviews/resolve", wrapper.ResolveReview)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/reviews/{reviewId}", wrapper.GetReview)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/reviews/{reviewId}/revisions", wrapper.ListRevisions)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/reviews/{reviewId}/revisions", wrapper.CaptureRevision)
@@ -10161,6 +10720,45 @@ type CreateReviewdefaultJSONResponse struct {
 }
 
 func (response CreateReviewdefaultJSONResponse) VisitCreateReviewResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ResolveReviewRequestObject struct {
+	Params ResolveReviewParams
+}
+
+type ResolveReviewResponseObject interface {
+	VisitResolveReviewResponse(w http.ResponseWriter) error
+}
+
+type ResolveReview200JSONResponse Review
+
+func (response ResolveReview200JSONResponse) VisitResolveReviewResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ResolveReviewdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response ResolveReviewdefaultJSONResponse) VisitResolveReviewResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -11265,6 +11863,44 @@ func (response CreateRepresentationdefaultJSONResponse) VisitCreateRepresentatio
 	return err
 }
 
+type DiscoverWorkspacesRequestObject struct {
+}
+
+type DiscoverWorkspacesResponseObject interface {
+	VisitDiscoverWorkspacesResponse(w http.ResponseWriter) error
+}
+
+type DiscoverWorkspaces200JSONResponse []WorkspaceCandidate
+
+func (response DiscoverWorkspaces200JSONResponse) VisitDiscoverWorkspacesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DiscoverWorkspacesdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response DiscoverWorkspacesdefaultJSONResponse) VisitDiscoverWorkspacesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListWorkspacesRequestObject struct {
 }
 
@@ -11332,6 +11968,39 @@ type CreateWorkspacedefaultJSONResponse struct {
 }
 
 func (response CreateWorkspacedefaultJSONResponse) VisitCreateWorkspaceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteWorkspaceRequestObject struct {
+	WorkspaceId WorkspaceId `json:"workspaceId"`
+}
+
+type DeleteWorkspaceResponseObject interface {
+	VisitDeleteWorkspaceResponse(w http.ResponseWriter) error
+}
+
+type DeleteWorkspace204Response struct {
+}
+
+func (response DeleteWorkspace204Response) VisitDeleteWorkspaceResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type DeleteWorkspacedefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response DeleteWorkspacedefaultJSONResponse) VisitDeleteWorkspaceResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -11486,6 +12155,9 @@ type StrictServerInterface interface {
 	// (POST /v1/reviews)
 	CreateReview(ctx context.Context, request CreateReviewRequestObject) (CreateReviewResponseObject, error)
 
+	// (GET /v1/reviews/resolve)
+	ResolveReview(ctx context.Context, request ResolveReviewRequestObject) (ResolveReviewResponseObject, error)
+
 	// (GET /v1/reviews/{reviewId})
 	GetReview(ctx context.Context, request GetReviewRequestObject) (GetReviewResponseObject, error)
 
@@ -11567,11 +12239,17 @@ type StrictServerInterface interface {
 	// (POST /v1/topics/{topicId}/representations)
 	CreateRepresentation(ctx context.Context, request CreateRepresentationRequestObject) (CreateRepresentationResponseObject, error)
 
+	// (GET /v1/workspace-candidates)
+	DiscoverWorkspaces(ctx context.Context, request DiscoverWorkspacesRequestObject) (DiscoverWorkspacesResponseObject, error)
+
 	// (GET /v1/workspaces)
 	ListWorkspaces(ctx context.Context, request ListWorkspacesRequestObject) (ListWorkspacesResponseObject, error)
 
 	// (POST /v1/workspaces)
 	CreateWorkspace(ctx context.Context, request CreateWorkspaceRequestObject) (CreateWorkspaceResponseObject, error)
+
+	// (DELETE /v1/workspaces/{workspaceId})
+	DeleteWorkspace(ctx context.Context, request DeleteWorkspaceRequestObject) (DeleteWorkspaceResponseObject, error)
 
 	// (GET /v1/workspaces/{workspaceId})
 	GetWorkspace(ctx context.Context, request GetWorkspaceRequestObject) (GetWorkspaceResponseObject, error)
@@ -11878,6 +12556,32 @@ func (sh *strictHandler) CreateReview(w http.ResponseWriter, r *http.Request, pa
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(CreateReviewResponseObject); ok {
 		if err := validResponse.VisitCreateReviewResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ResolveReview operation middleware
+func (sh *strictHandler) ResolveReview(w http.ResponseWriter, r *http.Request, params ResolveReviewParams) {
+	var request ResolveReviewRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ResolveReview(ctx, request.(ResolveReviewRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ResolveReview")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ResolveReviewResponseObject); ok {
+		if err := validResponse.VisitResolveReviewResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -12644,6 +13348,30 @@ func (sh *strictHandler) CreateRepresentation(w http.ResponseWriter, r *http.Req
 	}
 }
 
+// DiscoverWorkspaces operation middleware
+func (sh *strictHandler) DiscoverWorkspaces(w http.ResponseWriter, r *http.Request) {
+	var request DiscoverWorkspacesRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DiscoverWorkspaces(ctx, request.(DiscoverWorkspacesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DiscoverWorkspaces")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DiscoverWorkspacesResponseObject); ok {
+		if err := validResponse.VisitDiscoverWorkspacesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // ListWorkspaces operation middleware
 func (sh *strictHandler) ListWorkspaces(w http.ResponseWriter, r *http.Request) {
 	var request ListWorkspacesRequestObject
@@ -12694,6 +13422,32 @@ func (sh *strictHandler) CreateWorkspace(w http.ResponseWriter, r *http.Request,
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(CreateWorkspaceResponseObject); ok {
 		if err := validResponse.VisitCreateWorkspaceResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DeleteWorkspace operation middleware
+func (sh *strictHandler) DeleteWorkspace(w http.ResponseWriter, r *http.Request, workspaceId WorkspaceId) {
+	var request DeleteWorkspaceRequestObject
+
+	request.WorkspaceId = workspaceId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteWorkspace(ctx, request.(DeleteWorkspaceRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteWorkspace")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeleteWorkspaceResponseObject); ok {
+		if err := validResponse.VisitDeleteWorkspaceResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -12786,158 +13540,170 @@ func (sh *strictHandler) AssociateRuntimeSession(w http.ResponseWriter, r *http.
 // const string: with thousands of chunks the chained `+` fold is several
 // times slower for the Go compiler than parsing a slice literal.
 var swaggerSpec = []string{
-	"7H1tc+K4uuBfUXm3arqrHNI9Z869d9O1H2gg3dQkkAOk506dTBHFFqDTRmYkkTTVla/7A/Yn7i/ZevRi",
-	"y8YGG2I6c+t+CgFZkp83Pe/67gXxchUzwqTwLr57C4JDwtXH3gTP4W9IRMDpStKYeRfeZEEQJyJe84Cg",
-	"R8IFjZmP/lzHkoQtz/c4+XNNOQm9C8nXxPdEsCBLDPPIzYp4F56QnLK59/z87HsrzPGSSLNgl4pgLWDC",
-	"fgj/U1hvheXC8z2Gl/Bw6A6ps5jv9UOyXMWSsGDzK9lsv1gnooTJs2ARC8LQmtE/1wR9JRskF1iiJf5K",
-	"BMKIE8kpCRGsTIREAs8IvLbaqwZeultnyTNY093gEn+7ImwuF97Fz3//u+8tKbP/v/eLtj+7xjJYbO8b",
-	"0ITiGZKLBB/qc7DAbE4QFegBCxKimLXQyMDrA4qXVErK5ohKeKc1ZwL98vN/lL/K7EyvvxvII/JIyVMp",
-	"+rj9uR7qYNadZMHTATVnXjNJl2RMdpMdzw+rt8okXtGgdHJpfq03528x/ypWOCCl8z45I2ryJSdiFTNB",
-	"tBzgPObwIYiZJEzCR7xaRTTAQILn/xJAh9+dGf8nJzPvwvsf56lsOde/inM9m1olR8fwQ0u9mxkLU7VZ",
-	"sNCr4zCkMBRHNzxeES4pbG+GI0F8b+V8BRsNyZQD+cN/MSPDmXfxz+RN2TqKvGd/9z47cUhGaornP559",
-	"j0RkSZic0nCbA7sUzzleIhaHBPW7aBZz1O23P43a19PeVe+6N5gAX+nV/2kB7et9wOQ0LJazWL28kjZB",
-	"zMMPiq9DsxonK04EYVJhoWjRDwhWUL+Mel/6vd8QZiHqDLu96ag9+NTbvSn9y24gaexMYOTzs0tj/9SP",
-	"q1fLAM93kfOHXcWLH/5FAuk9+54z5cV3j7D1EmbT+/d8bzK86Xc83+sPJr3BxPO9zmd4Fc/3LvuDbn/w",
-	"yfO93pd+tzfowJfpy3q+lwOPs7ylfd9rSyBxGrMxnTMc1SQ8vJaGWndCTY8CqnqkIWEBmdJQPU8lWYoC",
-	"nkw2ijnHGy8hma1hdLmKuZy6vxbhdsVpzKncuCD+3P/02fO96163f3vt+d7VEOB9O/h1MPxtUAirFY8f",
-	"CcMs2EsnN+lIIBOswUkKX8HK8mnJK0rM50TWREzZXDkys9SV0pIhrz+KjuRici8i6jULCJeYMg3y3VPR",
-	"0MtCIXlnB3EuFLPzZ/DiW5J0SSNHd1sb9r1vZ/P4zHypz+xWnjGcQWd6angzdQJdeHMqF+uHVhAvz3G4",
-	"fiR8Tvj5iq8ZiSJyLgh/JPycMkk4w9G5XkHBoZ0wUG3kZsXnJSfkbBbzJdIAQPDCksqNj0hr3kIYRfGc",
-	"MhRztKIXd+t37/4WCH28q3+UUrdTJ/O9r5SFGQ66vW4PPN9rfyqWLjk8q8eLSaYYAxaTTQD+Iw6+EhZ+",
-	"JjiSi7rH7YIEX0k4xWonAHT45IVYkjNJl2TnMUOsdlE+hLJZXL6lArbOKRYsXMWUSRQSiWkkkFgHC4QF",
-	"4uTb1GrMcDLiFZ1avmt5eZyAXiKxzMiLznAw6HUmWlSMeu3O5/bHq54Sm+5/3f4YPnX304RewULFd0Fr",
-	"4LCHVgwNi1YWoS9INHYFtfdUS6pHMg9R/DBdYFFgz4w/t89+/vu/WZNGSKUBzWhEkFFAW94WGH2PsHAa",
-	"UaY2sqSMLtdLl2th+3OiDl391oUnzyoWVMZ8U3b2CBKRQJJwKsk3WTyChhkK+dgeAwV87rW7hWeokJjL",
-	"ShvPUUp2s77V/dX6mWkd0PgO3PMvU00GpfhuRgx1NIaHYJ2SArH+22KjqEKRAxUookKSED1RuYjX0hKI",
-	"aKm3NhjoD9qj35XqOJxetUdKFRzffrwedm8Vdw6Gk2l7Oup9ur1qj6aXffgSZM8fu8RWhxMsSZcESlqM",
-	"tDegLhPE4aZEfulp96lVdvlf4SR59h3viFUodz3d715RoeTajLKQsnm9h3J6WpGXSA9AGr/gdQjJDK8j",
-	"KZCMtY9izTlhEsWMFDB1juITqFQk1UIMNUS2eq0E/IfRA65m62YhbSw7qfxTLJYLcOqQSJAPSGmzPtKm",
-	"ko+0Kusjo9z6yNpJ6mF0T8P7D3csZySZiXcYnvCcPj61AXyfWnswX2qBmanuUwPwHsHJazxVRsYbsZ+c",
-	"w3fM223e1wDwac6I13wCFBknWdfG1v72mE7HuAeKdmOF4h7de6f06ebEjObUn0Qibwq0vBKhY3jS7KuW",
-	"5NmSBk3KnmsiBJ6T4w6ifT5oFzC14ZHbYZPAGGUk1GEwUUImpLPZXoemsaXhXOzEbEbnfbZaS30eK4m5",
-	"9xjXw3IPJzY66DhHbMKqqrsen5BvW49RGZH9rAX4+0mgtVjjCKlnCrXzLUdL7z8nqUfOOuq6/ctLx383",
-	"veqPJxVdL3UosZg8miVI+OIwQszAv0gQW0TtkZhJOKBY0OeAmhltF6kHZPeVmwSuiq4cyORK86in9+Z9",
-	"tg2q2FRZM/WeWWG+4zAX6+US880RhJRnPvVQOnEdEskgrkkKSWJlh1GJjqdVUEmMPkZJ1plf5yTGgkwV",
-	"nvcuR1kQrUMyXTPJwddj9CAlnm2Qzzz0EMcRwQyeivADiSrMbhXgrPS/wXKBTHxZQ/0DWq6FRBEliDJB",
-	"Q6J+C9RZsuYkRDiK4icSIh7H2i7fTU96f4kym8CjSFVcUtbXMH6fD5DkZlUYzGGoDqVuEVAz1Np17P4G",
-	"o06lfodAvWwFR24jvoosqbUD9fYPEUHpUIHejHr/uO2NJ1NtzY7fAklVD5vlxHDpkmbc0euViGGN8+mO",
-	"X6t5VkzOR0gDiVRIHkz1eD+XJSEmvYl8uCnBqaGVLNy2cOcEmRwKqsZf3XSpJjnq11yopjO8vtbx4/bN",
-	"zWj4paf89xlMFxrrBap6PV4l4Tx3OlSwDHrhnBRRF4vDw4+aw/QYGlY4PL5uQ/tmONDwHvdGX/oqNt9t",
-	"T9rjyXAEn/9x27uFv+3OZDiCUZPejfrTnsDXw8nn3qgQIVXPM3Om7rShVHxwRGbF7GJPJvVyRx5HCm9F",
-	"c7gIr4fOGY+XhdIkgdDWLzLebweoadVQO1NFvnZepCHWToTQwW7W/b4r7zkRbpWP10NO0ZKTYKl9JtUF",
-	"hnGyFAmLlzxzNAjRExZoiUOC8BxTJooDc0JiuRauOBje9AZK3o6HV196xV5RlRRXfEwrs0G4++AkwlId",
-	"fRfO1yREapYP+g8Ei9hX8I5nhmgby79j2hb0ISPAnHbJg5zgYLH1pBWgmbSsn4RdFNKuMAI30h3jemr1",
-	"eCDpI7Ezx0/MzqtDWkynm2bd39X1jfUqrE17JgRe0/u8R4VI/KYpIhNScPQFu7ZD6hkGyrxRVcmTyIVm",
-	"BE96TjSag1Qpw+2YvKRC6KUv1xDwbLpHDcCRA54BvnOhCkHey+HtoKsg+6V91e9O26NPt0YL7AwHl1f9",
-	"jvrYvpncjnrTy3YfUjZ872bU6wwH3f6kPxyUfAuqY3+kvr8dtG8nn3uDSb/TnuiRvdF1fzyGcd3eoN/r",
-	"GuSOBu2rQtln8lTqJQQa/tl/oivIpOPT5bb1kdyTGg9Faot1PzdsuDaQ1+vkNO/Lzz002XJbG3ZyUidg",
-	"cYx649srpRzf9Dr9S6Cc/lBlkg3aV7+P++Pp8HZyc6vMldGkf9nuTF42IXNPyqWu9ihJsoP4Aoo5nVNm",
-	"cuu0B2i5hKCwOs1WPA7XARy2soWu8QY9EESWK7kpjhVYP2TtNEmTUWd9kha3yQtUSY3clZ5cLDEt7Tck",
-	"MLciO0faeVVFSp7566eMFmz9VDA6yDQ/wCB+LhCGlzQiHadUoqb3d2lOrnKBoobFNKwwygb/snw7sGUB",
-	"OAxN3oVQKRyxzrvaTrQrXICybCjBcTObCaZxmsi1Wyhn0r6efVV/VAEUatheUKhRe0ARkojIw4ERR+E0",
-	"mzRSNOqItJK9Mjoxs3YBGmhzrEdup5O4orQkuSR5TUeZT6nWRZtDpg6aEqrZJhGXYl2UVZM1LtM1I2Qc",
-	"0DmHebvbVQrd9bDbv9S6Xbd31dOa36g3aF+rT5Pfb3rGsaiVxMmo3fm1xPa91Obnq609mVEu5FQQwqb7",
-	"qPKlNafRqNeZDHrjsYLzuP9poFyKndtRf/K71rUvh6Pr9qCTKFef2jc7PYjNVbGUe1sEeSTV6m/6g8th",
-	"WdpYsVul2x+DudHr7nWx1NSzrKFfgv5E/UpezpERViVzi1YaKVOxvNOMDEjLI7K8t42M+GshzB1fy/5C",
-	"AAU5+0SR2WW0kFrM20+A0aBs2cn2Nd1TtfyWR4W9cjRYx+lkoNoM1enJD8tdWGJGZ2R/Atm1HXfC3Mpk",
-	"b3Vg3GwE3q4h1lFdSJtjtKxIqXLx0haX56uZJJUbBLIWvdHOa+EnvmjfJFMLPwlh+8bX7CNsS/jeov/3",
-	"f/4vsuBXTQ7gCywEnTMSon63sPyp4NQ+mBMdKZ9lwuqiPoOrhsjhECsOBwFZSTjXpgGnknCKd6s5f5Wq",
-	"4bw69rH3uf2lr+K1neFgPBm1+4OXd0zt0KISt1ShdqSy2g84FKwak0zh+I+KcNuQJtNv0pj5lWzqqw7X",
-	"zllSp0JFLWvNaPTEqZSEoYcNwsxW576RmxUNcBTp8i66XOmiBAiO4Tlh8m0LKclHiUCczAgHaN4xCMyh",
-	"WC4Ih/m+ko2wnVtWhCOSysoW6j0SvjGdFKB0DEvJ6cNaqjChWlXv5cMdS/EJA00FIhYoJEGE4fMbUxaP",
-	"nhaEWUeBj4YfIbuhpztAgCMRKUeieNvK1MFYYtCpc7o2Fcs9hTAf0I3Bq2q/Ez0SgagUd0z5XyFMr4YL",
-	"hldiEcuiuplE/h+bMrKPiS11gcwgxalmr7kDwUEdBspetCy8txXVqxrKg4WO7jFQp6FA0WJ50VA7kqO1",
-	"lEMJEc8k4YXgfiCzmBejNdvoqrrYe0Gq33GCqojgZTvJjII/vZveAOK8v5sIZf/T7ciGhm77jXg1diWI",
-	"g1k/M11/ptsm7+3gS29knWDj25ub4Ui7wTpDcHd1+51JlRJ4gF16CJvtJIj1De6rEKWLuEOo7HXUGW6b",
-	"YKPkN6RSsorTbk5fhnhEDeJWGNZlmorM9PriqjsU1IrOtwwzlBThlKc5i1dw0P+Ffbgv4KU9BM2O/3Tb",
-	"bVoF+8YrcPDhust+dd7tNOdiQ5bly9iOWbxtG4xVsKW9MwXVCEiXcmkr4YHYXhf6IATdHwULGoWcsExN",
-	"Qu3yN1EDgQfg3JVFFR9xCPhYM0OBsOyEdapAxVFKgq0TblLEFroG0wLjv3QNQh3aCCseM82XHBxSZGB9",
-	"KIeXGRxYWbBVTn5qWrX5FzXWFSQ4ijdLC90OoLsFwTYov/tMsAPLWkbsQ2Hy0oVPlugTP6LCvkAYVCov",
-	"rnKk7i0r3gdF45Co5mq1TNmQs9Xl+WadSi+aM17oaNoJv+bSxq/T7OYTFMZmFbFrzL+G8RP7gDhhIeFO",
-	"vzGOn9DnyfVVoQV+UDWtW1lZPaOm6CDJTuXEJUxJZ+1SzeskY7wRDMePx3RyyLQ9KEjxW8aPpo2V0reT",
-	"6HUc70nsU86NfHnMu71ekXQ/zhQV4ZyHRDMAHz6oH8PO4gAPV7kDtjbPNeewfUXx0Vfi3d2bRPrDvb/l",
-	"Wf2lruAMoRTvs6EQbY6FmuHTmwyus6Ltc/zkRC7RVxY/iQt03WuPb0e9Lnoj4zhC8Vqu1jLpeouRJEIi",
-	"vmZvnYjlG0EIQyHlJJDRBuoQVfwScsS5pDMcSPEWWgle9kZqZk6wiFXtYszRv9bhfAlBWh+ZaF0LjZOo",
-	"qbNBE0CFyKXbotNuGGjebEg71dRie2KA4A0fm6jnEd1WtiNJ8KNY4G2oLwF5Z/D7G3Cn+8jO87boSH/g",
-	"UAu5PUsPCmB0ABlmgUhzSCQOFvoela15ICg8DeJ1xp3hhBJUxrTZ70H55cmIcgNXSDwn4a5dbAsGcOD1",
-	"x0Yv7Q+cf4uwuWb710g63uwa9IQ523KB1yt5yefAb4HI6U/j0IuDigT7OdBtvef2S2UQ7mTSJu9VTURl",
-	"uKMZATXKhKpeiv3KjuKirkc72hxt03kcy2lxd6MOZjGDLBSUYlppiNmWR4XcWa+7miKnzCOp4yfdYIa8",
-	"tl+8OgEk4bmG0O/4UQ+20A6r5rR6pEqje8Q0gu49ZSVJBzd09LaSMM0Q1O8Km6jj5PuAdSEW8VPrv5KP",
-	"9sW06dfkqj2M6pxOMX/sd+LqxfYpmNU8u74hjEoe3ppEXnIRkVMhx+kjqHQsRGuWcBsiTHJKxJ76OFUg",
-	"7KL9uj24bV+BTnCd2AqfeoPeyJTNd3ujvlYEB8NBrxC9heZM0eo/0Pe825dUzZN0OAse6rU+lloPdWKb",
-	"ZiHNe7h9zyHhqbZmdtOQU7pzPINYRTWZv0iK2BUduPjWOWsd5Iav3NOv8NVKal0q6xDuEd+UHqE+1oy+",
-	"HuBjNYUq08rSY18H3r0VubkKvc7VcFyzJu+wzj7HK6WWzFwQOMZIESiP7d9j6KA5IjugZViAV3LNa0J/",
-	"Rtmc8BWnJQkIJWQT85Cam+d25w7uKY4wRl91JTJjKhYF9xJ6zso/16bX/gzsGlBfyUrqzHbwFoVr2CAy",
-	"AP2Q5KtDI7ENWtJvCJYhmRtc6ngQ9hV3WOj6GZxmkeUQeArF6sTbYOup7HWlNesw2mjF44AIAS47SfgS",
-	"AIEWsc4q2iCMzNVO6EHfHYXeqKsjyTcfxYykjzxEcfD1bQsNYokwu2OqQAPqO+DAUkdEy/oB0ZJgpl2A",
-	"dtIAMxZLWy4YqWYwsXGkfkBUojDWN5ncMXhYPWs3LmS8WpGwqLjBTF/GDvbnvPEx6v2nyooddcGwuG4P",
-	"2p9KRHOAV/iBRlTSGoaZwVTHPrspYqzgac8BRL5pUigMbw1XGOpdLHj1PXczSri5MQxElSIQFLNo0/Iu",
-	"YNpCcZWUddeRcgvMGRFiujBiLudSiUGrRGaQwqW5Sxf61RLMla3M17Z10Iq2UBvBXD6QgKoQUtRlr++r",
-	"f5GqLZs5i5+2ahurWIoRPgQsURzgaHszozUT1ptkMPaTUDyokgZR8KRrk9Aq6bStLp+G9oMkjzvHubEk",
-	"EodYFjirzT1wZ2JFAoiL2FvwCis8DZ8VdHqKOZnzeM1C4EV92y1ekt3Y2Loubzi46g+UxX55aT6NJ8Ob",
-	"m70+fjXT1JRH1cKDWM/nBCTc1NVsCt4wafEt0NMiFgS5zcJV8RqmzCXgnwRSSAactdCAPBJuejCHEO6I",
-	"ge1URVu9jtF7ttn7BhcvUwnFunFAde5inRWKDkhHduYkZVb2+Mn9hNbBAaIrJRtL9jmpkJOdDrXmX7cc",
-	"X3n5lOPLAhKpelFi7kxt6qZEM79hx/r6Z1NnT9JSLGfUxuxMkIATmR7cpqm/PuGLxAdRzdOLbmOFl9K6",
-	"oasKUDjnURSD6oWo62MvXcyReYukGccuKGTvwazulayuGNjrISpoompo4ha04Nrij8B6nc0rViXlHI01",
-	"TMoOYTlw6/bHneGXnk56gLqbib5ucdwZ9T8Wu/HGKlm+kyaj1+CMl7h0Q7X8OvThRrugHdlVrH5PsFzj",
-	"5RqNh5ntHlEEiq3kqPJmYuXtwdKdZZarkpf6IuHv+tFhTVjVNrg7MSd93/KYd7V+blrCbM1XzbzNcmoz",
-	"Nm7+LrLX6LavmgJ62B0LL5lqXv1Sgp0ue5WP2HR338xlXNVFzyE+4Dxicj2ObBoUdIx3Or0bC/qIC2dO",
-	"lYqYvTms+qp1w3SFyYnbN5DtS6zNeTR4CLbUMmZzJOhDBOkuDntVd4Hm7c92Z9JXV70MP46H0KSx2Ng8",
-	"oIjhh3bed3ON84UTToTI2m4J4EsSIR3ayTBl/hagDA+50arj/P9a1DRzttyqzRx7T/MhN1oUt/erBpGy",
-	"XTcJo/++QvUFr1Ddd6FiZRo45c2lesX/vlzTfabJE+XFiOQEtSOJs/QE4fqSw73E67LjGs59sU+TJfki",
-	"t+rscP7kLLHjDssUEU0g+vlZh5CKWtDAEOusa9/0W6gdRYjHa0kEIt8CspLo/vzx/bl2Yd0jAw7ocoaj",
-	"iPAkonNxxzC6n0BMIsARObsVhJ9dxXPK7hEYOIQjAV7IDUrGoDGsq65qwiiK4xU4FNUKREhrmd2xdLye",
-	"R6A34GE00RS4e4nwty0Et1vZPWWqFeIZIqppnJZkEJtc4q9EtO5Y28alcCD1BU48Xs8XOlwTweZVfES1",
-	"aCPRTO0JYXSfBKPa8HTygm8g+HXH7lf04m797t3fAuNvO6Oh+p/cv70wHR90ginmdpc6dqvWbX/qDSa+",
-	"Sj8ij0De6CshK/VGakutOwbvqjcO29M1B7qnnY636eIZErbQkEUbtFgvIXwr1g9LCMyayxQBAOoeH7j3",
-	"W1/4eq/+v0eEPZIoXpHWHbtj12uJH0y/OvAbCBRgziHQfG+UxfsPSFA2j8iZHQODVzETqs2fXHOGVKwD",
-	"3fcmeH6B7jwNH/O8+ofceff+HYPX1vwjEmK778/OrrEMFvcaAwpMjzhaE/Tml5//IzHiqfTRL+9/1h5q",
-	"IXFEoGWfkaFCP6YZFYl4SaS6DEz3SYEQ5X0/JMtVLAkLNme/ks39BeJkRbC0d3tBh1WzAYIEXsKVYIZa",
-	"9VtqujOdBi0I0Jt0Ynk2IqsIb0h4gSRfk/u3KuXs51/QIl5zoSPiEQ0IE0R3o03CwBfedX9i5Y/+Jz13",
-	"kvAoMizdvuk7yvyF9671vvUOHohXhOEV9S68v6mvtN9RSVbgc+eS1vPv6T/98BlGmH56cBYo1aUfehfe",
-	"JyIzl3UlqIehP797p3XItAUrBNd0Xdf5v0y6npbf+7XDZBUl07Zvt0s33DL1G4SrbQDZlU1vhp2rMWZi",
-	"c/1y8QPJC54rdtHHOp4LOCIc+BmnLsdLItU2/lk8XTrEecN+6D3/oXBTVHQ00q0jkbo0DzAKr5vFSt7a",
-	"8OrupT9TLKe2Yaj8o/GqvQg2y8yh5+ypC1zy/MOISm8yfHWE9ezv4dZz987JY4kwFrKIBlfRRh+76cpo",
-	"TiTkPTDyhIzw2SZNfRl3Wodeky5TIf0r2TRGnplN1qLN9y+2BwuiAsLU2wuRQXPLa4C6tPbhyP3sFpT2",
-	"xs8EqCF6qE4wWxFuFBwfosECYKe8rjwkvIV60Ot3PO7ZraMF6AU0vEf/Oxnr37F7NSV8qT4g0Ii1UnQf",
-	"YonhBziye2qUJkMhOcFLOHfXoLOpsmJ0f4WFPFPDzvrdex+RSJA7Zn5Uf8yXuvsui59aqC8RSFWRKHyc",
-	"4HBzb7aiE0tgF6B53X+/8+y+77wLNHi+v2NvdAzcvDmVyaZgjbcXaEZksNDiW39UJiloD6yFOvFymdX7",
-	"gpgx7ddHOKKPROsJWa4aq7fvPZr66RxTUcDYn2vCN6kKYeuuU2JMbCLK5L/94vl7WiWYabWcS+fNQDwz",
-	"f968+mOvYAefjSbEM43eLPfkJ9zus68wph89lkkMPzj8ob0c59/tpz1qknPHXGPnWbJGiYpkt3osMOxm",
-	"C5QcRRQmImxIIgWQlxegO+nDQDrNESkDrUkMaRCwZoUCsGpBCLKArxlU9bYykBIbIckyJZtcx7rz79kv",
-	"DA3th2n+sXqQLdUtdVhYiR1lXGihy8FsCYiVRjM6N03TmTI/5/QRJBcQGKyUZAerucqU0616lNeooBb7",
-	"ak+spOYgtUNRzRLFj1JWU+GQ0DxYpaKUg8EzOzJjKp1duQKXY46Y3Wip6HfUrrat2Pxz8S0KoCmttLM1",
-	"2oCDCtgoeaVjRbMFtgnPFoBba49Jic4rVsD1Hn+Q/j1KPKhl6rfx374YwrLscv5df9ijViR4bFD+lAFi",
-	"siAvDoS6BDkyQPISfWEbfueZWzNKZVA7GXUKsZGsNqZzhqMq8iN5BAn1jIBCC3v7g6450KWiUJARxfFX",
-	"U4CBQjIjgbrD+cGkezaoAb4EwpyuxqXoSlPYKhwZ2Uy6H3xi5HpOVcC8fcIGD145+pIow04EdpNRpwC6",
-	"Xa0KuJOd+SiOQiIkUpULL+toOQLy5W45dTMSBvdbSAPV9AYn1w+hN2bvWpE3d/3FjLxtoc7w+hpqPxkh",
-	"IcgRSEaE8EnvH7fQvF/3Ih0jQSISgJNPoohgoZ62t9SBRyN9Q/fuI/L0wVzwZPYlzESIxQz8GQm8VVCM",
-	"qTqcZRzqMFaBu0OfwPap163E2F3+IDUmJftyRcayayOOxCLx4IzbKSCccScREU44oIKQSHeXBAYpt57N",
-	"v5roGK5U0bfLwEyVbrIA4ujqBSF6rd4m8TxbdyWwv2ZbG922rQfV/TFC2TdlwYBj4lQn5eTDwlXvTxSu",
-	"SrjZCVedhp/dVuylzPxS/s9KnJwsVoGPe807RV9Cp3Lv4CgF8qUddAogm8WqwNjuS8eBdL6LvSPnlcNd",
-	"J2LtBnvfjDkF1PVaVYBuW7oj8wruKaUTj16HHVF2JH3BEQ2xJEaFJU/pdcd4jikT0vyyW7lVLmyVlqMO",
-	"MH17qIDopOqIwTETOJCFwWoNa+dqgVd5OmUv1T7xmZS5wbmACPXvKgQayTSBCpouJndVyzhzkfULUuUO",
-	"tk7vJypnazPmJGytJ6vA1mZXr1xsWr7c7/Y/nX5vV6vqq9e6vXNkmc5DL+HtbFCV7+iuSCbx1WnjlDHJ",
-	"fxJp0AFRJmOTuUOXyyTnU2/TR08LGizQAwniJREZAWvHFOj2ehdON6UXEJ4N+vpL1Wr9HqHzqi+H/XL+",
-	"Sa+UK8y/UQUCKW3yOLa2mQ/4Ycm9ckC25hI6OAdt4VgLfVzTKFS4lJyY/JekCm0bncCtetGTsKpaqgqf",
-	"6j29aj1GG2YII12HqW8v8VEE/jNdIQl6iVslWWQl25q6V2wgZ6pWTqyHGIIpN4sV1BvRLITN5NAfKwTs",
-	"mk6W3iXPJs6F9EokaKU4OSSSdnk/+pRLklB3gvp8RiNSKibbO+/jT71aJmv/AQuiYLIgOESSfJPb3PiJ",
-	"SOi2UTXslG8wUTVHxy+e0GQB1cr1aYzMAA6m4UkZpQHY/yKEpItXzrZDj1tJhXxTgaySe6oEpIA+EGiR",
-	"JJCMWwjAJsw3qrokhhZKaqyKf8wiPIe50wYfhVSYb+TRGJqzCxWJWAcYQqUAp3T/6pCvW4WdJd2Qdpon",
-	"mb5iBaHmnA8d6q3MArYRJ1TS6XZv0SZp+GZ6jyC5oMJN/fH/CulOGZhUMqXyEAG/cvyY+gEzHUuPPncS",
-	"zKaHdA7n59955iX2ndj57nLNnds52Jac3ll4viC8ajNYDowpm5lJzyxSdxQSZLGvDZGyLnK+68O0NqhO",
-	"EG6hj3YKEKL2MRIWdqVTsso3Mau08pOoOthC4yfbmO00VlB2zSq8Nm6cmfSZdv5d/d3DOdZmaYxhSrX+",
-	"SXJLpFVx9b1oqh2Q+PGpsXU5baKh7VXL3Z5REoUCmWxgyBKD11a3z9tkbucizZ+EhorWY7BE0NuwhWw7",
-	"BKvFpG0egwjTZUYFEmVp3gdarSfJ7q5vrp6AcG0utzFXX0kKd57pz+Eu1vrVhRkqLvSV3CSFBpp71+qG",
-	"FWxdWG+YvajD3vz6FnKRcOLXKnCo+ECvy5WOM8BjBKh7bH41BV3J8zZ/YU7kvlLG5JLXV0ffW9fPvhbq",
-	"ho29etrO1eiUqy621D8zHK2itVChRcIk3yhzaEmFAEvv+suNKpFpoWvzjUqT0d0eTH865Qm+Y6DD2Mto",
-	"tEqk+EEL6je6IRgy9yu9/ZCsAD4LNZ9puqSnUxoRJ6uYSxLeMfdiGzsVXND0tijXLnH8jnJgOU3EJlv7",
-	"UiVuk9nlj3MM75d17TBMncJZKkobg9hIdyZwsxV9QZ/oY6Y+awnyxbauAJh9UNWmHEjMkoPKFXVuv7Op",
-	"/H5JwchxBVunLRw5uG7r/QnrttJCkmzd1gsLuMR/sNvZkXbPPwlrJ8tVqnyIotRPcjRTpzPtLZNKd/mq",
-	"CT7Z5g+idQeZ5WT+YjVuGfxtEfn59+TzHvPURW5jutBO0ICZ2gxY6pLrbynMUi9OGVCretRCEhFJiuoU",
-	"wH5Q6cXpFRgtlLBMQdilS81Iss8d90vBSZuugrhaO/yBXrMMqP1DnGy+Z7pqF18s4nqaIUUu6y+0fS1S",
-	"utsJ+HZVuJ/aDeo405vziMLX2nGoUbvmkXfhLaRcXZyfv//531vvWu9a7y/+/W//653Ci5niu/Xdm/r/",
-	"Zz/5xuFS51tbAJn7Sm/D+dLC1/nKzdJ2vjYNK5xvktd6/uP5/w8A",
+	"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",
+	"evz6+P8HAA==",
 }
 
 // decodeSpec returns the embedded OpenAPI spec as raw JSON bytes,

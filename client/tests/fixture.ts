@@ -20,7 +20,7 @@ export class Fixture {
       this.config,
       `listen = "127.0.0.1:17391"
 data_dir = "${this.dir}/data"
-allowed_roots = ["${this.dir}"]
+workspace_root_paths = ["${this.dir}"]
 [[session_backends]]
 name = "Disconnected Rex fixture"
 kind = "REX"

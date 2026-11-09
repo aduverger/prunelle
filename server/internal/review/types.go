@@ -7,6 +7,7 @@ import "time"
 type Workspace struct {
 	ID           string       `json:"id"`
 	Name         string       `json:"name"`
+	RootPath     *string      `json:"root_path"`
 	Repositories []Repository `json:"repositories"`
 	CreatedAt    time.Time    `json:"created_at"`
 	UpdatedAt    time.Time    `json:"updated_at"`
@@ -44,10 +45,19 @@ type Review struct {
 	UpdatedAt         time.Time `json:"updated_at"`
 }
 
+type WorkspaceCandidate struct {
+	Path         string                    `json:"path"`
+	Name         string                    `json:"name"`
+	Repositories []CreateRepositoryRequest `json:"repositories"`
+	WorkspaceID  *string                   `json:"workspace_id"`
+}
+
 type CreateReviewRequest struct {
-	WorkspaceID string `json:"workspace_id"`
-	Title       string `json:"title"`
-	Description string `json:"description"`
+	WorkspaceID   string `json:"workspace_id,omitempty"`
+	WorkspacePath string `json:"workspace_path,omitempty"`
+	BaseRef       string `json:"base_ref,omitempty"`
+	Title         string `json:"title,omitempty"`
+	Description   string `json:"description"`
 }
 
 type Revision struct {

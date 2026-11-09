@@ -40,8 +40,8 @@ func serve(ctx context.Context, cfg config.Config, args []string) error {
 	if err := requireLoopback(cfg.Listen); err != nil {
 		return err
 	}
-	if len(cfg.AllowedRoots) == 0 {
-		slog.Warn("no allowed_roots configured; workspaces cannot be registered")
+	if len(cfg.WorkspaceRootPaths) == 0 {
+		slog.Warn("no workspace_root_paths configured; workspaces cannot be registered")
 	}
 	if err := os.MkdirAll(cfg.DataDir, 0o700); err != nil {
 		return err
@@ -52,7 +52,7 @@ func serve(ctx context.Context, cfg config.Config, args []string) error {
 	}
 	defer db.Close()
 
-	reviews := review.NewService(db, cfg.AllowedRoots)
+	reviews := review.NewService(db, cfg.WorkspaceRootPaths)
 	sessionSvc, err := sessions.NewService(ctx, db, reviews, sessionRegistrations(cfg.SessionBackends))
 	if err != nil {
 		return err

@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -12,7 +13,7 @@ func TestLoadAppliesDefaultsAndExpandsHome(t *testing.T) {
 		t.Fatal(err)
 	}
 	path := filepath.Join(t.TempDir(), "config.toml")
-	if err := os.WriteFile(path, []byte("allowed_roots = [\"~/code\", \"/srv/repos\"]\nallowed_logins = [\"friend@example.com\"]\n"), 0o600); err != nil {
+	if err := os.WriteFile(path, []byte("workspace_root_paths = [\"~/code\", \"/srv/repos\"]\nallowed_logins = [\"friend@example.com\"]\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	cfg, err := Load(path)
@@ -22,8 +23,18 @@ func TestLoadAppliesDefaultsAndExpandsHome(t *testing.T) {
 	if cfg.Listen != DefaultListen || cfg.DataDir == "" {
 		t.Errorf("defaults = %+v", cfg)
 	}
-	if cfg.AllowedRoots[0] != filepath.Join(home, "code") || cfg.AllowedRoots[1] != "/srv/repos" {
-		t.Errorf("allowed roots = %v", cfg.AllowedRoots)
+	if cfg.WorkspaceRootPaths[0] != filepath.Join(home, "code") || cfg.WorkspaceRootPaths[1] != "/srv/repos" {
+		t.Errorf("allowed roots = %v", cfg.WorkspaceRootPaths)
+	}
+}
+
+func TestLoadRejectsObsoleteAllowedRoots(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.toml")
+	if err := os.WriteFile(path, []byte("allowed_roots = [\"~/code\"]\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Load(path); err == nil || !strings.Contains(err.Error(), "workspace_root_paths") {
+		t.Fatalf("obsolete configuration must fail with migration guidance: %v", err)
 	}
 }
 
@@ -36,7 +47,7 @@ func TestLoadMissingFileYieldsDefaults(t *testing.T) {
 
 func TestLoadRejectsMalformedFile(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.toml")
-	if err := os.WriteFile(path, []byte("allowed_roots = ["), 0o600); err != nil {
+	if err := os.WriteFile(path, []byte("workspace_root_paths = ["), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := Load(path); err == nil {

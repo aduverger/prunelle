@@ -36,6 +36,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/workspace-candidates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Read-only discovery of immediate child workspace folders under workspace_root_paths. Configured roots are never workspaces; discovery creates no registration. */
+        get: operations["discoverWorkspaces"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/workspaces/{workspaceId}": {
         parameters: {
             query?: never;
@@ -48,7 +65,8 @@ export interface paths {
         get: operations["getWorkspace"];
         put?: never;
         post?: never;
-        delete?: never;
+        /** @description Hard-delete workspace-owned Prunelle data, stored content and scoped idempotency receipts. Never delete project files or Git history or stop runtime sessions. The folder remains discoverable. Repeated deletion of an absent ID succeeds; a fresh workspace has a new ID. Past workspace/review events are removed; a workspace.deleted notification remains. */
+        delete: operations["deleteWorkspace"];
         options?: never;
         head?: never;
         patch?: never;
@@ -64,6 +82,23 @@ export interface paths {
         get: operations["listReviews"];
         put?: never;
         post: operations["createReview"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/reviews/resolve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Resolve an absolute server-side invocation directory to its discovered workspace and return its sole review. Missing or multiple reviews require explicit selection; never choose another workspace's review. */
+        get: operations["resolveReview"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -590,6 +625,8 @@ export interface components {
         Workspace: {
             id: string;
             name: string;
+            /** @description Canonical workspace folder; null for a manual registration not yet associated with a discovered folder. */
+            root_path: string | null;
             repositories: components["schemas"]["Repository"][];
             /** Format: date-time */
             created_at: string;
@@ -607,14 +644,22 @@ export interface components {
         };
         CreateWorkspaceRequest: {
             name: string;
-            repositories: {
-                label: string;
-                /** @description Path on the server; must lie inside the configured allowed roots. */
-                path: string;
-                base_ref: string;
-                /** @default true */
-                include_untracked: boolean;
-            }[];
+            repositories: components["schemas"]["CreateRepositoryRequest"][];
+        };
+        CreateRepositoryRequest: {
+            label: string;
+            /** @description Canonical repository path on the server; must lie inside workspace_root_paths. */
+            path: string;
+            base_ref: string;
+            /** @default true */
+            include_untracked: boolean;
+        };
+        WorkspaceCandidate: {
+            path: string;
+            name: string;
+            repositories: components["schemas"]["CreateRepositoryRequest"][];
+            /** @description Existing matching registration */
+            workspace_id: string | null;
         };
         Review: {
             id: string;
@@ -630,10 +675,15 @@ export interface components {
             updated_at: string;
         };
         CreateReviewRequest: {
-            workspace_id: string;
-            title: string;
+            workspace_id?: string;
+            /** @description Absolute server-side invocation directory. Its discovered workspace is registered atomically with the review if needed. */
+            workspace_path?: string;
+            /** @description Initial automatic-registration base ref (default main). Existing settings must agree and are never rewritten. Only valid with workspace_path. */
+            base_ref?: string;
+            /** @description Defaults to the workspace name when omitted. */
+            title?: string;
             description?: string;
-        };
+        } & (unknown | unknown);
         Revision: {
             id: string;
             review_id: string;
@@ -1363,6 +1413,27 @@ export interface operations {
             default: components["responses"]["Error"];
         };
     };
+    discoverWorkspaces: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Workspace candidates, including folders without reviews. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkspaceCandidate"][];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
     getWorkspace: {
         parameters: {
             query?: never;
@@ -1382,6 +1453,27 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["Workspace"];
                 };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    deleteWorkspace: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspaceId: components["parameters"]["WorkspaceId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Workspace deleted, or already absent. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             default: components["responses"]["Error"];
         };
@@ -1427,6 +1519,29 @@ export interface operations {
         responses: {
             /** @description Created review. */
             201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Review"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    resolveReview: {
+        parameters: {
+            query: {
+                path: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The sole review in the resolved workspace. */
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };

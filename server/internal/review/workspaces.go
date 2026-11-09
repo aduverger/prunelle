@@ -10,6 +10,15 @@ import (
 )
 
 func (s *Service) CreateWorkspace(ctx context.Context, req CreateWorkspaceRequest, actor Actor) (Workspace, error) {
+	ws, err := s.prepareWorkspace(ctx, req)
+	if err != nil {
+		return Workspace{}, err
+	}
+	err = s.db.Write(ctx, func(tx *sql.Tx) error { return insertWorkspace(ctx, tx, ws, actor) })
+	return ws, err
+}
+
+func (s *Service) prepareWorkspace(ctx context.Context, req CreateWorkspaceRequest) (Workspace, error) {
 	name := strings.TrimSpace(req.Name)
 	if name == "" {
 		return Workspace{}, invalid("workspace name is required")
@@ -41,22 +50,23 @@ func (s *Service) CreateWorkspace(ctx context.Context, req CreateWorkspaceReques
 			ID: store.NewID("repo"), WorkspaceID: ws.ID, Label: label, RootPath: root, BaseRef: r.BaseRef, IncludeUntracked: includeUntracked,
 		})
 	}
-	err := s.db.Write(ctx, func(tx *sql.Tx) error {
-		if _, err := tx.ExecContext(ctx, `INSERT INTO workspaces (id, name, created_at, updated_at) VALUES (?, ?, ?, ?)`,
-			ws.ID, ws.Name, store.FormatTime(now), store.FormatTime(now)); err != nil {
+	return ws, nil
+}
+
+func insertWorkspace(ctx context.Context, tx *sql.Tx, ws Workspace, actor Actor) error {
+	if _, err := tx.ExecContext(ctx, `INSERT INTO workspaces (id, name, root_path, created_at, updated_at) VALUES (?, ?, ?, ?, ?)`,
+		ws.ID, ws.Name, ws.RootPath, store.FormatTime(ws.CreatedAt), store.FormatTime(ws.UpdatedAt)); err != nil {
+		return err
+	}
+	for _, r := range ws.Repositories {
+		if _, err := tx.ExecContext(ctx, `INSERT INTO repositories
+			(id, workspace_id, label, root_path, base_ref, include_untracked, created_at, updated_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+			r.ID, r.WorkspaceID, r.Label, r.RootPath, r.BaseRef, r.IncludeUntracked, store.FormatTime(ws.CreatedAt), store.FormatTime(ws.UpdatedAt)); err != nil {
 			return err
 		}
-		for _, r := range ws.Repositories {
-			if _, err := tx.ExecContext(ctx, `INSERT INTO repositories
-				(id, workspace_id, label, root_path, base_ref, include_untracked, created_at, updated_at)
-				VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-				r.ID, r.WorkspaceID, r.Label, r.RootPath, r.BaseRef, r.IncludeUntracked, store.FormatTime(now), store.FormatTime(now)); err != nil {
-				return err
-			}
-		}
-		return recordEvent(ctx, tx, "workspace.created", ws.ID, "", actor, now)
-	})
-	return ws, err
+	}
+	return recordEvent(ctx, tx, "workspace.created", ws.ID, "", actor, ws.CreatedAt)
 }
 
 func (s *Service) ListWorkspaces(ctx context.Context) ([]Workspace, error) {
@@ -78,11 +88,13 @@ func (s *Service) ListWorkspaces(ctx context.Context) ([]Workspace, error) {
 func (s *Service) GetWorkspace(ctx context.Context, id string) (Workspace, error) {
 	ws := Workspace{ID: id}
 	var created, updated string
-	err := scanOne(s.db.Reader().QueryRowContext(ctx, `SELECT name, created_at, updated_at FROM workspaces WHERE id = ?`, id),
-		"workspace", id, &ws.Name, &created, &updated)
+	var root sql.NullString
+	err := scanOne(s.db.Reader().QueryRowContext(ctx, `SELECT name, root_path, created_at, updated_at FROM workspaces WHERE id = ?`, id),
+		"workspace", id, &ws.Name, &root, &created, &updated)
 	if err != nil {
 		return Workspace{}, err
 	}
+	ws.RootPath = stringPtr(root)
 	ws.CreatedAt, ws.UpdatedAt = store.ParseTime(created), store.ParseTime(updated)
 	ws.Repositories, err = s.repositories(ctx, id)
 	return ws, err

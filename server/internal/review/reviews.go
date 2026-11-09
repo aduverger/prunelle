@@ -14,17 +14,71 @@ import (
 )
 
 func (s *Service) CreateReview(ctx context.Context, req CreateReviewRequest, actor Actor) (Review, error) {
-	title := strings.TrimSpace(req.Title)
-	if title == "" {
-		return Review{}, invalid("review title is required")
+	if (req.WorkspaceID == "") == (req.WorkspacePath == "") {
+		return Review{}, invalid("provide exactly one of workspace_id or workspace_path")
 	}
-	if _, err := s.GetWorkspace(ctx, req.WorkspaceID); err != nil {
-		return Review{}, err
+	title := strings.TrimSpace(req.Title)
+	if req.Title != "" && title == "" {
+		return Review{}, invalid("review title must not be blank")
+	}
+	var candidate *WorkspaceCandidate
+	var prepared Workspace
+	if req.WorkspacePath != "" {
+		resolved, err := s.resolveWorkspace(ctx, req.WorkspacePath)
+		if err != nil {
+			return Review{}, err
+		}
+		candidate = &resolved
+		if req.BaseRef != "" {
+			for i := range candidate.Repositories {
+				candidate.Repositories[i].BaseRef = req.BaseRef
+			}
+		}
+		prepared, err = s.prepareWorkspace(ctx, CreateWorkspaceRequest{Name: candidate.Name, Repositories: candidate.Repositories})
+		if err != nil {
+			return Review{}, err
+		}
+		prepared.RootPath = &candidate.Path
+	} else if req.BaseRef != "" {
+		return Review{}, invalid("base_ref is only supported with workspace_path; existing workspace settings are not changed")
 	}
 	now := s.now()
 	r := Review{ID: store.NewID("rvw"), WorkspaceID: req.WorkspaceID, Title: title, Description: req.Description,
 		Status: "OPEN", CreatedAt: now, UpdatedAt: now}
 	err := s.db.Write(ctx, func(tx *sql.Tx) error {
+		if candidate != nil {
+			id, err := workspaceForCandidate(ctx, tx, *candidate)
+			if err != nil {
+				return err
+			}
+			if id == "" {
+				if err := insertWorkspace(ctx, tx, prepared, actor); err != nil {
+					return err
+				}
+				id = prepared.ID
+			} else {
+				if req.BaseRef != "" {
+					var different int
+					if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM repositories WHERE workspace_id = ? AND base_ref != ?`, id, req.BaseRef).Scan(&different); err != nil {
+						return err
+					}
+					if different != 0 {
+						return invalid("workspace %s already has different base refs; existing settings are not changed", id)
+					}
+				}
+				if _, err := tx.ExecContext(ctx, `UPDATE workspaces SET root_path = ?, updated_at = ? WHERE id = ? AND root_path IS NULL`, candidate.Path, store.FormatTime(now), id); err != nil {
+					return err
+				}
+			}
+			r.WorkspaceID = id
+		}
+		var workspaceName string
+		if err := scanOne(tx.QueryRowContext(ctx, `SELECT name FROM workspaces WHERE id = ?`, r.WorkspaceID), "workspace", r.WorkspaceID, &workspaceName); err != nil {
+			return err
+		}
+		if r.Title == "" {
+			r.Title = workspaceName
+		}
 		_, err := tx.ExecContext(ctx, `INSERT INTO reviews (id, workspace_id, title, description, status, created_at, updated_at)
 			VALUES (?, ?, ?, ?, ?, ?, ?)`, r.ID, r.WorkspaceID, r.Title, r.Description, r.Status, store.FormatTime(now), store.FormatTime(now))
 		if err != nil {
@@ -113,7 +167,14 @@ func (s *Service) CaptureRevision(ctx context.Context, reviewID string, actor Ac
 	snapshots := make([]git.Snapshot, len(repos))
 	var total int64
 	for i, repo := range repos {
-		snapshots[i], err = git.Capture(ctx, repo.RootPath, git.Options{BaseRef: repo.BaseRef, IncludeUntracked: repo.IncludeUntracked})
+		root, err := git.ResolveRoot(ctx, repo.RootPath, s.allowedRoots)
+		if err != nil {
+			return Revision{}, &Error{Code: CodeCaptureFailed, Message: fmt.Sprintf("repository %s: %v", repo.Label, err)}
+		}
+		if root != repo.RootPath {
+			return Revision{}, &Error{Code: CodeCaptureFailed, Message: fmt.Sprintf("repository %s no longer has its registered canonical root", repo.Label)}
+		}
+		snapshots[i], err = git.Capture(ctx, root, git.Options{BaseRef: repo.BaseRef, IncludeUntracked: repo.IncludeUntracked})
 		if err != nil {
 			return Revision{}, &Error{Code: CodeCaptureFailed, Message: fmt.Sprintf("repository %s: %v", repo.Label, err)}
 		}
