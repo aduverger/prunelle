@@ -311,6 +311,7 @@ export function FileDiff({
         <Notice>{query.isPending ? 'Loading stored source…' : 'Source unavailable.'}</Notice>
       </>
     );
+  const displayRepositoryLabel = repositoryLabel || file.repositoryID;
   return (
     <section className="file-diff" data-testid="file-diff">
       <small className="muted">
@@ -321,7 +322,7 @@ export function FileDiff({
         <>
           <div className="file-heading">
             <strong>
-              {repositoryLabel || file.repositoryID}/{file.path}
+              {displayRepositoryLabel}/{file.path}
             </strong>
             <span className="badge">{content.status}</span>
           </div>
@@ -333,9 +334,7 @@ export function FileDiff({
           <MultiFileDiff
             {...(oldFile ? { oldFile, newFile } : { oldFile: null, newFile: newFile! })}
             selectedLines={selected}
-            renderHeaderPrefix={() => (
-              <span className="badge">{repositoryLabel || file.repositoryID}</span>
-            )}
+            renderHeaderPrefix={() => <span className="badge">{displayRepositoryLabel}</span>}
             renderHeaderFilenameSuffix={() => <span className="badge">{content.status}</span>}
             options={{
               theme: 'github-light',

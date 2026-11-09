@@ -336,9 +336,8 @@ test('evidence-loaded and reopened ranges keep their original revision when disc
         .locator('.thread')
         .getByRole('button', { name: /src\/routes\/upload.ts:/ })
         .click();
-    }
-    if (origin === 'existing discussion')
       await expect(source.getByRole('treeitem', { selected: true })).toHaveCount(0);
+    }
     await page.getByRole('button', { name: 'Discuss selected lines', exact: true }).click();
     await page
       .getByRole('textbox', { name: 'New discussion', exact: true })
