@@ -353,7 +353,11 @@ function ReviewPage({
   function openDraft() {
     composer.requestFocus();
     if (composer.target)
-      openAnchor({ anchor: composer.target.anchor, revision_id: composer.target.revisionID });
+      openAnchor({
+        anchor: composer.target.anchor,
+        revision_id: composer.target.revisionID,
+        topic_ids: composer.target.topicID ? [composer.target.topicID] : undefined,
+      });
   }
   function perspective(p: Perspective) {
     setTopicID(p === 'Source' ? null : topicID || data.topics[0]?.id || null);

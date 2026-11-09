@@ -118,6 +118,38 @@ async function navigateComment(page: Page, body: string) {
   await comment.click();
 }
 
+test('an already-selected file can be reactivated after scrolling elsewhere', async ({ page }) => {
+  await openLong(page);
+  const selectedFile = page
+    .getByRole('region', { name: 'All repositories', exact: true })
+    .getByRole('region', { name: 'api', exact: true })
+    .getByRole('treeitem', { name: 'long.ts', exact: true });
+  const firstLine = page
+    .locator('diffs-container')
+    .filter({ has: page.locator('[data-source-path="src/long.ts"]') })
+    .locator('[data-gutter] [data-line-type="change-addition"][data-column-number="1"]');
+  for (const activation of ['click', 'Enter', 'search']) {
+    await expect(firstLine).toBeInViewport();
+    await firstLine.hover();
+    await page.mouse.wheel(0, 100_000);
+    await expect(firstLine).not.toBeInViewport();
+    await expect(selectedFile).toHaveAttribute('aria-selected', 'true');
+    if (activation === 'click') await selectedFile.click();
+    else if (activation === 'Enter') await selectedFile.press(activation);
+    else {
+      await selectedFile.press('Control+f');
+      const search = page
+        .getByRole('region', { name: 'All repositories', exact: true })
+        .getByRole('region', { name: 'api', exact: true })
+        .getByRole('region', { name: 'Changed files', exact: true })
+        .getByPlaceholder('Search…', { exact: true });
+      await search.fill('long.ts');
+      await search.press('Enter');
+    }
+    await expect(firstLine).toBeInViewport();
+  }
+});
+
 test('long-file selection, inline composer, posting and SSE retain code context', async ({
   page,
 }) => {

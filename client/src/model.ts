@@ -9,7 +9,12 @@ export type FileSelection = {
   path: string;
   range?: CodeRangeInput;
 };
-export type DiscussionTarget = { revisionID: string; anchor: AnchorInput; label: string };
+export type DiscussionTarget = {
+  revisionID: string;
+  anchor: AnchorInput;
+  label: string;
+  topicID?: string;
+};
 
 export const viewNames: Record<View, string> = {
   TEXT: 'Text',

@@ -250,3 +250,18 @@ Each row names wrong observable behavior that must fail, and a behavior-preservi
 - All 19 real-server browser scenarios passed, including the new capture/draft boundary and the corrected binary assertion. A prior invocation was terminated with exit 137 before completion; a completed intermediate run exposed the incorrect fallback-copy expectation, corrected to the canonical API reason before the final full pass.
 - Native Linux MyGo/WebKit smoke passed, including exact stored HEAD/revision/repository/range and an externally posted reply delivered over Go-backed SSE.
 - Client Go formatting/vet/race tests and darwin-arm64 build passed. Existing ResizeObserver and bundle-size warnings remain visible; native Mac/live-tailnet checks remain unverified.
+
+## Approved navigation corrections
+
+R1 and R2 are confined to the existing source-navigation and in-memory draft flows. The user explicitly approved adding `client/src/SourceTree.tsx` to the original file scope. No server/API, dependency, persistence or retry behavior changed.
+
+### Decisions — least confident first
+
+1. **Use the pinned tree's host activation surface, not a new selection/scroll model.** Keep selection changes and programmatic selection synchronization intact. An unmodified activation of an already-selected file explicitly calls the existing navigation action. Native row buttons emit clicks for pointer/Enter/Space; search Enter consumes the key instead, so its capture handler uses the public focused-file model. Read the row's canonical path through the composed event and validate it with the public model; do not mutate the shadow DOM, navigate on focus/arrow movement, alter modifier/folder handling or track scrolling. Reactivation uses the existing file-navigation contract (file start, not a retained line selection).
+2. **Retain the diagram owner's authoritative topic ID as draft-only context.** The diagram producer already receives `Representation.topic_id`; carry it alongside the target and freeze it through the existing first-edit draft mechanism. Return passes that topic through the same diagram navigation path used by saved discussions. Other anchor kinds need no topic metadata. The server still determines persisted membership, and submissions still contain only revision, anchor and body; no cache scan, new endpoint or persistent field is needed.
+
+### Regression evidence
+
+- R1: select `long.ts`, scroll to a distant file without changing tree selection, then activate the still-selected entry by click, keyboard or search Enter. Each must return the original file to view. The click failed before the fix; search Enter also failed when only native-click activation was handled. The test tolerates different virtualization/cache/controller implementations and does not assert item versions or scroll counters.
+- R2: start a real fixture diagram-element draft, navigate to another topic and Files, then return through Comments. Require the original topic/diagram/selected node and text, then verify the persisted original revision/representation/element and server-derived topic. The original implementation failed to restore the topic. The test tolerates different draft/portal/query ownership without weakening the immutable-anchor contract.
+- Validation passed: both focused regressions, all 21 real-server browser scenarios, native Linux MyGo/WebKit smoke (including real external SSE), formatting/lint, both model tests, TypeScript/production build, frozen install/peer checks and unchanged generated API types. Client Go formatting/vet/race and darwin-arm64 cross-build also passed. No commit was made; native Mac/live-tailnet and the previously documented warnings remain separate verification gaps.

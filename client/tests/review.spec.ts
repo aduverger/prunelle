@@ -234,6 +234,50 @@ test('Pierre source trees keep repository and revision identity through navigati
   ).toHaveLength(0);
 });
 
+test('a diagram draft returns to its owning topic, diagram and element', async ({ page }) => {
+  const representations = await fixture.get<Model['Representation'][]>(
+    `/v1/topics/${fixture.ids.topics['T-async']}/representations`,
+  );
+  const diagram = representations.find((representation) => representation.type === 'DIAGRAM')!;
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Discuss Client', exact: true }).click();
+  const body = 'Keep this question on the original diagram element.';
+  await page.getByRole('textbox', { name: 'New discussion', exact: true }).fill(body);
+  await page.getByRole('button', { name: /Configuration and tests/ }).click();
+  await page.getByRole('button', { name: 'Files', exact: true }).click();
+  await page.getByRole('button', { name: 'Comments', exact: true }).click();
+  await page
+    .getByRole('region', { name: 'Comments', exact: true })
+    .getByRole('button', { name: /Unposted draft/ })
+    .click();
+  await expect(
+    page.getByRole('heading', { name: 'Asynchronous upload', exact: true }),
+  ).toBeVisible();
+  await expect(page.getByRole('img', { name: 'Upload flow', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Inspect Client', exact: true })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  );
+  await expect(page.getByRole('textbox', { name: 'New discussion', exact: true })).toHaveValue(
+    body,
+  );
+  const posted = page.waitForResponse(
+    (response) => response.request().method() === 'POST' && response.url().endsWith('/discussions'),
+  );
+  await page.getByRole('button', { name: 'Post discussion', exact: true }).click();
+  expect((await posted).status()).toBe(201);
+  const discussions = await fixture.get<Model['Discussion'][]>(
+    `/v1/reviews/${fixture.review.id}/discussions`,
+  );
+  expect(discussions).toMatchObject([
+    {
+      revision_id: fixture.revision.id,
+      topic_ids: [fixture.ids.topics['T-async']],
+      anchor: { type: 'DIAGRAM_ELEMENT', id: diagram.id, element_id: 'client' },
+    },
+  ]);
+});
+
 test('exact code discussion is shared across views, replies and resolution persist', async ({
   page,
 }) => {

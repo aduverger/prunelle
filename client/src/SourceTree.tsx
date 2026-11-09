@@ -59,6 +59,10 @@ function RepositoryFiles({
     renderRowDecoration,
     onSelectionChange,
   });
+  function reactivateFile(path: string | null | undefined) {
+    if (path && path === selectedPath && model.getItem(path)?.isDirectory() === false)
+      choose({ revisionID, repositoryID, path });
+  }
   const height = useFileTreeSelector(
     model,
     (tree) => Math.max(1, tree.getVisibleCount()) * tree.getItemHeight() + 48,
@@ -78,6 +82,17 @@ function RepositoryFiles({
       model={model}
       className="repository-files"
       style={{ height: Math.min(height, 320) }}
+      onClickCapture={(event) => {
+        if (event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
+        const row = event.nativeEvent
+          .composedPath()
+          .find((node) => node instanceof HTMLElement && node.getAttribute('role') === 'treeitem');
+        reactivateFile(row instanceof HTMLElement ? row.dataset.itemPath : undefined);
+      }}
+      onKeyDownCapture={(event) => {
+        if (event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
+        if (event.key === 'Enter' && model.isSearchOpen()) reactivateFile(model.getFocusedPath());
+      }}
     />
   );
 }

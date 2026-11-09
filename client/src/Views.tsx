@@ -225,6 +225,7 @@ export function Diagram({
                 onClick={() =>
                   discuss({
                     revisionID: representation.revision_id!,
+                    topicID: representation.topic_id,
                     anchor: {
                       type: 'DIAGRAM_ELEMENT',
                       id: representation.id!,
