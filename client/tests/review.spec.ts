@@ -415,7 +415,12 @@ test('evidence-loaded and reopened ranges keep their original revision when disc
         .filter({ hasText: 'Comment from linked evidence' })
         .click();
       await page.getByRole('button', { name: 'Files', exact: true }).click();
-      await expect(source.getByRole('treeitem', { selected: true })).toHaveCount(0);
+      await expect(page.getByLabel('Revision', { exact: true })).toHaveValue(evidence.revision_id);
+      await expect(
+        source
+          .getByRole('region', { name: 'api', exact: true })
+          .getByRole('treeitem', { name: 'upload.ts', exact: true }),
+      ).toHaveAttribute('aria-selected', 'true');
     }
     await page.getByRole('button', { name: 'Comment on selected lines', exact: true }).click();
     await page

@@ -67,7 +67,7 @@ func scanReview(scan func(...any) error) (Review, error) {
 }
 
 func (s *Service) ListReviews(ctx context.Context) ([]Review, error) {
-	rows, err := s.db.Reader().QueryContext(ctx, `SELECT `+reviewColumns+` FROM reviews ORDER BY created_at, id`)
+	rows, err := s.reader().QueryContext(ctx, `SELECT `+reviewColumns+` FROM reviews ORDER BY created_at, id`)
 	if err != nil {
 		return nil, err
 	}
@@ -94,7 +94,7 @@ func (s *Service) ListReviews(ctx context.Context) ([]Review, error) {
 }
 
 func (s *Service) GetReview(ctx context.Context, id string) (Review, error) {
-	row := s.db.Reader().QueryRowContext(ctx, `SELECT `+reviewColumns+` FROM reviews WHERE id = ?`, id)
+	row := s.reader().QueryRowContext(ctx, `SELECT `+reviewColumns+` FROM reviews WHERE id = ?`, id)
 	r, err := scanReview(row.Scan)
 	if err == sql.ErrNoRows {
 		return Review{}, notFound("review", id)
@@ -151,6 +151,24 @@ func (s *Service) CaptureRevision(ctx context.Context, reviewID string, req Capt
 	revision.Fingerprint = hex.EncodeToString(fingerprint.Sum(nil))
 
 	err = s.db.Write(ctx, func(tx *sql.Tx) error {
+		var previous sql.NullString
+		if err := scanOne(tx.QueryRowContext(ctx, `SELECT current_revision_id FROM reviews WHERE id = ?`, reviewID), "review", reviewID, &previous); err != nil {
+			return err
+		}
+		if previous.Valid {
+			if err := sealReviewState(ctx, tx, reviewID, previous.String); err != nil {
+				return err
+			}
+		}
+		for _, query := range []string{
+			`UPDATE topics SET version = version + 1 WHERE review_id = ?`,
+			`UPDATE findings SET version = version + 1 WHERE review_id = ?`,
+			`UPDATE representations SET version = version + 1 WHERE topic_id IN (SELECT id FROM topics WHERE review_id = ?)`,
+		} {
+			if _, err := tx.ExecContext(ctx, query, reviewID); err != nil {
+				return err
+			}
+		}
 		if err := tx.QueryRowContext(ctx, `SELECT COALESCE(MAX(ordinal), 0) + 1 FROM revisions WHERE review_id = ?`,
 			reviewID).Scan(&revision.Ordinal); err != nil {
 			return err
@@ -161,6 +179,11 @@ func (s *Service) CaptureRevision(ctx context.Context, reviewID string, req Capt
 		}
 		for i, snap := range snapshots {
 			if err := insertSnapshot(ctx, tx, revision.ID, repos[i].ID, snap); err != nil {
+				return err
+			}
+		}
+		if previous.Valid {
+			if err := carrySourceTopics(ctx, tx, previous.String, revision.ID); err != nil {
 				return err
 			}
 		}
@@ -259,7 +282,7 @@ func (s *Service) ListRevisions(ctx context.Context, reviewID string) ([]Revisio
 	if _, err := s.GetReview(ctx, reviewID); err != nil {
 		return nil, err
 	}
-	ids, err := queryStrings(ctx, s.db.Reader(), `SELECT id FROM revisions WHERE review_id = ? ORDER BY ordinal`, reviewID)
+	ids, err := queryStrings(ctx, s.reader(), `SELECT id FROM revisions WHERE review_id = ? ORDER BY ordinal`, reviewID)
 	if err != nil {
 		return nil, err
 	}
@@ -277,13 +300,13 @@ func (s *Service) ListRevisions(ctx context.Context, reviewID string) ([]Revisio
 func (s *Service) GetRevision(ctx context.Context, id string) (Revision, error) {
 	r := Revision{ID: id}
 	var captured string
-	err := scanOne(s.db.Reader().QueryRowContext(ctx, `SELECT review_id, ordinal, captured_at, fingerprint, status FROM revisions WHERE id = ?`, id),
+	err := scanOne(s.reader().QueryRowContext(ctx, `SELECT review_id, ordinal, captured_at, fingerprint, status FROM revisions WHERE id = ?`, id),
 		"revision", id, &r.ReviewID, &r.Ordinal, &captured, &r.Fingerprint, &r.Status)
 	if err != nil {
 		return Revision{}, err
 	}
 	r.CapturedAt = store.ParseTime(captured)
-	rows, err := s.db.Reader().QueryContext(ctx, `SELECT s.repository_id, p.label, s.base_ref, s.base_sha, s.head_sha, s.branch,
+	rows, err := s.reader().QueryContext(ctx, `SELECT s.repository_id, p.label, s.base_ref, s.base_sha, s.head_sha, s.branch,
 			s.staged_count, s.unstaged_count, s.untracked_count, s.status, s.warnings,
 			(SELECT COUNT(*) FROM snapshot_files f WHERE f.snapshot_id = s.id)
 		FROM repo_snapshots s
@@ -309,94 +332,34 @@ func (s *Service) GetRevision(ctx context.Context, id string) (Revision, error) 
 	return r, rows.Err()
 }
 
-// SourceChanges lists every changed file of a revision with the topics it belongs to.
 func (s *Service) SourceChanges(ctx context.Context, revisionID string) (SourceChanges, error) {
-	revision, err := s.GetRevision(ctx, revisionID)
-	if err != nil {
-		return SourceChanges{}, err
-	}
-	topicsByFile, err := s.topicsByFile(ctx, revisionID)
-	if err != nil {
-		return SourceChanges{}, err
-	}
-	result := SourceChanges{RevisionID: revisionID, Repositories: []RepositoryChange{}}
-	for _, snap := range revision.Snapshots {
-		rows, err := s.db.Reader().QueryContext(ctx, `SELECT f.path, f.old_path, f.status, f.binary, f.content_omitted
-			FROM snapshot_files f JOIN repo_snapshots s ON s.id = f.snapshot_id
-			WHERE s.revision_id = ? AND s.repository_id = ? ORDER BY f.path`, revisionID, snap.RepositoryID)
+	var source SourceChanges
+	err := s.readSnapshot(ctx, func(reader *Service) error {
+		revision, err := reader.GetRevision(ctx, revisionID)
 		if err != nil {
-			return SourceChanges{}, err
+			return err
 		}
-		repo := RepositoryChange{RepositoryID: snap.RepositoryID, RepositoryLabel: snap.RepositoryLabel, Files: []SourceFile{}}
-		for rows.Next() {
-			var f SourceFile
-			var oldPath, omitted sql.NullString
-			if err := rows.Scan(&f.Path, &oldPath, &f.Status, &f.Binary, &omitted); err != nil {
-				rows.Close()
-				return SourceChanges{}, err
-			}
-			f.OldPath, f.ContentOmitted = stringPtr(oldPath), stringPtr(omitted)
-			f.TopicIDs = topicsByFile[fileKey{snap.RepositoryID, f.Path}]
-			if f.TopicIDs == nil {
-				f.TopicIDs = []string{}
-				f.Unassigned = true
-				result.UnassignedCount++
-			}
-			repo.Files = append(repo.Files, f)
+		view, err := reader.revisionView(ctx, revision.ReviewID, &revisionID)
+		if err != nil {
+			return err
 		}
-		rows.Close()
-		if err := rows.Err(); err != nil {
-			return SourceChanges{}, err
+		if view.Graph != nil {
+			source = *view.Graph.SourceChanges
+			return nil
 		}
-		result.Repositories = append(result.Repositories, repo)
-	}
-	return result, nil
+		source, err = reader.readSourceChanges(ctx, revision)
+		return err
+	})
+	return source, err
 }
 
 type fileKey struct{ repositoryID, path string }
-
-// topicsByFile applies the canonical topic→file rule: a file belongs to an active topic when a
-// code-range evidence reachable from the topic points at it. Obsolete topics claim no files, so
-// their code is listed as unassigned rather than hidden.
-func (s *Service) topicsByFile(ctx context.Context, revisionID string) (map[fileKey][]string, error) {
-	rows, err := s.db.Reader().QueryContext(ctx, `WITH `+topicEvidenceCTE+`
-		SELECT DISTINCT r.repository_id, r.path, te.topic_id
-		FROM topic_reachable_evidence te
-		JOIN topics t ON t.id = te.topic_id
-		JOIN evidence e ON e.id = te.evidence_id
-		JOIN evidence_code_ranges r ON r.evidence_id = e.id
-		WHERE e.revision_id = ? AND t.state = 'ACTIVE'
-		ORDER BY te.topic_id`, revisionID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	topics := map[fileKey][]string{}
-	for rows.Next() {
-		var key fileKey
-		var topicID string
-		if err := rows.Scan(&key.repositoryID, &key.path, &topicID); err != nil {
-			return nil, err
-		}
-		topics[key] = append(topics[key], topicID)
-	}
-	return topics, rows.Err()
-}
-
-// topicEvidenceCTE defines topic_reachable_evidence(topic_id, evidence_id): evidence linked to a
-// topic directly or through its linked intents, changes, and findings.
-const topicEvidenceCTE = `topic_reachable_evidence(topic_id, evidence_id) AS (
-	SELECT topic_id, evidence_id FROM topic_evidence
-	UNION SELECT ti.topic_id, ie.evidence_id FROM topic_intents ti JOIN intent_evidence ie ON ie.intent_id = ti.intent_id
-	UNION SELECT tc.topic_id, ce.evidence_id FROM topic_changes tc JOIN change_evidence ce ON ce.change_id = tc.change_id
-	UNION SELECT tf.topic_id, fe.evidence_id FROM topic_findings tf JOIN finding_evidence fe ON fe.finding_id = tf.finding_id
-)`
 
 func (s *Service) GetFile(ctx context.Context, revisionID, repositoryID, path string) (FileContent, error) {
 	f := FileContent{RevisionID: revisionID, RepositoryID: repositoryID, Path: path}
 	var oldPath, baseMode, headMode, baseOID, headOID, omitted, baseBlob, headBlob sql.NullString
 	var baseText, headText []byte
-	err := scanOne(s.db.Reader().QueryRowContext(ctx, `SELECT f.old_path, f.status, f.base_mode, f.head_mode, f.base_oid, f.head_oid,
+	err := scanOne(s.reader().QueryRowContext(ctx, `SELECT f.old_path, f.status, f.base_mode, f.head_mode, f.base_oid, f.head_oid,
 			f.binary, f.content_omitted, f.base_blob, f.head_blob, b.content, h.content
 		FROM snapshot_files f
 		JOIN repo_snapshots s ON s.id = f.snapshot_id

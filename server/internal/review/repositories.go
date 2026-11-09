@@ -77,7 +77,7 @@ func insertReviewRepositories(ctx context.Context, tx *sql.Tx, r Review) error {
 }
 
 func (s *Service) repositories(ctx context.Context, reviewID string) ([]Repository, error) {
-	rows, err := s.db.Reader().QueryContext(ctx, `SELECT p.id, r.label, p.root_path, r.include_untracked
+	rows, err := s.reader().QueryContext(ctx, `SELECT p.id, r.label, p.root_path, r.include_untracked
 		FROM review_repositories r JOIN repositories p ON p.id = r.repository_id WHERE r.review_id = ? ORDER BY r.label`, reviewID)
 	if err != nil {
 		return nil, err

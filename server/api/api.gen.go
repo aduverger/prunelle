@@ -355,6 +355,12 @@ type DiagramEdge = review.DiagramEdge
 // Discussion defines model for Discussion.
 type Discussion = review.Discussion
 
+// DiscussionAnchorStatus defines model for DiscussionAnchorStatus.
+type DiscussionAnchorStatus = review.DiscussionAnchorStatus
+
+// EntityComparison defines model for EntityComparison.
+type EntityComparison = review.EntityComparison
+
 // EntityRef defines model for EntityRef.
 type EntityRef = review.EntityRef
 
@@ -454,8 +460,17 @@ type Representation = review.Representation
 // Review defines model for Review.
 type Review = review.Review
 
+// ReviewGraph defines model for ReviewGraph.
+type ReviewGraph = review.ReviewGraph
+
 // Revision defines model for Revision.
 type Revision = review.Revision
+
+// RevisionComparison defines model for RevisionComparison.
+type RevisionComparison = review.RevisionComparison
+
+// RevisionView defines model for RevisionView.
+type RevisionView = review.RevisionView
 
 // RuntimeSession A process or terminal hosted by a session backend (for Rex, one terminal block). Not an
 // agent conversation. UNKNOWN means the backend cannot currently be observed; it does not
@@ -470,6 +485,12 @@ type SessionCapability string
 
 // SourceChanges defines model for SourceChanges.
 type SourceChanges = review.SourceChanges
+
+// SourceFile defines model for SourceFile.
+type SourceFile = review.SourceFile
+
+// SourceFileRef defines model for SourceFileRef.
+type SourceFileRef = review.SourceFileRef
 
 // TextConfigInput defines model for TextConfigInput.
 type TextConfigInput struct {
@@ -487,8 +508,14 @@ type Topic = review.Topic
 // UpdateDiscussionRequest defines model for UpdateDiscussionRequest.
 type UpdateDiscussionRequest = review.UpdateDiscussionRequest
 
+// UpdateFindingRequest defines model for UpdateFindingRequest.
+type UpdateFindingRequest = review.UpdateFindingRequest
+
 // UpdateRepresentationRequest defines model for UpdateRepresentationRequest.
 type UpdateRepresentationRequest = review.UpdateRepresentationRequest
+
+// UpdateSourceTopicsRequest defines model for UpdateSourceTopicsRequest.
+type UpdateSourceTopicsRequest = review.UpdateSourceTopicsRequest
 
 // UpdateTopicRequest defines model for UpdateTopicRequest.
 type UpdateTopicRequest = review.UpdateTopicRequest
@@ -532,6 +559,12 @@ type StreamEventsParams struct {
 	LastEventID *string `json:"Last-Event-ID,omitempty"`
 }
 
+// UpdateFindingParams defines parameters for UpdateFinding.
+type UpdateFindingParams struct {
+	// IfMatch ETag of the version the change is based on. Required; omitting it returns 428.
+	IfMatch *IfMatch `json:"If-Match,omitempty"`
+}
+
 // UpdateRepresentationParams defines parameters for UpdateRepresentation.
 type UpdateRepresentationParams struct {
 	// IfMatch ETag of the version the change is based on. Required; omitting it returns 428.
@@ -549,9 +582,20 @@ type ResolveReviewParams struct {
 	Path string `form:"path" json:"path"`
 }
 
+// GetDiscussionAnchorStatusesParams defines parameters for GetDiscussionAnchorStatuses.
+type GetDiscussionAnchorStatusesParams struct {
+	RevisionId string `form:"revision_id" json:"revision_id"`
+}
+
 // ListChangesParams defines parameters for ListChanges.
 type ListChangesParams struct {
 	RevisionId *string `form:"revision_id,omitempty" json:"revision_id,omitempty"`
+}
+
+// CompareRevisionsParams defines parameters for CompareRevisions.
+type CompareRevisionsParams struct {
+	FromRevisionId string `form:"from_revision_id" json:"from_revision_id"`
+	ToRevisionId   string `form:"to_revision_id" json:"to_revision_id"`
 }
 
 // CreateDecisionParams defines parameters for CreateDecision.
@@ -572,6 +616,11 @@ type ImportManifestParams struct {
 	IdempotencyKey *IdempotencyKey `json:"Idempotency-Key,omitempty"`
 }
 
+// GetRevisionViewParams defines parameters for GetRevisionView.
+type GetRevisionViewParams struct {
+	RevisionId *string `form:"revision_id,omitempty" json:"revision_id,omitempty"`
+}
+
 // CaptureRevisionParams defines parameters for CaptureRevision.
 type CaptureRevisionParams struct {
 	// IdempotencyKey Client-chosen unique key that makes a retried request safe.
@@ -588,6 +637,12 @@ type CreateTopicParams struct {
 type GetFileParams struct {
 	RepositoryId string `form:"repository_id" json:"repository_id"`
 	Path         string `form:"path" json:"path"`
+}
+
+// UpdateSourceTopicsParams defines parameters for UpdateSourceTopics.
+type UpdateSourceTopicsParams struct {
+	// IfMatch ETag of the version the change is based on. Required; omitting it returns 428.
+	IfMatch *IfMatch `json:"If-Match,omitempty"`
 }
 
 // ListRuntimeSessionsParams defines parameters for ListRuntimeSessions.
@@ -620,6 +675,9 @@ type UpdateDiscussionJSONRequestBody = UpdateDiscussionRequest
 // CreateMessageJSONRequestBody defines body for CreateMessage for application/json ContentType.
 type CreateMessageJSONRequestBody = CreateMessageRequest
 
+// UpdateFindingJSONRequestBody defines body for UpdateFinding for application/json ContentType.
+type UpdateFindingJSONRequestBody = UpdateFindingRequest
+
 // UpdateRepresentationJSONRequestBody defines body for UpdateRepresentation for application/json ContentType.
 type UpdateRepresentationJSONRequestBody = UpdateRepresentationRequest
 
@@ -640,6 +698,9 @@ type CaptureRevisionJSONRequestBody = CaptureRequest
 
 // CreateTopicJSONRequestBody defines body for CreateTopic for application/json ContentType.
 type CreateTopicJSONRequestBody = CreateTopicRequest
+
+// UpdateSourceTopicsJSONRequestBody defines body for UpdateSourceTopics for application/json ContentType.
+type UpdateSourceTopicsJSONRequestBody = UpdateSourceTopicsRequest
 
 // UpdateTopicJSONRequestBody defines body for UpdateTopic for application/json ContentType.
 type UpdateTopicJSONRequestBody = UpdateTopicRequest
@@ -762,6 +823,18 @@ type ClientInterface interface {
 	// GetEvidence performs a GET /v1/evidence/{evidenceId} (the `GetEvidence` operationId) request.
 	GetEvidence(ctx context.Context, evidenceId string, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// UpdateFindingWithBody performs a PATCH /v1/findings/{findingId} (the `UpdateFinding` operationId) request,
+	// with any type of body and a specified content type.
+	//
+	// Explicit status/evidence edit against the current revision. Does not resolve threads, rewrite first-seen revision or submit a decision.
+	UpdateFindingWithBody(ctx context.Context, findingId string, params *UpdateFindingParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// UpdateFinding performs a PATCH /v1/findings/{findingId} (the `UpdateFinding` operationId) request.
+	// Takes a body of the `application/json` content type.
+	//
+	// Explicit status/evidence edit against the current revision. Does not resolve threads, rewrite first-seen revision or submit a decision.
+	UpdateFinding(ctx context.Context, findingId string, params *UpdateFindingParams, body UpdateFindingJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// GetHealth performs a GET /v1/health (the `GetHealth` operationId) request.
 	GetHealth(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 
@@ -801,11 +874,17 @@ type ClientInterface interface {
 	// GetReview performs a GET /v1/reviews/{reviewId} (the `GetReview` operationId) request.
 	GetReview(ctx context.Context, reviewId ReviewId, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// GetDiscussionAnchorStatuses performs a GET /v1/reviews/{reviewId}/anchor-status (the `GetDiscussionAnchorStatuses` operationId) request.
+	GetDiscussionAnchorStatuses(ctx context.Context, reviewId ReviewId, params *GetDiscussionAnchorStatusesParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// ListAttention performs a GET /v1/reviews/{reviewId}/attention (the `ListAttention` operationId) request.
 	ListAttention(ctx context.Context, reviewId ReviewId, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListChanges performs a GET /v1/reviews/{reviewId}/changes (the `ListChanges` operationId) request.
 	ListChanges(ctx context.Context, reviewId ReviewId, params *ListChangesParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CompareRevisions performs a GET /v1/reviews/{reviewId}/comparison (the `CompareRevisions` operationId) request.
+	CompareRevisions(ctx context.Context, reviewId ReviewId, params *CompareRevisionsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListDecisions performs a GET /v1/reviews/{reviewId}/decisions (the `ListDecisions` operationId) request.
 	ListDecisions(ctx context.Context, reviewId ReviewId, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -853,17 +932,22 @@ type ClientInterface interface {
 	// ImportManifestWithBody performs a POST /v1/reviews/{reviewId}/imports (the `ImportManifest` operationId) request,
 	// with any type of body and a specified content type.
 	//
-	// Validate a review manifest against a revision (default the current one) and store its records in one transaction.
+	// Append records atomically against the current revision. Superseded revisions reject new imports; committed retries still replay unchanged. Keys are import-local, not reconciliation identities.
 	ImportManifestWithBody(ctx context.Context, reviewId ReviewId, params *ImportManifestParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ImportManifest performs a POST /v1/reviews/{reviewId}/imports (the `ImportManifest` operationId) request.
 	// Takes a body of the `application/json` content type.
 	//
-	// Validate a review manifest against a revision (default the current one) and store its records in one transaction.
+	// Append records atomically against the current revision. Superseded revisions reject new imports; committed retries still replay unchanged. Keys are import-local, not reconciliation identities.
 	ImportManifest(ctx context.Context, reviewId ReviewId, params *ImportManifestParams, body ImportManifestJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListIntents performs a GET /v1/reviews/{reviewId}/intents (the `ListIntents` operationId) request.
 	ListIntents(ctx context.Context, reviewId ReviewId, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetRevisionView performs a GET /v1/reviews/{reviewId}/revision-view (the `GetRevisionView` operationId) request.
+	//
+	// One coherent semantic view. Latest state is editable; predecessors freeze when capture advances. Legacy unavailable history is null, never today's graph.
+	GetRevisionView(ctx context.Context, reviewId ReviewId, params *GetRevisionViewParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListRevisions performs a GET /v1/reviews/{reviewId}/revisions (the `ListRevisions` operationId) request.
 	ListRevisions(ctx context.Context, reviewId ReviewId, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -919,6 +1003,18 @@ type ClientInterface interface {
 	//
 	// Every changed file of the revision with the topics it belongs to. Files belonging to no topic are flagged unassigned.
 	GetSourceChanges(ctx context.Context, revisionId RevisionId, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// UpdateSourceTopicsWithBody performs a PATCH /v1/revisions/{revisionId}/source-topics (the `UpdateSourceTopics` operationId) request,
+	// with any type of body and a specified content type.
+	//
+	// Set an explicit topic set (including empty), or reset to DERIVED. Only the current revision is writable; initial assignment version is 1.
+	UpdateSourceTopicsWithBody(ctx context.Context, revisionId RevisionId, params *UpdateSourceTopicsParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// UpdateSourceTopics performs a PATCH /v1/revisions/{revisionId}/source-topics (the `UpdateSourceTopics` operationId) request.
+	// Takes a body of the `application/json` content type.
+	//
+	// Set an explicit topic set (including empty), or reset to DERIVED. Only the current revision is writable; initial assignment version is 1.
+	UpdateSourceTopics(ctx context.Context, revisionId RevisionId, params *UpdateSourceTopicsParams, body UpdateSourceTopicsJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListRuntimeSessions performs a GET /v1/runtime-sessions (the `ListRuntimeSessions` operationId) request.
 	ListRuntimeSessions(ctx context.Context, params *ListRuntimeSessionsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -1086,6 +1182,38 @@ func (c *Client) GetEvidence(ctx context.Context, evidenceId string, reqEditors 
 	return c.Client.Do(req)
 }
 
+// UpdateFindingWithBody performs a PATCH /v1/findings/{findingId} (the `UpdateFinding` operationId) request,
+// with any type of body and a specified content type.
+//
+// Explicit status/evidence edit against the current revision. Does not resolve threads, rewrite first-seen revision or submit a decision.
+func (c *Client) UpdateFindingWithBody(ctx context.Context, findingId string, params *UpdateFindingParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateFindingRequestWithBody(c.Server, findingId, params, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// UpdateFinding performs a PATCH /v1/findings/{findingId} (the `UpdateFinding` operationId) request.
+// Takes a body of the `application/json` content type.
+//
+// Explicit status/evidence edit against the current revision. Does not resolve threads, rewrite first-seen revision or submit a decision.
+func (c *Client) UpdateFinding(ctx context.Context, findingId string, params *UpdateFindingParams, body UpdateFindingJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateFindingRequest(c.Server, findingId, params, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 // GetHealth performs a GET /v1/health (the `GetHealth` operationId) request.
 func (c *Client) GetHealth(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewGetHealthRequest(c.Server)
@@ -1215,6 +1343,19 @@ func (c *Client) GetReview(ctx context.Context, reviewId ReviewId, reqEditors ..
 	return c.Client.Do(req)
 }
 
+// GetDiscussionAnchorStatuses performs a GET /v1/reviews/{reviewId}/anchor-status (the `GetDiscussionAnchorStatuses` operationId) request.
+func (c *Client) GetDiscussionAnchorStatuses(ctx context.Context, reviewId ReviewId, params *GetDiscussionAnchorStatusesParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetDiscussionAnchorStatusesRequest(c.Server, reviewId, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 // ListAttention performs a GET /v1/reviews/{reviewId}/attention (the `ListAttention` operationId) request.
 func (c *Client) ListAttention(ctx context.Context, reviewId ReviewId, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewListAttentionRequest(c.Server, reviewId)
@@ -1231,6 +1372,19 @@ func (c *Client) ListAttention(ctx context.Context, reviewId ReviewId, reqEditor
 // ListChanges performs a GET /v1/reviews/{reviewId}/changes (the `ListChanges` operationId) request.
 func (c *Client) ListChanges(ctx context.Context, reviewId ReviewId, params *ListChangesParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewListChangesRequest(c.Server, reviewId, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// CompareRevisions performs a GET /v1/reviews/{reviewId}/comparison (the `CompareRevisions` operationId) request.
+func (c *Client) CompareRevisions(ctx context.Context, reviewId ReviewId, params *CompareRevisionsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCompareRevisionsRequest(c.Server, reviewId, params)
 	if err != nil {
 		return nil, err
 	}
@@ -1377,7 +1531,7 @@ func (c *Client) ListImports(ctx context.Context, reviewId ReviewId, reqEditors 
 // ImportManifestWithBody performs a POST /v1/reviews/{reviewId}/imports (the `ImportManifest` operationId) request,
 // with any type of body and a specified content type.
 //
-// Validate a review manifest against a revision (default the current one) and store its records in one transaction.
+// Append records atomically against the current revision. Superseded revisions reject new imports; committed retries still replay unchanged. Keys are import-local, not reconciliation identities.
 func (c *Client) ImportManifestWithBody(ctx context.Context, reviewId ReviewId, params *ImportManifestParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewImportManifestRequestWithBody(c.Server, reviewId, params, contentType, body)
 	if err != nil {
@@ -1393,7 +1547,7 @@ func (c *Client) ImportManifestWithBody(ctx context.Context, reviewId ReviewId, 
 // ImportManifest performs a POST /v1/reviews/{reviewId}/imports (the `ImportManifest` operationId) request.
 // Takes a body of the `application/json` content type.
 //
-// Validate a review manifest against a revision (default the current one) and store its records in one transaction.
+// Append records atomically against the current revision. Superseded revisions reject new imports; committed retries still replay unchanged. Keys are import-local, not reconciliation identities.
 func (c *Client) ImportManifest(ctx context.Context, reviewId ReviewId, params *ImportManifestParams, body ImportManifestJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewImportManifestRequest(c.Server, reviewId, params, body)
 	if err != nil {
@@ -1409,6 +1563,21 @@ func (c *Client) ImportManifest(ctx context.Context, reviewId ReviewId, params *
 // ListIntents performs a GET /v1/reviews/{reviewId}/intents (the `ListIntents` operationId) request.
 func (c *Client) ListIntents(ctx context.Context, reviewId ReviewId, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewListIntentsRequest(c.Server, reviewId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetRevisionView performs a GET /v1/reviews/{reviewId}/revision-view (the `GetRevisionView` operationId) request.
+//
+// One coherent semantic view. Latest state is editable; predecessors freeze when capture advances. Legacy unavailable history is null, never today's graph.
+func (c *Client) GetRevisionView(ctx context.Context, reviewId ReviewId, params *GetRevisionViewParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetRevisionViewRequest(c.Server, reviewId, params)
 	if err != nil {
 		return nil, err
 	}
@@ -1574,6 +1743,38 @@ func (c *Client) GetFile(ctx context.Context, revisionId RevisionId, params *Get
 // Every changed file of the revision with the topics it belongs to. Files belonging to no topic are flagged unassigned.
 func (c *Client) GetSourceChanges(ctx context.Context, revisionId RevisionId, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewGetSourceChangesRequest(c.Server, revisionId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// UpdateSourceTopicsWithBody performs a PATCH /v1/revisions/{revisionId}/source-topics (the `UpdateSourceTopics` operationId) request,
+// with any type of body and a specified content type.
+//
+// Set an explicit topic set (including empty), or reset to DERIVED. Only the current revision is writable; initial assignment version is 1.
+func (c *Client) UpdateSourceTopicsWithBody(ctx context.Context, revisionId RevisionId, params *UpdateSourceTopicsParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateSourceTopicsRequestWithBody(c.Server, revisionId, params, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// UpdateSourceTopics performs a PATCH /v1/revisions/{revisionId}/source-topics (the `UpdateSourceTopics` operationId) request.
+// Takes a body of the `application/json` content type.
+//
+// Set an explicit topic set (including empty), or reset to DERIVED. Only the current revision is writable; initial assignment version is 1.
+func (c *Client) UpdateSourceTopics(ctx context.Context, revisionId RevisionId, params *UpdateSourceTopicsParams, body UpdateSourceTopicsJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateSourceTopicsRequest(c.Server, revisionId, params, body)
 	if err != nil {
 		return nil, err
 	}
@@ -2012,6 +2213,68 @@ func NewGetEvidenceRequest(server string, evidenceId string) (*http.Request, err
 	return req, nil
 }
 
+// NewUpdateFindingRequest calls the generic UpdateFinding builder with application/json body
+func NewUpdateFindingRequest(server string, findingId string, params *UpdateFindingParams, body UpdateFindingJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewUpdateFindingRequestWithBody(server, findingId, params, "application/json", bodyReader)
+}
+
+// NewUpdateFindingRequestWithBody constructs an http.Request for the UpdateFinding method, with any body, and a specified content type
+func NewUpdateFindingRequestWithBody(server string, findingId string, params *UpdateFindingParams, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "findingId", findingId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/findings/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPatch, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	if params != nil {
+
+		if params.IfMatch != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "If-Match", *params.IfMatch, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("If-Match", headerParam0)
+		}
+
+	}
+
+	return req, nil
+}
+
 // NewGetHealthRequest constructs an http.Request for the GetHealth method
 func NewGetHealthRequest(server string) (*http.Request, error) {
 	var err error
@@ -2301,6 +2564,63 @@ func NewGetReviewRequest(server string, reviewId ReviewId) (*http.Request, error
 	return req, nil
 }
 
+// NewGetDiscussionAnchorStatusesRequest constructs an http.Request for the GetDiscussionAnchorStatuses method
+func NewGetDiscussionAnchorStatusesRequest(server string, reviewId ReviewId, params *GetDiscussionAnchorStatusesParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "reviewId", reviewId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/reviews/%s/anchor-status", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if queryFrag, err := runtime.StyleParamWithOptions("form", true, "revision_id", params.RevisionId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+			return nil, err
+		} else {
+			for _, qp := range strings.Split(queryFrag, "&") {
+				rawQueryFragments = append(rawQueryFragments, qp)
+			}
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewListAttentionRequest constructs an http.Request for the ListAttention method
 func NewListAttentionRequest(server string, reviewId ReviewId) (*http.Request, error) {
 	var err error
@@ -2380,6 +2700,71 @@ func NewListChangesRequest(server string, reviewId ReviewId, params *ListChanges
 				}
 			}
 
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewCompareRevisionsRequest constructs an http.Request for the CompareRevisions method
+func NewCompareRevisionsRequest(server string, reviewId ReviewId, params *CompareRevisionsParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "reviewId", reviewId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/reviews/%s/comparison", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if queryFrag, err := runtime.StyleParamWithOptions("form", true, "from_revision_id", params.FromRevisionId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+			return nil, err
+		} else {
+			for _, qp := range strings.Split(queryFrag, "&") {
+				rawQueryFragments = append(rawQueryFragments, qp)
+			}
+		}
+
+		if queryFrag, err := runtime.StyleParamWithOptions("form", true, "to_revision_id", params.ToRevisionId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+			return nil, err
+		} else {
+			for _, qp := range strings.Split(queryFrag, "&") {
+				rawQueryFragments = append(rawQueryFragments, qp)
+			}
 		}
 
 		if encoded := queryValues.Encode(); encoded != "" {
@@ -2776,6 +3161,67 @@ func NewListIntentsRequest(server string, reviewId ReviewId) (*http.Request, err
 	queryURL, err := serverURL.Parse(operationPath)
 	if err != nil {
 		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetRevisionViewRequest constructs an http.Request for the GetRevisionView method
+func NewGetRevisionViewRequest(server string, reviewId ReviewId, params *GetRevisionViewParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "reviewId", reviewId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/reviews/%s/revision-view", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.RevisionId != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "revision_id", *params.RevisionId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
 	}
 
 	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
@@ -3188,6 +3634,68 @@ func NewGetSourceChangesRequest(server string, revisionId RevisionId) (*http.Req
 	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
 	if err != nil {
 		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewUpdateSourceTopicsRequest calls the generic UpdateSourceTopics builder with application/json body
+func NewUpdateSourceTopicsRequest(server string, revisionId RevisionId, params *UpdateSourceTopicsParams, body UpdateSourceTopicsJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewUpdateSourceTopicsRequestWithBody(server, revisionId, params, "application/json", bodyReader)
+}
+
+// NewUpdateSourceTopicsRequestWithBody constructs an http.Request for the UpdateSourceTopics method, with any body, and a specified content type
+func NewUpdateSourceTopicsRequestWithBody(server string, revisionId RevisionId, params *UpdateSourceTopicsParams, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "revisionId", revisionId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/revisions/%s/source-topics", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPatch, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	if params != nil {
+
+		if params.IfMatch != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "If-Match", *params.IfMatch, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("If-Match", headerParam0)
+		}
+
 	}
 
 	return req, nil
@@ -3654,6 +4162,20 @@ type ClientWithResponsesInterface interface {
 	// Returns a wrapper object for the known response body format(s).
 	GetEvidenceWithResponse(ctx context.Context, evidenceId string, reqEditors ...RequestEditorFn) (*GetEvidenceResponse, error)
 
+	// UpdateFindingWithBodyWithResponse performs a PATCH /v1/findings/{findingId} (the `UpdateFinding` operationId) request,
+	// with any type of body and a specified content type.
+	//
+	// Explicit status/evidence edit against the current revision. Does not resolve threads, rewrite first-seen revision or submit a decision.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	UpdateFindingWithBodyWithResponse(ctx context.Context, findingId string, params *UpdateFindingParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateFindingResponse, error)
+
+	// UpdateFindingWithResponse performs a PATCH /v1/findings/{findingId} (the `UpdateFinding` operationId) request.
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Explicit status/evidence edit against the current revision. Does not resolve threads, rewrite first-seen revision or submit a decision.
+	UpdateFindingWithResponse(ctx context.Context, findingId string, params *UpdateFindingParams, body UpdateFindingJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateFindingResponse, error)
+
 	// GetHealthWithResponse performs a GET /v1/health (the `GetHealth` operationId) request.
 	//
 	// Returns a wrapper object for the known response body format(s).
@@ -3707,6 +4229,11 @@ type ClientWithResponsesInterface interface {
 	// Returns a wrapper object for the known response body format(s).
 	GetReviewWithResponse(ctx context.Context, reviewId ReviewId, reqEditors ...RequestEditorFn) (*GetReviewResponse, error)
 
+	// GetDiscussionAnchorStatusesWithResponse performs a GET /v1/reviews/{reviewId}/anchor-status (the `GetDiscussionAnchorStatuses` operationId) request.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	GetDiscussionAnchorStatusesWithResponse(ctx context.Context, reviewId ReviewId, params *GetDiscussionAnchorStatusesParams, reqEditors ...RequestEditorFn) (*GetDiscussionAnchorStatusesResponse, error)
+
 	// ListAttentionWithResponse performs a GET /v1/reviews/{reviewId}/attention (the `ListAttention` operationId) request.
 	//
 	// Returns a wrapper object for the known response body format(s).
@@ -3716,6 +4243,11 @@ type ClientWithResponsesInterface interface {
 	//
 	// Returns a wrapper object for the known response body format(s).
 	ListChangesWithResponse(ctx context.Context, reviewId ReviewId, params *ListChangesParams, reqEditors ...RequestEditorFn) (*ListChangesResponse, error)
+
+	// CompareRevisionsWithResponse performs a GET /v1/reviews/{reviewId}/comparison (the `CompareRevisions` operationId) request.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	CompareRevisionsWithResponse(ctx context.Context, reviewId ReviewId, params *CompareRevisionsParams, reqEditors ...RequestEditorFn) (*CompareRevisionsResponse, error)
 
 	// ListDecisionsWithResponse performs a GET /v1/reviews/{reviewId}/decisions (the `ListDecisions` operationId) request.
 	//
@@ -3777,7 +4309,7 @@ type ClientWithResponsesInterface interface {
 	// ImportManifestWithBodyWithResponse performs a POST /v1/reviews/{reviewId}/imports (the `ImportManifest` operationId) request,
 	// with any type of body and a specified content type.
 	//
-	// Validate a review manifest against a revision (default the current one) and store its records in one transaction.
+	// Append records atomically against the current revision. Superseded revisions reject new imports; committed retries still replay unchanged. Keys are import-local, not reconciliation identities.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	ImportManifestWithBodyWithResponse(ctx context.Context, reviewId ReviewId, params *ImportManifestParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ImportManifestResponse, error)
@@ -3785,13 +4317,20 @@ type ClientWithResponsesInterface interface {
 	// ImportManifestWithResponse performs a POST /v1/reviews/{reviewId}/imports (the `ImportManifest` operationId) request.
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
-	// Validate a review manifest against a revision (default the current one) and store its records in one transaction.
+	// Append records atomically against the current revision. Superseded revisions reject new imports; committed retries still replay unchanged. Keys are import-local, not reconciliation identities.
 	ImportManifestWithResponse(ctx context.Context, reviewId ReviewId, params *ImportManifestParams, body ImportManifestJSONRequestBody, reqEditors ...RequestEditorFn) (*ImportManifestResponse, error)
 
 	// ListIntentsWithResponse performs a GET /v1/reviews/{reviewId}/intents (the `ListIntents` operationId) request.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	ListIntentsWithResponse(ctx context.Context, reviewId ReviewId, reqEditors ...RequestEditorFn) (*ListIntentsResponse, error)
+
+	// GetRevisionViewWithResponse performs a GET /v1/reviews/{reviewId}/revision-view (the `GetRevisionView` operationId) request.
+	//
+	// One coherent semantic view. Latest state is editable; predecessors freeze when capture advances. Legacy unavailable history is null, never today's graph.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	GetRevisionViewWithResponse(ctx context.Context, reviewId ReviewId, params *GetRevisionViewParams, reqEditors ...RequestEditorFn) (*GetRevisionViewResponse, error)
 
 	// ListRevisionsWithResponse performs a GET /v1/reviews/{reviewId}/revisions (the `ListRevisions` operationId) request.
 	//
@@ -3865,6 +4404,20 @@ type ClientWithResponsesInterface interface {
 	//
 	// Returns a wrapper object for the known response body format(s).
 	GetSourceChangesWithResponse(ctx context.Context, revisionId RevisionId, reqEditors ...RequestEditorFn) (*GetSourceChangesResponse, error)
+
+	// UpdateSourceTopicsWithBodyWithResponse performs a PATCH /v1/revisions/{revisionId}/source-topics (the `UpdateSourceTopics` operationId) request,
+	// with any type of body and a specified content type.
+	//
+	// Set an explicit topic set (including empty), or reset to DERIVED. Only the current revision is writable; initial assignment version is 1.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	UpdateSourceTopicsWithBodyWithResponse(ctx context.Context, revisionId RevisionId, params *UpdateSourceTopicsParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateSourceTopicsResponse, error)
+
+	// UpdateSourceTopicsWithResponse performs a PATCH /v1/revisions/{revisionId}/source-topics (the `UpdateSourceTopics` operationId) request.
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Set an explicit topic set (including empty), or reset to DERIVED. Only the current revision is writable; initial assignment version is 1.
+	UpdateSourceTopicsWithResponse(ctx context.Context, revisionId RevisionId, params *UpdateSourceTopicsParams, body UpdateSourceTopicsJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateSourceTopicsResponse, error)
 
 	// ListRuntimeSessionsWithResponse performs a GET /v1/runtime-sessions (the `ListRuntimeSessions` operationId) request.
 	//
@@ -4181,6 +4734,61 @@ func (r GetEvidenceResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r GetEvidenceResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+// UpdateFindingResponse200Headers the declared response headers of an HTTP 200 response for UpdateFinding
+type UpdateFindingResponse200Headers struct {
+	ETag string
+}
+
+type UpdateFindingResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *Finding
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *Error
+	// Headers200 the parsed response headers for an HTTP 200 response
+	Headers200 *UpdateFindingResponse200Headers
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r UpdateFindingResponse) GetJSON200() *Finding {
+	return r.JSON200
+}
+
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r UpdateFindingResponse) GetJSONDefault() *Error {
+	return r.JSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r UpdateFindingResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r UpdateFindingResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r UpdateFindingResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r UpdateFindingResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -4516,6 +5124,54 @@ func (r GetReviewResponse) ContentType() string {
 	return ""
 }
 
+type GetDiscussionAnchorStatusesResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *[]DiscussionAnchorStatus
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *Error
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetDiscussionAnchorStatusesResponse) GetJSON200() *[]DiscussionAnchorStatus {
+	return r.JSON200
+}
+
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r GetDiscussionAnchorStatusesResponse) GetJSONDefault() *Error {
+	return r.JSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r GetDiscussionAnchorStatusesResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetDiscussionAnchorStatusesResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetDiscussionAnchorStatusesResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetDiscussionAnchorStatusesResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 type ListAttentionResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -4606,6 +5262,54 @@ func (r ListChangesResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r ListChangesResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type CompareRevisionsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *RevisionComparison
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *Error
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r CompareRevisionsResponse) GetJSON200() *RevisionComparison {
+	return r.JSON200
+}
+
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r CompareRevisionsResponse) GetJSONDefault() *Error {
+	return r.JSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r CompareRevisionsResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r CompareRevisionsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CompareRevisionsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r CompareRevisionsResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -5044,6 +5748,54 @@ func (r ListIntentsResponse) ContentType() string {
 	return ""
 }
 
+type GetRevisionViewResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *RevisionView
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *Error
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetRevisionViewResponse) GetJSON200() *RevisionView {
+	return r.JSON200
+}
+
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r GetRevisionViewResponse) GetJSONDefault() *Error {
+	return r.JSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r GetRevisionViewResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetRevisionViewResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetRevisionViewResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetRevisionViewResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 type ListRevisionsResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -5463,6 +6215,61 @@ func (r GetSourceChangesResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r GetSourceChangesResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+// UpdateSourceTopicsResponse200Headers the declared response headers of an HTTP 200 response for UpdateSourceTopics
+type UpdateSourceTopicsResponse200Headers struct {
+	ETag string
+}
+
+type UpdateSourceTopicsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *SourceFile
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *Error
+	// Headers200 the parsed response headers for an HTTP 200 response
+	Headers200 *UpdateSourceTopicsResponse200Headers
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r UpdateSourceTopicsResponse) GetJSON200() *SourceFile {
+	return r.JSON200
+}
+
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r UpdateSourceTopicsResponse) GetJSONDefault() *Error {
+	return r.JSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r UpdateSourceTopicsResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r UpdateSourceTopicsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r UpdateSourceTopicsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r UpdateSourceTopicsResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -5964,6 +6771,32 @@ func (c *ClientWithResponses) GetEvidenceWithResponse(ctx context.Context, evide
 	return ParseGetEvidenceResponse(rsp)
 }
 
+// UpdateFindingWithBodyWithResponse performs a PATCH /v1/findings/{findingId} (the `UpdateFinding` operationId) request,
+// with any type of body and a specified content type.
+//
+// Explicit status/evidence edit against the current revision. Does not resolve threads, rewrite first-seen revision or submit a decision.
+//
+// Returns a wrapper object for the known response body format(s).
+func (c *ClientWithResponses) UpdateFindingWithBodyWithResponse(ctx context.Context, findingId string, params *UpdateFindingParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateFindingResponse, error) {
+	rsp, err := c.UpdateFindingWithBody(ctx, findingId, params, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateFindingResponse(rsp)
+}
+
+// UpdateFindingWithResponse performs a PATCH /v1/findings/{findingId} (the `UpdateFinding` operationId) request.
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Explicit status/evidence edit against the current revision. Does not resolve threads, rewrite first-seen revision or submit a decision.
+func (c *ClientWithResponses) UpdateFindingWithResponse(ctx context.Context, findingId string, params *UpdateFindingParams, body UpdateFindingJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateFindingResponse, error) {
+	rsp, err := c.UpdateFinding(ctx, findingId, params, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateFindingResponse(rsp)
+}
+
 // GetHealthWithResponse performs a GET /v1/health (the `GetHealth` operationId) request.
 //
 // Returns a wrapper object for the known response body format(s).
@@ -6071,6 +6904,17 @@ func (c *ClientWithResponses) GetReviewWithResponse(ctx context.Context, reviewI
 	return ParseGetReviewResponse(rsp)
 }
 
+// GetDiscussionAnchorStatusesWithResponse performs a GET /v1/reviews/{reviewId}/anchor-status (the `GetDiscussionAnchorStatuses` operationId) request.
+//
+// Returns a wrapper object for the known response body format(s).
+func (c *ClientWithResponses) GetDiscussionAnchorStatusesWithResponse(ctx context.Context, reviewId ReviewId, params *GetDiscussionAnchorStatusesParams, reqEditors ...RequestEditorFn) (*GetDiscussionAnchorStatusesResponse, error) {
+	rsp, err := c.GetDiscussionAnchorStatuses(ctx, reviewId, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetDiscussionAnchorStatusesResponse(rsp)
+}
+
 // ListAttentionWithResponse performs a GET /v1/reviews/{reviewId}/attention (the `ListAttention` operationId) request.
 //
 // Returns a wrapper object for the known response body format(s).
@@ -6091,6 +6935,17 @@ func (c *ClientWithResponses) ListChangesWithResponse(ctx context.Context, revie
 		return nil, err
 	}
 	return ParseListChangesResponse(rsp)
+}
+
+// CompareRevisionsWithResponse performs a GET /v1/reviews/{reviewId}/comparison (the `CompareRevisions` operationId) request.
+//
+// Returns a wrapper object for the known response body format(s).
+func (c *ClientWithResponses) CompareRevisionsWithResponse(ctx context.Context, reviewId ReviewId, params *CompareRevisionsParams, reqEditors ...RequestEditorFn) (*CompareRevisionsResponse, error) {
+	rsp, err := c.CompareRevisions(ctx, reviewId, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCompareRevisionsResponse(rsp)
 }
 
 // ListDecisionsWithResponse performs a GET /v1/reviews/{reviewId}/decisions (the `ListDecisions` operationId) request.
@@ -6207,7 +7062,7 @@ func (c *ClientWithResponses) ListImportsWithResponse(ctx context.Context, revie
 // ImportManifestWithBodyWithResponse performs a POST /v1/reviews/{reviewId}/imports (the `ImportManifest` operationId) request,
 // with any type of body and a specified content type.
 //
-// Validate a review manifest against a revision (default the current one) and store its records in one transaction.
+// Append records atomically against the current revision. Superseded revisions reject new imports; committed retries still replay unchanged. Keys are import-local, not reconciliation identities.
 //
 // Returns a wrapper object for the known response body format(s).
 func (c *ClientWithResponses) ImportManifestWithBodyWithResponse(ctx context.Context, reviewId ReviewId, params *ImportManifestParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ImportManifestResponse, error) {
@@ -6221,7 +7076,7 @@ func (c *ClientWithResponses) ImportManifestWithBodyWithResponse(ctx context.Con
 // ImportManifestWithResponse performs a POST /v1/reviews/{reviewId}/imports (the `ImportManifest` operationId) request.
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //
-// Validate a review manifest against a revision (default the current one) and store its records in one transaction.
+// Append records atomically against the current revision. Superseded revisions reject new imports; committed retries still replay unchanged. Keys are import-local, not reconciliation identities.
 func (c *ClientWithResponses) ImportManifestWithResponse(ctx context.Context, reviewId ReviewId, params *ImportManifestParams, body ImportManifestJSONRequestBody, reqEditors ...RequestEditorFn) (*ImportManifestResponse, error) {
 	rsp, err := c.ImportManifest(ctx, reviewId, params, body, reqEditors...)
 	if err != nil {
@@ -6239,6 +7094,19 @@ func (c *ClientWithResponses) ListIntentsWithResponse(ctx context.Context, revie
 		return nil, err
 	}
 	return ParseListIntentsResponse(rsp)
+}
+
+// GetRevisionViewWithResponse performs a GET /v1/reviews/{reviewId}/revision-view (the `GetRevisionView` operationId) request.
+//
+// One coherent semantic view. Latest state is editable; predecessors freeze when capture advances. Legacy unavailable history is null, never today's graph.
+//
+// Returns a wrapper object for the known response body format(s).
+func (c *ClientWithResponses) GetRevisionViewWithResponse(ctx context.Context, reviewId ReviewId, params *GetRevisionViewParams, reqEditors ...RequestEditorFn) (*GetRevisionViewResponse, error) {
+	rsp, err := c.GetRevisionView(ctx, reviewId, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetRevisionViewResponse(rsp)
 }
 
 // ListRevisionsWithResponse performs a GET /v1/reviews/{reviewId}/revisions (the `ListRevisions` operationId) request.
@@ -6378,6 +7246,32 @@ func (c *ClientWithResponses) GetSourceChangesWithResponse(ctx context.Context, 
 		return nil, err
 	}
 	return ParseGetSourceChangesResponse(rsp)
+}
+
+// UpdateSourceTopicsWithBodyWithResponse performs a PATCH /v1/revisions/{revisionId}/source-topics (the `UpdateSourceTopics` operationId) request,
+// with any type of body and a specified content type.
+//
+// Set an explicit topic set (including empty), or reset to DERIVED. Only the current revision is writable; initial assignment version is 1.
+//
+// Returns a wrapper object for the known response body format(s).
+func (c *ClientWithResponses) UpdateSourceTopicsWithBodyWithResponse(ctx context.Context, revisionId RevisionId, params *UpdateSourceTopicsParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateSourceTopicsResponse, error) {
+	rsp, err := c.UpdateSourceTopicsWithBody(ctx, revisionId, params, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateSourceTopicsResponse(rsp)
+}
+
+// UpdateSourceTopicsWithResponse performs a PATCH /v1/revisions/{revisionId}/source-topics (the `UpdateSourceTopics` operationId) request.
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Set an explicit topic set (including empty), or reset to DERIVED. Only the current revision is writable; initial assignment version is 1.
+func (c *ClientWithResponses) UpdateSourceTopicsWithResponse(ctx context.Context, revisionId RevisionId, params *UpdateSourceTopicsParams, body UpdateSourceTopicsJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateSourceTopicsResponse, error) {
+	rsp, err := c.UpdateSourceTopics(ctx, revisionId, params, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateSourceTopicsResponse(rsp)
 }
 
 // ListRuntimeSessionsWithResponse performs a GET /v1/runtime-sessions (the `ListRuntimeSessions` operationId) request.
@@ -6703,6 +7597,52 @@ func ParseGetEvidenceResponse(rsp *http.Response) (*GetEvidenceResponse, error) 
 	return response, nil
 }
 
+// ParseUpdateFindingResponse parses an HTTP response from a UpdateFindingWithResponse call
+func ParseUpdateFindingResponse(rsp *http.Response) (*UpdateFindingResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &UpdateFindingResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest Finding
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	switch {
+	case rsp.StatusCode == 200:
+		var headers UpdateFindingResponse200Headers
+		if values := rsp.Header.Values("ETag"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "ETag", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.ETag = value
+		}
+		response.Headers200 = &headers
+	}
+
+	return response, nil
+}
+
 // ParseGetHealthResponse parses an HTTP response from a GetHealthWithResponse call
 func ParseGetHealthResponse(rsp *http.Response) (*GetHealthResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -6936,6 +7876,39 @@ func ParseGetReviewResponse(rsp *http.Response) (*GetReviewResponse, error) {
 	return response, nil
 }
 
+// ParseGetDiscussionAnchorStatusesResponse parses an HTTP response from a GetDiscussionAnchorStatusesWithResponse call
+func ParseGetDiscussionAnchorStatusesResponse(rsp *http.Response) (*GetDiscussionAnchorStatusesResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetDiscussionAnchorStatusesResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest []DiscussionAnchorStatus
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
 // ParseListAttentionResponse parses an HTTP response from a ListAttentionWithResponse call
 func ParseListAttentionResponse(rsp *http.Response) (*ListAttentionResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -6985,6 +7958,39 @@ func ParseListChangesResponse(rsp *http.Response) (*ListChangesResponse, error) 
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
 		var dest []ObservedChange
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseCompareRevisionsResponse parses an HTTP response from a CompareRevisionsWithResponse call
+func ParseCompareRevisionsResponse(rsp *http.Response) (*CompareRevisionsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &CompareRevisionsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest RevisionComparison
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
@@ -7299,6 +8305,39 @@ func ParseListIntentsResponse(rsp *http.Response) (*ListIntentsResponse, error) 
 	return response, nil
 }
 
+// ParseGetRevisionViewResponse parses an HTTP response from a GetRevisionViewWithResponse call
+func ParseGetRevisionViewResponse(rsp *http.Response) (*GetRevisionViewResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetRevisionViewResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest RevisionView
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
 // ParseListRevisionsResponse parses an HTTP response from a ListRevisionsWithResponse call
 func ParseListRevisionsResponse(rsp *http.Response) (*ListRevisionsResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -7587,6 +8626,52 @@ func ParseGetSourceChangesResponse(rsp *http.Response) (*GetSourceChangesRespons
 		}
 		response.JSONDefault = &dest
 
+	}
+
+	return response, nil
+}
+
+// ParseUpdateSourceTopicsResponse parses an HTTP response from a UpdateSourceTopicsWithResponse call
+func ParseUpdateSourceTopicsResponse(rsp *http.Response) (*UpdateSourceTopicsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &UpdateSourceTopicsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest SourceFile
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	switch {
+	case rsp.StatusCode == 200:
+		var headers UpdateSourceTopicsResponse200Headers
+		if values := rsp.Header.Values("ETag"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "ETag", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.ETag = value
+		}
+		response.Headers200 = &headers
 	}
 
 	return response, nil
@@ -7913,6 +8998,9 @@ type ServerInterface interface {
 	// (GET /v1/evidence/{evidenceId})
 	GetEvidence(w http.ResponseWriter, r *http.Request, evidenceId string)
 
+	// (PATCH /v1/findings/{findingId})
+	UpdateFinding(w http.ResponseWriter, r *http.Request, findingId string, params UpdateFindingParams)
+
 	// (GET /v1/health)
 	GetHealth(w http.ResponseWriter, r *http.Request)
 
@@ -7934,11 +9022,17 @@ type ServerInterface interface {
 	// (GET /v1/reviews/{reviewId})
 	GetReview(w http.ResponseWriter, r *http.Request, reviewId ReviewId)
 
+	// (GET /v1/reviews/{reviewId}/anchor-status)
+	GetDiscussionAnchorStatuses(w http.ResponseWriter, r *http.Request, reviewId ReviewId, params GetDiscussionAnchorStatusesParams)
+
 	// (GET /v1/reviews/{reviewId}/attention)
 	ListAttention(w http.ResponseWriter, r *http.Request, reviewId ReviewId)
 
 	// (GET /v1/reviews/{reviewId}/changes)
 	ListChanges(w http.ResponseWriter, r *http.Request, reviewId ReviewId, params ListChangesParams)
+
+	// (GET /v1/reviews/{reviewId}/comparison)
+	CompareRevisions(w http.ResponseWriter, r *http.Request, reviewId ReviewId, params CompareRevisionsParams)
 
 	// (GET /v1/reviews/{reviewId}/decisions)
 	ListDecisions(w http.ResponseWriter, r *http.Request, reviewId ReviewId)
@@ -7967,6 +9061,9 @@ type ServerInterface interface {
 	// (GET /v1/reviews/{reviewId}/intents)
 	ListIntents(w http.ResponseWriter, r *http.Request, reviewId ReviewId)
 
+	// (GET /v1/reviews/{reviewId}/revision-view)
+	GetRevisionView(w http.ResponseWriter, r *http.Request, reviewId ReviewId, params GetRevisionViewParams)
+
 	// (GET /v1/reviews/{reviewId}/revisions)
 	ListRevisions(w http.ResponseWriter, r *http.Request, reviewId ReviewId)
 
@@ -7993,6 +9090,9 @@ type ServerInterface interface {
 
 	// (GET /v1/revisions/{revisionId}/source-changes)
 	GetSourceChanges(w http.ResponseWriter, r *http.Request, revisionId RevisionId)
+
+	// (PATCH /v1/revisions/{revisionId}/source-topics)
+	UpdateSourceTopics(w http.ResponseWriter, r *http.Request, revisionId RevisionId, params UpdateSourceTopicsParams)
 
 	// (GET /v1/runtime-sessions)
 	ListRuntimeSessions(w http.ResponseWriter, r *http.Request, params ListRuntimeSessionsParams)
@@ -8234,6 +9334,56 @@ func (siw *ServerInterfaceWrapper) GetEvidence(w http.ResponseWriter, r *http.Re
 	handler.ServeHTTP(w, r)
 }
 
+// UpdateFinding operation middleware
+func (siw *ServerInterfaceWrapper) UpdateFinding(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "findingId" -------------
+	var findingId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "findingId", r.PathValue("findingId"), &findingId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "findingId", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params UpdateFindingParams
+
+	headers := r.Header
+
+	// ------------- Optional header parameter "If-Match" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("If-Match")]; found {
+		var IfMatch IfMatch
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "If-Match", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "If-Match", valueList[0], &IfMatch, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "If-Match", Err: err})
+			return
+		}
+
+		params.IfMatch = &IfMatch
+
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateFinding(w, r, findingId, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetHealth operation middleware
 func (siw *ServerInterfaceWrapper) GetHealth(w http.ResponseWriter, r *http.Request) {
 
@@ -8438,6 +9588,48 @@ func (siw *ServerInterfaceWrapper) GetReview(w http.ResponseWriter, r *http.Requ
 	handler.ServeHTTP(w, r)
 }
 
+// GetDiscussionAnchorStatuses operation middleware
+func (siw *ServerInterfaceWrapper) GetDiscussionAnchorStatuses(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "reviewId" -------------
+	var reviewId ReviewId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "reviewId", r.PathValue("reviewId"), &reviewId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "reviewId", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetDiscussionAnchorStatusesParams
+
+	// ------------- Required query parameter "revision_id" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "revision_id", r.URL.Query(), &params.RevisionId, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "revision_id"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "revision_id", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetDiscussionAnchorStatuses(w, r, reviewId, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ListAttention operation middleware
 func (siw *ServerInterfaceWrapper) ListAttention(w http.ResponseWriter, r *http.Request) {
 
@@ -8497,6 +9689,61 @@ func (siw *ServerInterfaceWrapper) ListChanges(w http.ResponseWriter, r *http.Re
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ListChanges(w, r, reviewId, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CompareRevisions operation middleware
+func (siw *ServerInterfaceWrapper) CompareRevisions(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "reviewId" -------------
+	var reviewId ReviewId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "reviewId", r.PathValue("reviewId"), &reviewId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "reviewId", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params CompareRevisionsParams
+
+	// ------------- Required query parameter "from_revision_id" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "from_revision_id", r.URL.Query(), &params.FromRevisionId, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "from_revision_id"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "from_revision_id", Err: err})
+		}
+		return
+	}
+
+	// ------------- Required query parameter "to_revision_id" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "to_revision_id", r.URL.Query(), &params.ToRevisionId, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "to_revision_id"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "to_revision_id", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CompareRevisions(w, r, reviewId, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -8803,6 +10050,48 @@ func (siw *ServerInterfaceWrapper) ListIntents(w http.ResponseWriter, r *http.Re
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ListIntents(w, r, reviewId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetRevisionView operation middleware
+func (siw *ServerInterfaceWrapper) GetRevisionView(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "reviewId" -------------
+	var reviewId ReviewId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "reviewId", r.PathValue("reviewId"), &reviewId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "reviewId", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetRevisionViewParams
+
+	// ------------- Optional query parameter "revision_id" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "revision_id", r.URL.Query(), &params.RevisionId, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "revision_id"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "revision_id", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetRevisionView(w, r, reviewId, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -9132,6 +10421,56 @@ func (siw *ServerInterfaceWrapper) GetSourceChanges(w http.ResponseWriter, r *ht
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetSourceChanges(w, r, revisionId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateSourceTopics operation middleware
+func (siw *ServerInterfaceWrapper) UpdateSourceTopics(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "revisionId" -------------
+	var revisionId RevisionId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "revisionId", r.PathValue("revisionId"), &revisionId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "revisionId", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params UpdateSourceTopicsParams
+
+	headers := r.Header
+
+	// ------------- Optional header parameter "If-Match" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("If-Match")]; found {
+		var IfMatch IfMatch
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "If-Match", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "If-Match", valueList[0], &IfMatch, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "If-Match", Err: err})
+			return
+		}
+
+		params.IfMatch = &IfMatch
+
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateSourceTopics(w, r, revisionId, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -9547,6 +10886,11 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/revisions/{revisionId}", wrapper.GetRevision)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/revisions/{revisionId}/source-changes", wrapper.GetSourceChanges)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/revisions/{revisionId}/file", wrapper.GetFile)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/reviews/{reviewId}/revision-view", wrapper.GetRevisionView)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/reviews/{reviewId}/comparison", wrapper.CompareRevisions)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/reviews/{reviewId}/anchor-status", wrapper.GetDiscussionAnchorStatuses)
+	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/v1/revisions/{revisionId}/source-topics", wrapper.UpdateSourceTopics)
+	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/v1/findings/{findingId}", wrapper.UpdateFinding)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/reviews/{reviewId}/imports", wrapper.ListImports)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/reviews/{reviewId}/imports", wrapper.ImportManifest)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/reviews/{reviewId}/topics", wrapper.ListTopics)
@@ -9826,6 +11170,55 @@ func (response GetEvidencedefaultJSONResponse) VisitGetEvidenceResponse(w http.R
 	return err
 }
 
+type UpdateFindingRequestObject struct {
+	FindingId string `json:"findingId"`
+	Params    UpdateFindingParams
+	Body      *UpdateFindingJSONRequestBody
+}
+
+type UpdateFindingResponseObject interface {
+	VisitUpdateFindingResponse(w http.ResponseWriter) error
+}
+
+type UpdateFinding200ResponseHeaders struct {
+	ETag string
+}
+
+type UpdateFinding200JSONResponse struct {
+	Body    Finding
+	Headers UpdateFinding200ResponseHeaders
+}
+
+func (response UpdateFinding200JSONResponse) VisitUpdateFindingResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("ETag", fmt.Sprint(response.Headers.ETag))
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateFindingdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response UpdateFindingdefaultJSONResponse) VisitUpdateFindingResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetHealthRequestObject struct {
 }
 
@@ -10085,6 +11478,46 @@ func (response GetReviewdefaultJSONResponse) VisitGetReviewResponse(w http.Respo
 	return err
 }
 
+type GetDiscussionAnchorStatusesRequestObject struct {
+	ReviewId ReviewId `json:"reviewId"`
+	Params   GetDiscussionAnchorStatusesParams
+}
+
+type GetDiscussionAnchorStatusesResponseObject interface {
+	VisitGetDiscussionAnchorStatusesResponse(w http.ResponseWriter) error
+}
+
+type GetDiscussionAnchorStatuses200JSONResponse []DiscussionAnchorStatus
+
+func (response GetDiscussionAnchorStatuses200JSONResponse) VisitGetDiscussionAnchorStatusesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetDiscussionAnchorStatusesdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response GetDiscussionAnchorStatusesdefaultJSONResponse) VisitGetDiscussionAnchorStatusesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListAttentionRequestObject struct {
 	ReviewId ReviewId `json:"reviewId"`
 }
@@ -10153,6 +11586,46 @@ type ListChangesdefaultJSONResponse struct {
 }
 
 func (response ListChangesdefaultJSONResponse) VisitListChangesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CompareRevisionsRequestObject struct {
+	ReviewId ReviewId `json:"reviewId"`
+	Params   CompareRevisionsParams
+}
+
+type CompareRevisionsResponseObject interface {
+	VisitCompareRevisionsResponse(w http.ResponseWriter) error
+}
+
+type CompareRevisions200JSONResponse RevisionComparison
+
+func (response CompareRevisions200JSONResponse) VisitCompareRevisionsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CompareRevisionsdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response CompareRevisionsdefaultJSONResponse) VisitCompareRevisionsResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -10521,6 +11994,46 @@ func (response ListIntentsdefaultJSONResponse) VisitListIntentsResponse(w http.R
 	return err
 }
 
+type GetRevisionViewRequestObject struct {
+	ReviewId ReviewId `json:"reviewId"`
+	Params   GetRevisionViewParams
+}
+
+type GetRevisionViewResponseObject interface {
+	VisitGetRevisionViewResponse(w http.ResponseWriter) error
+}
+
+type GetRevisionView200JSONResponse RevisionView
+
+func (response GetRevisionView200JSONResponse) VisitGetRevisionViewResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetRevisionViewdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response GetRevisionViewdefaultJSONResponse) VisitGetRevisionViewResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListRevisionsRequestObject struct {
 	ReviewId ReviewId `json:"reviewId"`
 }
@@ -10862,6 +12375,55 @@ type GetSourceChangesdefaultJSONResponse struct {
 }
 
 func (response GetSourceChangesdefaultJSONResponse) VisitGetSourceChangesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateSourceTopicsRequestObject struct {
+	RevisionId RevisionId `json:"revisionId"`
+	Params     UpdateSourceTopicsParams
+	Body       *UpdateSourceTopicsJSONRequestBody
+}
+
+type UpdateSourceTopicsResponseObject interface {
+	VisitUpdateSourceTopicsResponse(w http.ResponseWriter) error
+}
+
+type UpdateSourceTopics200ResponseHeaders struct {
+	ETag string
+}
+
+type UpdateSourceTopics200JSONResponse struct {
+	Body    SourceFile
+	Headers UpdateSourceTopics200ResponseHeaders
+}
+
+func (response UpdateSourceTopics200JSONResponse) VisitUpdateSourceTopicsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("ETag", fmt.Sprint(response.Headers.ETag))
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateSourceTopicsdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response UpdateSourceTopicsdefaultJSONResponse) VisitUpdateSourceTopicsResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -11232,6 +12794,9 @@ type StrictServerInterface interface {
 	// (GET /v1/evidence/{evidenceId})
 	GetEvidence(ctx context.Context, request GetEvidenceRequestObject) (GetEvidenceResponseObject, error)
 
+	// (PATCH /v1/findings/{findingId})
+	UpdateFinding(ctx context.Context, request UpdateFindingRequestObject) (UpdateFindingResponseObject, error)
+
 	// (GET /v1/health)
 	GetHealth(ctx context.Context, request GetHealthRequestObject) (GetHealthResponseObject, error)
 
@@ -11253,11 +12818,17 @@ type StrictServerInterface interface {
 	// (GET /v1/reviews/{reviewId})
 	GetReview(ctx context.Context, request GetReviewRequestObject) (GetReviewResponseObject, error)
 
+	// (GET /v1/reviews/{reviewId}/anchor-status)
+	GetDiscussionAnchorStatuses(ctx context.Context, request GetDiscussionAnchorStatusesRequestObject) (GetDiscussionAnchorStatusesResponseObject, error)
+
 	// (GET /v1/reviews/{reviewId}/attention)
 	ListAttention(ctx context.Context, request ListAttentionRequestObject) (ListAttentionResponseObject, error)
 
 	// (GET /v1/reviews/{reviewId}/changes)
 	ListChanges(ctx context.Context, request ListChangesRequestObject) (ListChangesResponseObject, error)
+
+	// (GET /v1/reviews/{reviewId}/comparison)
+	CompareRevisions(ctx context.Context, request CompareRevisionsRequestObject) (CompareRevisionsResponseObject, error)
 
 	// (GET /v1/reviews/{reviewId}/decisions)
 	ListDecisions(ctx context.Context, request ListDecisionsRequestObject) (ListDecisionsResponseObject, error)
@@ -11286,6 +12857,9 @@ type StrictServerInterface interface {
 	// (GET /v1/reviews/{reviewId}/intents)
 	ListIntents(ctx context.Context, request ListIntentsRequestObject) (ListIntentsResponseObject, error)
 
+	// (GET /v1/reviews/{reviewId}/revision-view)
+	GetRevisionView(ctx context.Context, request GetRevisionViewRequestObject) (GetRevisionViewResponseObject, error)
+
 	// (GET /v1/reviews/{reviewId}/revisions)
 	ListRevisions(ctx context.Context, request ListRevisionsRequestObject) (ListRevisionsResponseObject, error)
 
@@ -11312,6 +12886,9 @@ type StrictServerInterface interface {
 
 	// (GET /v1/revisions/{revisionId}/source-changes)
 	GetSourceChanges(ctx context.Context, request GetSourceChangesRequestObject) (GetSourceChangesResponseObject, error)
+
+	// (PATCH /v1/revisions/{revisionId}/source-topics)
+	UpdateSourceTopics(ctx context.Context, request UpdateSourceTopicsRequestObject) (UpdateSourceTopicsResponseObject, error)
 
 	// (GET /v1/runtime-sessions)
 	ListRuntimeSessions(ctx context.Context, request ListRuntimeSessionsRequestObject) (ListRuntimeSessionsResponseObject, error)
@@ -11523,6 +13100,40 @@ func (sh *strictHandler) GetEvidence(w http.ResponseWriter, r *http.Request, evi
 	}
 }
 
+// UpdateFinding operation middleware
+func (sh *strictHandler) UpdateFinding(w http.ResponseWriter, r *http.Request, findingId string, params UpdateFindingParams) {
+	var request UpdateFindingRequestObject
+
+	request.FindingId = findingId
+	request.Params = params
+
+	var body UpdateFindingJSONRequestBody
+	if err := runtime.BindJSONBody(r, &body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.UpdateFinding(ctx, request.(UpdateFindingRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UpdateFinding")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(UpdateFindingResponseObject); ok {
+		if err := validResponse.VisitUpdateFindingResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // GetHealth operation middleware
 func (sh *strictHandler) GetHealth(w http.ResponseWriter, r *http.Request) {
 	var request GetHealthRequestObject
@@ -11716,6 +13327,33 @@ func (sh *strictHandler) GetReview(w http.ResponseWriter, r *http.Request, revie
 	}
 }
 
+// GetDiscussionAnchorStatuses operation middleware
+func (sh *strictHandler) GetDiscussionAnchorStatuses(w http.ResponseWriter, r *http.Request, reviewId ReviewId, params GetDiscussionAnchorStatusesParams) {
+	var request GetDiscussionAnchorStatusesRequestObject
+
+	request.ReviewId = reviewId
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetDiscussionAnchorStatuses(ctx, request.(GetDiscussionAnchorStatusesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetDiscussionAnchorStatuses")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetDiscussionAnchorStatusesResponseObject); ok {
+		if err := validResponse.VisitGetDiscussionAnchorStatusesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // ListAttention operation middleware
 func (sh *strictHandler) ListAttention(w http.ResponseWriter, r *http.Request, reviewId ReviewId) {
 	var request ListAttentionRequestObject
@@ -11762,6 +13400,33 @@ func (sh *strictHandler) ListChanges(w http.ResponseWriter, r *http.Request, rev
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(ListChangesResponseObject); ok {
 		if err := validResponse.VisitListChangesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CompareRevisions operation middleware
+func (sh *strictHandler) CompareRevisions(w http.ResponseWriter, r *http.Request, reviewId ReviewId, params CompareRevisionsParams) {
+	var request CompareRevisionsRequestObject
+
+	request.ReviewId = reviewId
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CompareRevisions(ctx, request.(CompareRevisionsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CompareRevisions")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CompareRevisionsResponseObject); ok {
+		if err := validResponse.VisitCompareRevisionsResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -12027,6 +13692,33 @@ func (sh *strictHandler) ListIntents(w http.ResponseWriter, r *http.Request, rev
 	}
 }
 
+// GetRevisionView operation middleware
+func (sh *strictHandler) GetRevisionView(w http.ResponseWriter, r *http.Request, reviewId ReviewId, params GetRevisionViewParams) {
+	var request GetRevisionViewRequestObject
+
+	request.ReviewId = reviewId
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetRevisionView(ctx, request.(GetRevisionViewRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetRevisionView")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetRevisionViewResponseObject); ok {
+		if err := validResponse.VisitGetRevisionViewResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // ListRevisions operation middleware
 func (sh *strictHandler) ListRevisions(w http.ResponseWriter, r *http.Request, reviewId ReviewId) {
 	var request ListRevisionsRequestObject
@@ -12283,6 +13975,40 @@ func (sh *strictHandler) GetSourceChanges(w http.ResponseWriter, r *http.Request
 	}
 }
 
+// UpdateSourceTopics operation middleware
+func (sh *strictHandler) UpdateSourceTopics(w http.ResponseWriter, r *http.Request, revisionId RevisionId, params UpdateSourceTopicsParams) {
+	var request UpdateSourceTopicsRequestObject
+
+	request.RevisionId = revisionId
+	request.Params = params
+
+	var body UpdateSourceTopicsJSONRequestBody
+	if err := runtime.BindJSONBody(r, &body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.UpdateSourceTopics(ctx, request.(UpdateSourceTopicsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UpdateSourceTopics")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(UpdateSourceTopicsResponseObject); ok {
+		if err := validResponse.VisitUpdateSourceTopicsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // ListRuntimeSessions operation middleware
 func (sh *strictHandler) ListRuntimeSessions(w http.ResponseWriter, r *http.Request, params ListRuntimeSessionsParams) {
 	var request ListRuntimeSessionsRequestObject
@@ -12518,164 +14244,185 @@ func (sh *strictHandler) CreateRepresentation(w http.ResponseWriter, r *http.Req
 // const string: with thousands of chunks the chained `+` fold is several
 // times slower for the Go compiler than parsing a slice literal.
 var swaggerSpec = []string{
-	"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",
+	"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",
 }
 
 // decodeSpec returns the embedded OpenAPI spec as raw JSON bytes,

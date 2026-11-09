@@ -1,6 +1,7 @@
 import { Markdown } from './Markdown';
 import { createContext, useCallback, useContext, useEffect, useId, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { useQuery } from '@tanstack/react-query';
 import { result, type API, type Model } from './api/client';
 import { useSubmit } from './hooks';
 import type { DiscussionTarget } from './model';
@@ -73,6 +74,7 @@ const DiscussionContext = createContext<{
   composer: Composer;
   discussions: Model['Discussion'][];
   revisions: Model['Revision'][];
+  anchorStatuses: Model['DiscussionAnchorStatus'][];
   register: (key: string, id: string, node: HTMLElement | null, reveal?: number) => void;
 } | null>(null);
 
@@ -99,6 +101,7 @@ export function DiscussionProvider({
   composer,
   openAnchor,
   onDraftChange,
+  anchorStatuses = [],
   children,
 }: {
   api: API;
@@ -107,6 +110,7 @@ export function DiscussionProvider({
   composer: Composer;
   openAnchor: (d: Model['Discussion']) => void;
   onDraftChange: (dirty: boolean) => void;
+  anchorStatuses?: Model['DiscussionAnchorStatus'][];
   children: React.ReactNode;
 }) {
   const [hosts, setHosts] = useState<Record<string, Host>>({});
@@ -141,7 +145,9 @@ export function DiscussionProvider({
   }, [composer.body, replyDrafts, onDraftChange]);
   useEffect(() => () => onDraftChange(false), [onDraftChange]);
   return (
-    <DiscussionContext.Provider value={{ composer, discussions, revisions, register }}>
+    <DiscussionContext.Provider
+      value={{ composer, discussions, revisions, anchorStatuses, register }}
+    >
       {children}
       {Object.entries(hosts)
         .filter(([, host]) => host.id === 'composer')
@@ -152,6 +158,7 @@ export function DiscussionProvider({
           api={api}
           discussion={d}
           contextLabel={discussionRevisionLabel(d, revisions)}
+          anchorStatus={anchorStatuses.find((status) => status.discussion_id === d.id)}
           hosts={Object.entries(hosts).filter(([, host]) => host.id === d.id)}
           open={() => openAnchor(d)}
           reportDraft={reportReply}
@@ -227,7 +234,7 @@ export function CommentIndex({
   openAnchor: (d: Model['Discussion']) => void;
   openDraft: () => void;
 }) {
-  const { discussions, composer, revisions } = useDiscussions();
+  const { discussions, composer, revisions, anchorStatuses } = useDiscussions();
   const [scope, setScope] = useState<'topic' | 'all'>('topic');
   const visible = discussions.filter((d) => scope === 'all' || discussionInTopic(d, topicID));
   return (
@@ -271,6 +278,9 @@ export function CommentIndex({
           <span className="badge">{d.status}</span>
           <span>{d.messages[0]?.body}</span>
           <small>{discussionRevisionLabel(d, revisions)}</small>
+          <small title={anchorStatuses.find((status) => status.discussion_id === d.id)?.reason}>
+            {anchorStatuses.find((status) => status.discussion_id === d.id)?.status.toLowerCase()}
+          </small>
         </button>
       ))}
     </section>
@@ -312,6 +322,7 @@ function ThreadController({
   api,
   discussion: d,
   contextLabel,
+  anchorStatus,
   hosts,
   open,
   reportDraft,
@@ -319,6 +330,7 @@ function ThreadController({
   api: API;
   discussion: Model['Discussion'];
   contextLabel: string;
+  anchorStatus?: Model['DiscussionAnchorStatus'];
   hosts: [string, Host][];
   open: () => void;
   reportDraft: (id: string, dirty: boolean) => void;
@@ -379,6 +391,11 @@ function ThreadController({
       <small className="muted" title={d.revision_id}>
         {contextLabel}
       </small>
+      {anchorStatus && (
+        <small className="anchor-status" title={anchorStatus.reason}>
+          {anchorStatus.status.toLowerCase()} · {anchorStatus.reason}
+        </small>
+      )}
       {d.messages.map((m) => (
         <div className="message" key={m.id}>
           <Attribution author={m.author} />
@@ -431,6 +448,7 @@ export function Decisions({
   findings,
   discussions,
   decisions,
+  onDraftChange,
 }: {
   api: API;
   reviewID: string;
@@ -438,6 +456,7 @@ export function Decisions({
   findings: Model['Finding'][];
   discussions: Model['Discussion'][];
   decisions: Model['Decision'][];
+  onDraftChange: (dirty: boolean) => void;
 }) {
   const [draftRevision, setDraftRevision] = useState(revision);
   const [verdict, setVerdict] = useState<Model['CreateDecisionRequest']['decision']>('COMMENT');
@@ -445,6 +464,36 @@ export function Decisions({
   const [findingIDs, setFindingIDs] = useState<string[]>([]);
   const [discussionIDs, setDiscussionIDs] = useState<string[]>([]);
   const action = useSubmit();
+  const { revisions } = useDiscussions();
+  const draftView = useQuery({
+    queryKey: ['revision-view', reviewID, draftRevision.id],
+    enabled: draftRevision.id !== revision.id,
+    queryFn: ({ signal }) =>
+      result(
+        api.GET('/v1/reviews/{reviewId}/revision-view', {
+          params: { path: { reviewId: reviewID }, query: { revision_id: draftRevision.id } },
+          signal,
+        }),
+      ),
+  });
+  const draftFindings =
+    draftRevision.id === revision.id ? findings : draftView.data?.graph?.findings || [];
+  const draftDiscussions = discussions.filter((discussion) => {
+    const original = revisions.find((r) => r.id === discussion.revision_id);
+    return original && original.ordinal <= draftRevision.ordinal;
+  });
+  const missingFindings = findingIDs.filter(
+    (id) => !draftFindings.some((finding) => finding.id === id),
+  );
+  const missingDiscussions = discussionIDs.filter(
+    (id) => !draftDiscussions.some((discussion) => discussion.id === id),
+  );
+  useEffect(() => {
+    onDraftChange(
+      !!body.trim() || verdict !== 'COMMENT' || findingIDs.length > 0 || discussionIDs.length > 0,
+    );
+  }, [body, verdict, findingIDs.length, discussionIDs.length, onDraftChange]);
+  useEffect(() => () => onDraftChange(false), [onDraftChange]);
   function toggle(id: string, ids: string[], set: (ids: string[]) => void) {
     set(ids.includes(id) ? ids.filter((v) => v !== id) : [...ids, id]);
   }
@@ -467,6 +516,7 @@ export function Decisions({
       )
     ) {
       setBody('');
+      setVerdict('COMMENT');
       setFindingIDs([]);
       setDiscussionIDs([]);
     }
@@ -481,7 +531,10 @@ export function Decisions({
     setDraftRevision(revision);
   const invalid =
     (verdict === 'COMMENT' && !body.trim()) ||
-    (verdict === 'REQUEST_CHANGES' && !findingIDs.length && !discussionIDs.length);
+    (verdict === 'REQUEST_CHANGES' &&
+      ((!findingIDs.length && !discussionIDs.length) ||
+        missingFindings.length > 0 ||
+        missingDiscussions.length > 0));
   return (
     <section className="decisions" aria-label="Review decision">
       <h2>Decision · revision {draftRevision.ordinal}</h2>
@@ -524,7 +577,7 @@ export function Decisions({
         {verdict === 'REQUEST_CHANGES' && (
           <fieldset disabled={action.busy}>
             <legend>Actionable findings or discussions (select at least one)</legend>
-            {findings.map((f) => (
+            {draftFindings.map((f) => (
               <label key={f.id}>
                 <input
                   type="checkbox"
@@ -534,7 +587,7 @@ export function Decisions({
                 {f.title}
               </label>
             ))}
-            {discussions.map((d) => (
+            {draftDiscussions.map((d) => (
               <label key={d.id}>
                 <input
                   type="checkbox"
@@ -544,6 +597,24 @@ export function Decisions({
                 {d.messages[0]?.body} · {d.status}
               </label>
             ))}
+            {[...missingFindings, ...missingDiscussions].map((id) => (
+              <label key={id}>
+                <input
+                  type="checkbox"
+                  checked
+                  onChange={() => {
+                    setFindingIDs((ids) => ids.filter((value) => value !== id));
+                    setDiscussionIDs((ids) => ids.filter((value) => value !== id));
+                  }}
+                />
+                Unavailable in this revision · {id} (uncheck to remove)
+              </label>
+            ))}
+            {draftView.error && (
+              <p role="alert" className="error">
+                {draftView.error.message}
+              </p>
+            )}
           </fieldset>
         )}
         <button className="primary" disabled={action.busy || invalid}>

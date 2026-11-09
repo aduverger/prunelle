@@ -147,8 +147,15 @@ export function SourceTree({
         <h3>
           Unassigned Changes<span className="count">{source.unassigned_count}</span>
         </h3>
-        {!source.unassigned_count && <p className="muted">Every file is linked to a topic.</p>}
-        {renderRepositories(true)}
+        {!source.assignments_available ? (
+          <p className="notice">
+            Topic history is unavailable for this revision. Empty topic sets do not mean these files
+            were unassigned.
+          </p>
+        ) : (
+          !source.unassigned_count && <p className="muted">Every file is linked to a topic.</p>
+        )}
+        {source.assignments_available && renderRepositories(true)}
       </section>
       <section aria-label="All repositories">
         <h3>All repositories</h3>

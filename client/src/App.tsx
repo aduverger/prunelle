@@ -43,6 +43,12 @@ import { CodeReview, sourceFileID } from './CodeReview';
 import { Sessions } from './Sessions';
 import { IntentCard, ChangeCard } from './Records';
 import { SourceTree } from './SourceTree';
+import {
+  ChangeBadge,
+  FindingActions,
+  SourceTopicForm,
+  type SourceTopicDraft,
+} from './RevisionTools';
 
 function hasTextDrafts() {
   return Array.from(document.querySelectorAll('textarea')).some((t) => t.value.trim());
@@ -227,7 +233,7 @@ type Inspector =
   | null;
 function ReviewPage({
   api,
-  data,
+  data: reviewData,
   preferences: pref,
   setPreferences,
   onDraftChange,
@@ -238,18 +244,87 @@ function ReviewPage({
   preferences: Preferences;
   setPreferences: React.Dispatch<React.SetStateAction<Preferences>>;
 }) {
-  const [topicID, setTopicID] = useState<string | null>(
-    pref.perspective === 'Source' ? null : data.topics[0]?.id || null,
-  );
   const [revisionID, setRevisionID] = useState<string | null>(null);
-  const revision =
-    data.revisions.find((r) => r.id === revisionID) ||
-    data.revisions.find((r) => r.id === data.review.current_revision_id);
+  const effectiveRevisionID = revisionID ?? reviewData.review.current_revision_id;
+  const revision = reviewData.revisions.find((r) => r.id === effectiveRevisionID);
+  const view = useQuery({
+    queryKey: ['revision-view', reviewData.review.id, effectiveRevisionID],
+    queryFn: ({ signal }) =>
+      result(
+        api.GET('/v1/reviews/{reviewId}/revision-view', {
+          params: {
+            path: { reviewId: reviewData.review.id },
+            query: { revision_id: effectiveRevisionID || undefined },
+          },
+          signal,
+        }),
+      ),
+  });
+  const graph = view.data?.graph;
+  const data = {
+    ...reviewData,
+    topics: graph?.topics || [],
+    findings: graph?.findings || [],
+    intents: graph?.intents || [],
+    changes: graph?.changes || [],
+    evidence: graph?.evidence || [],
+    attention: graph?.attention || [],
+  };
+  const [topicSelection, setTopicID] = useState<string | null | undefined>(undefined);
+  if (topicSelection === undefined && graph)
+    setTopicID(pref.perspective === 'Source' ? null : data.topics[0]?.id || null);
+  const topicID =
+    topicSelection === undefined
+      ? pref.perspective === 'Source'
+        ? null
+        : data.topics[0]?.id || null
+      : topicSelection;
+  const [baselineChoice, setBaselineChoice] = useState<string | undefined>(undefined);
+  const earlierRevisions = data.revisions.filter((r) => revision && r.ordinal < revision.ordinal);
+  const baselineID =
+    baselineChoice === undefined
+      ? earlierRevisions.at(-1)?.id
+      : earlierRevisions.find((r) => r.id === baselineChoice)?.id;
+  const comparison = useQuery({
+    queryKey: ['comparison', data.review.id, baselineID, revision?.id],
+    enabled: !!baselineID && !!revision,
+    queryFn: ({ signal }) =>
+      result(
+        api.GET('/v1/reviews/{reviewId}/comparison', {
+          params: {
+            path: { reviewId: data.review.id },
+            query: { from_revision_id: baselineID!, to_revision_id: revision!.id },
+          },
+          signal,
+        }),
+      ),
+  });
+  const anchorStatuses = useQuery({
+    queryKey: ['anchor-status', data.review.id, effectiveRevisionID],
+    enabled: !!effectiveRevisionID,
+    queryFn: ({ signal }) =>
+      result(
+        api.GET('/v1/reviews/{reviewId}/anchor-status', {
+          params: {
+            path: { reviewId: data.review.id },
+            query: { revision_id: effectiveRevisionID! },
+          },
+          signal,
+        }),
+      ),
+  });
+  const [sourceDraft, setSourceDraft] = useState<SourceTopicDraft | null>(null);
+  const [discussionDirty, setDiscussionDirty] = useState(false);
+  const [decisionDirty, setDecisionDirty] = useState(false);
+  useEffect(() => {
+    onDraftChange(discussionDirty || decisionDirty || !!sourceDraft?.dirty);
+  }, [discussionDirty, decisionDirty, sourceDraft?.dirty, onDraftChange]);
+  useEffect(() => () => onDraftChange(false), [onDraftChange]);
   const [tab, setTab] = useState<Navigation>(presets[pref.perspective].tab);
   const [order, setOrder] = useState(presets[pref.perspective].order);
   const [file, setFile] = useState<FileSelection | null>(null);
   const [inspector, setInspector] = useState<Inspector>(null);
-  const [panel, setPanel] = useState<'decision' | 'sessions' | null>(null);
+  const [panel, setPanel] = useState<'decision' | 'sessions' | 'source-topics' | null>(null);
   const [navigation, setNavigation] = useState(0);
   const [focusedDiscussionID, setFocusedDiscussionID] = useState<string | null>(null);
   const [discussionNavigation, setDiscussionNavigation] = useState(0);
@@ -257,18 +332,8 @@ function ReviewPage({
   const [representationIDs, setRepresentationIDs] = useState<Partial<Record<View, string>>>({});
   const [elementID, setElementID] = useState<string | null>(null);
   const topic = data.topics.find((t) => t.id === topicID);
-  const reps = useQuery({
-    queryKey: ['representations', topicID],
-    enabled: !!topicID,
-    queryFn: ({ signal }) =>
-      result(
-        api.GET('/v1/topics/{topicId}/representations', {
-          params: { path: { topicId: topicID! } },
-          signal,
-        }),
-      ),
-  });
-  const source = useSourceChanges(api, revision?.id);
+  const reps = (graph?.representations || []).filter((rep) => rep.topic_id === topicID);
+  const source = useSourceChanges(api, effectiveRevisionID || undefined);
   const sourceMode = !topic;
   const codeRevision = data.revisions.find((r) => r.id === file?.revisionID) || revision;
   const codeSource = useSourceChanges(api, sourceMode ? codeRevision?.id : undefined);
@@ -334,6 +399,7 @@ function ReviewPage({
     revision_id: string;
     topic_ids?: string[];
   }) {
+    setRevisionID(d.revision_id);
     if (d.anchor.code_range) {
       const r = d.anchor.code_range;
       setTopicID(null);
@@ -400,20 +466,78 @@ function ReviewPage({
   const sourceMembership = sourceFile && (
     <div className="row source-topics">
       <small>File belongs to:</small>
-      {sourceFile.unassigned ? (
+      {topic &&
+        sourceFile &&
+        displayedSource?.assignments_available &&
+        !sourceFile.topic_ids.includes(topic.id) && (
+          <small>Selected stored source is not currently assigned to this topic.</small>
+        )}
+      {!displayedSource?.assignments_available ? (
+        <span className="badge">Topic history unavailable</span>
+      ) : sourceFile.unassigned ? (
         <span className="badge">Unassigned Changes</span>
       ) : (
         sourceFile.topic_ids.map((id) => (
-          <button key={id} className="link" onClick={() => selectTopic(id)}>
+          <button
+            key={id}
+            className="link"
+            onClick={() => {
+              setRevisionID(displayedSource!.revision_id);
+              selectTopic(id);
+            }}
+          >
             {data.topics.find((t) => t.id === id)?.title || id}
           </button>
         ))
+      )}
+      {displayedSource?.assignments_available && (
+        <button
+          disabled={!view.data?.editable || file?.revisionID !== data.review.current_revision_id}
+          onClick={() => {
+            if (sourceDraft?.dirty) {
+              if (
+                sourceDraft.revisionID === file!.revisionID &&
+                sourceDraft.repositoryID === file!.repositoryID &&
+                sourceDraft.file.path === file!.path
+              ) {
+                setPanel('source-topics');
+                return;
+              }
+              if (!window.confirm('Discard the unsaved file-topic correction and start another?'))
+                return;
+            }
+            setSourceDraft({
+              reviewID: data.review.id,
+              revisionID: file!.revisionID,
+              repositoryID: file!.repositoryID,
+              file: sourceFile,
+              topics: data.topics.filter((topic) => topic.state === 'ACTIVE'),
+              topicIDs: sourceFile.topic_ids,
+              dirty: false,
+            });
+            setPanel('source-topics');
+          }}
+        >
+          Edit file topics
+        </button>
       )}
     </div>
   );
   const reviewContext = (
     <>
-      {!revision && <Notice>No source snapshot yet. Capture one to comment or decide.</Notice>}
+      <ErrorNotice error={view.error} />
+      <ErrorNotice error={anchorStatuses.error} />
+      {view.isPending && <Notice>Loading semantic view…</Notice>}
+      {view.data?.unavailable_reason && <Notice>{view.data.unavailable_reason}</Notice>}
+      {graph && topicID && !topic && (
+        <Notice>
+          The selected topic is not present in this revision. Choose a topic or inspect all source
+          changes.
+        </Notice>
+      )}
+      {!revision && !effectiveRevisionID && (
+        <Notice>No source snapshot yet. Capture one to comment or decide.</Notice>
+      )}
       {revision && (
         <details className="snapshot">
           <summary>
@@ -432,9 +556,59 @@ function ReviewPage({
             </div>
           ))}
           <p>
-            Topics and explanations are the current review graph; revision-aware comparison arrives
-            in M3.
+            {view.data?.graph &&
+              (view.data.editable && effectiveRevisionID === data.review.current_revision_id
+                ? 'Latest semantic state is editable; the next capture freezes it.'
+                : 'Frozen semantic state for this revision. Source and original anchors are immutable.')}
           </p>
+        </details>
+      )}
+      <ErrorNotice error={comparison.error} />
+      {comparison.data?.unavailable_reason && <Notice>{comparison.data.unavailable_reason}</Notice>}
+      {comparison.data && !comparison.data.unavailable_reason && (
+        <details aria-label="Revision comparison">
+          <summary>
+            Changes since revision {earlierRevisions.find((r) => r.id === baselineID)?.ordinal}
+          </summary>
+          <p>
+            Metadata changes and linked-source changes are separate. Neither automatically resolves
+            a concern.
+          </p>
+          <ul>
+            {comparison.data.topics
+              .filter(
+                (item) =>
+                  item.change !== 'UNCHANGED' ||
+                  item.source_status === 'CHANGED' ||
+                  item.source_status === 'UNAVAILABLE',
+              )
+              .map((item) => (
+                <li key={item.id}>
+                  <button className="link" onClick={() => selectTopic(item.id)}>
+                    {data.topics.find((topic) => topic.id === item.id)?.title || item.id}
+                  </button>{' '}
+                  <ChangeBadge change={item} />
+                </li>
+              ))}
+            {comparison.data.findings
+              .filter(
+                (item) =>
+                  item.change !== 'UNCHANGED' ||
+                  item.source_status === 'CHANGED' ||
+                  item.source_status === 'UNAVAILABLE',
+              )
+              .map((item) => (
+                <li key={item.id}>
+                  <button
+                    className="link"
+                    onClick={() => setInspector({ type: 'finding', id: item.id })}
+                  >
+                    {data.findings.find((finding) => finding.id === item.id)?.title || item.id}
+                  </button>{' '}
+                  <ChangeBadge change={item} />
+                </li>
+              ))}
+          </ul>
         </details>
       )}
       <div className="topic-header">
@@ -444,6 +618,7 @@ function ReviewPage({
         {topic && (
           <>
             <Attribution author={topic.author} />
+            <ChangeBadge change={comparison.data?.topics.find((item) => item.id === topic.id)} />
             <button
               className="link"
               disabled={!revision}
@@ -530,6 +705,10 @@ function ReviewPage({
       openDraft={openDraft}
     />
   );
+  const decisionRevision =
+    revision ||
+    data.revisions.find((r) => r.id === data.review.current_revision_id) ||
+    data.revisions.at(-1);
   const codeVisible =
     sourceMode || (pref.views.slice(0, pref.split ? 2 : 1).includes('CODE_DIFF') && !!file);
   return (
@@ -539,7 +718,8 @@ function ReviewPage({
       revisions={data.revisions}
       composer={composer}
       openAnchor={openAnchor}
-      onDraftChange={onDraftChange}
+      onDraftChange={setDiscussionDirty}
+      anchorStatuses={anchorStatuses.data || []}
     >
       <div className="review-bar">
         <div>
@@ -580,6 +760,26 @@ function ReviewPage({
             ))}
           </select>
         </label>
+        {earlierRevisions.length > 0 && (
+          <label className="compact">
+            Compare with
+            <select
+              aria-label="Comparison baseline"
+              value={baselineID || ''}
+              onChange={(event) => setBaselineChoice(event.target.value)}
+            >
+              <option value="">No comparison</option>
+              {earlierRevisions.map((r) => (
+                <option key={r.id} value={r.id}>
+                  Revision {r.ordinal}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
+        {sourceDraft && (
+          <button onClick={() => setPanel('source-topics')}>Resume file-topic correction</button>
+        )}
         <button
           disabled={capture.busy}
           onClick={() => {
@@ -645,8 +845,9 @@ function ReviewPage({
                   selected={topicID}
                   select={selectTopic}
                   order={order}
+                  changes={comparison.data?.topics || []}
                 />
-                {!data.topics.length && (
+                {!data.topics.length && view.data?.graph && (
                   <Notice>No topics imported yet. All Source Changes remains exhaustive.</Notice>
                 )}
               </>
@@ -667,9 +868,19 @@ function ReviewPage({
                     <small>
                       {f.kind} · {f.status}
                     </small>
+                    <ChangeBadge
+                      change={comparison.data?.findings.find((item) => item.id === f.id)}
+                    />
                   </button>
                 ))}
-                {!data.findings.length && <Notice>No findings recorded.</Notice>}
+                {!data.findings.length && graph && <Notice>No findings recorded.</Notice>}
+                {!graph && (
+                  <Notice>
+                    {view.isPending
+                      ? 'Loading findings…'
+                      : view.data?.unavailable_reason || 'Findings could not be loaded.'}
+                  </Notice>
+                )}
               </div>
             )}
             <div hidden={tab !== 'All Source Changes'}>
@@ -745,7 +956,6 @@ function ReviewPage({
                 </label>
               </div>
               {sourceMembership}
-              <ErrorNotice error={reps.error} />
               <div className={'view-grid ' + (pref.split ? 'split' : '')}>
                 {pref.views.slice(0, pref.split ? 2 : 1).map((v, i) => (
                   <section className="view-block" key={i}>
@@ -770,7 +980,16 @@ function ReviewPage({
                         setRepresentationIDs((ids) => ({ ...ids, [v]: id }))
                       }
                       elementID={elementID}
-                      representations={reps.data || []}
+                      representations={reps}
+                      revisionID={revision?.id}
+                      openSource={(source) => {
+                        openFile({
+                          revisionID: source.revision_id,
+                          repositoryID: source.repository_id,
+                          path: source.path,
+                        });
+                        showCode();
+                      }}
                       evidence={data.evidence}
                       code={file && v === 'CODE_DIFF' ? code([file]) : undefined}
                       openEvidence={openEvidence}
@@ -822,6 +1041,20 @@ function ReviewPage({
                   <h3>{finding.title}</h3>
                   <Attribution author={finding.author} provenance={finding.provenance} />
                   <p>{finding.rationale}</p>
+                  <ChangeBadge
+                    change={comparison.data?.findings.find((item) => item.id === finding.id)}
+                  />
+                  {revision && (
+                    <FindingActions
+                      key={finding.id + revision.id}
+                      api={api}
+                      finding={finding}
+                      revisionID={revision.id}
+                      editable={
+                        !!view.data?.editable && revision.id === data.review.current_revision_id
+                      }
+                    />
+                  )}
                   <EvidenceLinks
                     ids={finding.evidence_ids}
                     evidence={data.evidence}
@@ -872,14 +1105,43 @@ function ReviewPage({
         title="Review decision"
         close={() => setPanel(null)}
       >
-        {revision && (
+        {decisionRevision && (
           <Decisions
             api={api}
             reviewID={data.review.id}
-            revision={revision}
+            revision={decisionRevision}
             findings={data.findings}
+            onDraftChange={setDecisionDirty}
             discussions={data.discussions}
             decisions={data.decisions}
+          />
+        )}
+      </ReviewDialog>
+      <ReviewDialog
+        open={panel === 'source-topics'}
+        title="File topics"
+        close={() => setPanel(null)}
+      >
+        {sourceDraft && (
+          <SourceTopicForm
+            key={sourceDraft.revisionID + sourceDraft.repositoryID + sourceDraft.file.path}
+            api={api}
+            draft={sourceDraft}
+            currentRevisionID={data.review.current_revision_id}
+            change={setSourceDraft}
+            saved={() => {
+              setSourceDraft(null);
+              setPanel(null);
+            }}
+            discard={() => {
+              if (
+                !sourceDraft.dirty ||
+                window.confirm('Discard the unsaved file-topic correction?')
+              ) {
+                setSourceDraft(null);
+                setPanel(null);
+              }
+            }}
           />
         )}
       </ReviewDialog>
@@ -929,6 +1191,7 @@ function TopicTree({
   selected,
   select,
   order,
+  changes,
   parent = null,
 }: {
   topics: Model['Topic'][];
@@ -936,6 +1199,7 @@ function TopicTree({
   selected: string | null;
   select: (id: string) => void;
   order: TopicOrder;
+  changes: Model['EntityComparison'][];
   parent?: string | null;
 }) {
   return (
@@ -947,6 +1211,7 @@ function TopicTree({
             <span>
               {t.title}
               {t.state === 'OBSOLETE' && <small>Obsolete</small>}
+              <ChangeBadge change={changes.find((item) => item.id === t.id)} />
             </span>
             {t.finding_ids.length > 0 && <span className="count">{t.finding_ids.length}</span>}
           </button>
@@ -954,6 +1219,7 @@ function TopicTree({
             topics={topics}
             attention={attention}
             order={order}
+            changes={changes}
             selected={selected}
             select={select}
             parent={t.id}

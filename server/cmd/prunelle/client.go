@@ -88,7 +88,7 @@ func reviewCommand(ctx context.Context, cfg config.Config, args []string) error 
 	}
 	flags, client := clientFlags("review "+args[0], cfg)
 	description := flags.String("description", "", "review description (create)")
-	revision := flags.String("revision", "", "revision to import into (default current)")
+	revision := flags.String("revision", "", "current revision to import into (default current; older graphs are read-only)")
 	path := flags.String("path", "", "explicit source folder (create; default infer from cwd)")
 	baseRef := flags.String("base-ref", "", "capture-wide base ref (capture; default server [snapshot] setting)")
 	yes := flags.Bool("yes", false, "confirm permanent deletion of this review's Prunelle data")

@@ -147,6 +147,99 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/reviews/{reviewId}/revision-view": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                reviewId: components["parameters"]["ReviewId"];
+            };
+            cookie?: never;
+        };
+        /** @description One coherent semantic view. Latest state is editable; predecessors freeze when capture advances. Legacy unavailable history is null, never today's graph. */
+        get: operations["getRevisionView"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/reviews/{reviewId}/comparison": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                reviewId: components["parameters"]["ReviewId"];
+            };
+            cookie?: never;
+        };
+        get: operations["compareRevisions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/reviews/{reviewId}/anchor-status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                reviewId: components["parameters"]["ReviewId"];
+            };
+            cookie?: never;
+        };
+        get: operations["getDiscussionAnchorStatuses"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/revisions/{revisionId}/source-topics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                revisionId: components["parameters"]["RevisionId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** @description Set an explicit topic set (including empty), or reset to DERIVED. Only the current revision is writable; initial assignment version is 1. */
+        patch: operations["updateSourceTopics"];
+        trace?: never;
+    };
+    "/v1/findings/{findingId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                findingId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** @description Explicit status/evidence edit against the current revision. Does not resolve threads, rewrite first-seen revision or submit a decision. */
+        patch: operations["updateFinding"];
+        trace?: never;
+    };
     "/v1/reviews/{reviewId}/imports": {
         parameters: {
             query?: never;
@@ -158,7 +251,7 @@ export interface paths {
         };
         get: operations["listImports"];
         put?: never;
-        /** @description Validate a review manifest against a revision (default the current one) and store its records in one transaction. */
+        /** @description Append records atomically against the current revision. Superseded revisions reject new imports; committed retries still replay unchanged. Keys are import-local, not reconciliation identities. */
         post: operations["importManifest"];
         delete?: never;
         options?: never;
@@ -665,19 +758,84 @@ export interface components {
         SourceChanges: {
             revision_id: string;
             unassigned_count: number;
+            /** @description False for legacy revisions with unknown semantic history; do not interpret their empty topic sets as unassigned. */
+            assignments_available: boolean;
             repositories: {
                 repository_id: string;
                 repository_label: string;
-                files: {
-                    path: string;
-                    old_path: string | null;
-                    status: components["schemas"]["FileStatus"];
-                    binary: boolean;
-                    content_omitted: components["schemas"]["ContentOmitted"];
-                    topic_ids: string[];
-                    unassigned: boolean;
-                }[];
+                files: components["schemas"]["SourceFile"][];
             }[];
+        };
+        RevisionView: {
+            revision_id: string | null;
+            editable: boolean;
+            graph: null | components["schemas"]["ReviewGraph"];
+            /** @description Non-null when semantic history was not recorded. Source and threads remain available. */
+            unavailable_reason: string | null;
+        };
+        ReviewGraph: {
+            topics: components["schemas"]["Topic"][];
+            findings: components["schemas"]["Finding"][];
+            intents: components["schemas"]["Intent"][];
+            changes: components["schemas"]["ObservedChange"][];
+            evidence: components["schemas"]["Evidence"][];
+            attention: components["schemas"]["AttentionSignal"][];
+            representations: components["schemas"]["Representation"][];
+            source_changes: null | components["schemas"]["SourceChanges"];
+        };
+        RevisionComparison: {
+            from_revision_id: string;
+            to_revision_id: string;
+            unavailable_reason: string | null;
+            topics: components["schemas"]["EntityComparison"][];
+            findings: components["schemas"]["EntityComparison"][];
+        };
+        EntityComparison: {
+            id: string;
+            /** @enum {string} */
+            change: "ADDED" | "UNCHANGED" | "CHANGED" | "OBSOLETE" | "REACTIVATED" | "RESOLVED" | "DISMISSED" | "REOPENED";
+            changed_fields: string[];
+            /** @enum {string} */
+            source_status: "NONE" | "UNCHANGED" | "CHANGED" | "UNAVAILABLE";
+        };
+        DiscussionAnchorStatus: {
+            discussion_id: string;
+            /** @description Target used only for validity comparison */
+            revision_id: string;
+            /** @enum {string} */
+            status: "ORIGINAL" | "UNCHANGED" | "OUTDATED" | "UNAVAILABLE";
+            reason: string;
+        };
+        UpdateFindingRequest: {
+            revision_id: string;
+            /** @enum {string} */
+            status?: "OPEN" | "RESOLVED" | "DISMISSED";
+            evidence_ids?: components["schemas"]["IDList"];
+        };
+        UpdateSourceTopicsRequest: {
+            repository_id: string;
+            path: string;
+            /** @enum {string} */
+            mode: "DERIVED" | "EXPLICIT";
+            topic_ids: components["schemas"]["IDList"];
+        };
+        SourceFileRef: {
+            revision_id: string;
+            repository_id: string;
+            path: string;
+        };
+        SourceFile: {
+            path: string;
+            old_path: string | null;
+            status: components["schemas"]["FileStatus"];
+            binary: boolean;
+            content_omitted: components["schemas"]["ContentOmitted"];
+            topic_ids: components["schemas"]["IDList"];
+            /** @description Meaningful only when assignments_available is true. */
+            unassigned: boolean;
+            /** @enum {string} */
+            assignment_mode: "DERIVED" | "EXPLICIT";
+            assignment_version: number;
         };
         FileContent: {
             revision_id: string;
@@ -793,6 +951,7 @@ export interface components {
             id: string;
             review_id: string;
             first_seen_revision_id: string;
+            version: number;
             /** @enum {string} */
             kind: "CORRECTNESS" | "DESIGN" | "SECURITY" | "PERFORMANCE" | "TEST_GAP" | "OTHER";
             /** @enum {string} */
@@ -890,6 +1049,8 @@ export interface components {
                 }[];
                 edges: components["schemas"]["DiagramEdge"][];
             };
+            /** @description Canonical assigned files for CODE_DIFF */
+            source_files?: components["schemas"]["SourceFileRef"][];
             /** @description Evidence IDs of the code ranges to show. */
             code_diff?: components["schemas"]["EvidenceListConfig"];
             evidence_list?: components["schemas"]["EvidenceListConfig"];
@@ -1033,7 +1194,7 @@ export interface components {
          * @description A change to refetch. Types: review.created, review.deleted, revision.created, import.created,
          *     topic.created, topic.updated (edit or move; refetch the topic list, sibling positions may change),
          *     representation.created, representation.updated, discussion.created, discussion.updated
-         *     (status change or reply), decision.created.
+         *     (status change or reply), decision.created, finding.updated, source.topics.updated.
          */
         Event: {
             /** Format: int64 */
@@ -1539,6 +1700,144 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["FileContent"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    getRevisionView: {
+        parameters: {
+            query?: {
+                revision_id?: string;
+            };
+            header?: never;
+            path: {
+                reviewId: components["parameters"]["ReviewId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Selected semantic state and canonical source membership. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RevisionView"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    compareRevisions: {
+        parameters: {
+            query: {
+                from_revision_id: string;
+                to_revision_id: string;
+            };
+            header?: never;
+            path: {
+                reviewId: components["parameters"]["ReviewId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Stable-ID semantic changes; source changes are separate and never automatically resolve concerns. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RevisionComparison"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    getDiscussionAnchorStatuses: {
+        parameters: {
+            query: {
+                revision_id: string;
+            };
+            header?: never;
+            path: {
+                reviewId: components["parameters"]["ReviewId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Conservative original-anchor validity against a target revision; no relocation. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DiscussionAnchorStatus"][];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    updateSourceTopics: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description ETag of the version the change is based on. Required; omitting it returns 428. */
+                "If-Match"?: components["parameters"]["IfMatch"];
+            };
+            path: {
+                revisionId: components["parameters"]["RevisionId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateSourceTopicsRequest"];
+            };
+        };
+        responses: {
+            /** @description Updated canonical file assignment. */
+            200: {
+                headers: {
+                    ETag: components["headers"]["ETag"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SourceFile"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    updateFinding: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description ETag of the version the change is based on. Required; omitting it returns 428. */
+                "If-Match"?: components["parameters"]["IfMatch"];
+            };
+            path: {
+                findingId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateFindingRequest"];
+            };
+        };
+        responses: {
+            /** @description Updated finding. */
+            200: {
+                headers: {
+                    ETag: components["headers"]["ETag"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Finding"];
                 };
             };
             default: components["responses"]["Error"];

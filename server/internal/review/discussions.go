@@ -3,7 +3,6 @@ package review
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"errors"
 	"slices"
 	"strings"
@@ -63,15 +62,19 @@ func (s *Service) CreateDiscussion(ctx context.Context, reviewID string, req Cre
 	err = s.db.Write(ctx, func(tx *sql.Tx) error {
 		targets := make([]any, len(anchorTargets))
 		if targetIndex >= 0 && a.ID != nil {
-			records, err := loadReviewRecords(ctx, tx, reviewID)
+			reader := *s
+			reader.readConn = tx
+			view, err := reader.revisionView(ctx, reviewID, &revision.ID)
 			if err != nil {
 				return err
 			}
+			if view.Graph == nil {
+				return invalid("semantic history is unavailable for this revision; keep the original text or use a stored-code/review anchor")
+			}
+			records := view.Graph.records()
 			target := anchorTargets[targetIndex]
 			if records.checkOne(&p, "anchor.id", target.entityType, *a.ID) && a.Type == "DIAGRAM_ELEMENT" && a.ElementID != nil {
-				if err := checkDiagramElement(ctx, tx, &p, records, *a.ID, *a.ElementID); err != nil {
-					return err
-				}
+				checkDiagramElement(&p, view.Graph, *a.ID, *a.ElementID)
 			}
 			targets[targetIndex] = *a.ID
 		}
@@ -115,23 +118,20 @@ func expectField(p *problems, path, anchorType string, present, wanted bool) {
 	}
 }
 
-func checkDiagramElement(ctx context.Context, tx *sql.Tx, p *problems, records reviewRecords, representationID, elementID string) error {
-	if records[representationID].kind != "DIAGRAM" {
-		p.add("anchor.id", "%s is not a diagram", representationID)
-		return nil
+func checkDiagramElement(p *problems, graph *ReviewGraph, representationID, elementID string) {
+	for _, rep := range graph.Representations {
+		if rep.ID == nil || *rep.ID != representationID {
+			continue
+		}
+		if rep.Diagram == nil {
+			p.add("anchor.id", "%s is not a diagram", representationID)
+			return
+		}
+		if !slices.ContainsFunc(rep.Diagram.Nodes, func(n DiagramNode) bool { return n.ID == elementID }) {
+			p.add("anchor.element_id", "diagram %s has no node %q", representationID, elementID)
+		}
+		return
 	}
-	var config string
-	if err := tx.QueryRowContext(ctx, `SELECT config FROM representations WHERE id = ?`, representationID).Scan(&config); err != nil {
-		return err
-	}
-	var diagram DiagramConfig
-	if err := json.Unmarshal([]byte(config), &diagram); err != nil {
-		return err
-	}
-	if !slices.ContainsFunc(diagram.Nodes, func(n DiagramNode) bool { return n.ID == elementID }) {
-		p.add("anchor.element_id", "diagram %s has no node %q", representationID, elementID)
-	}
-	return nil
 }
 
 func insertMessage(ctx context.Context, tx *sql.Tx, id, discussionID, body string, author Author, at string) error {
@@ -224,7 +224,16 @@ func (s *Service) GetDiscussion(ctx context.Context, id string) (Discussion, err
 }
 
 func (s *Service) queryDiscussions(ctx context.Context, query string, args ...any) ([]Discussion, error) {
-	rows, err := s.db.Reader().QueryContext(ctx, query, args...)
+	if s.readConn == nil {
+		var discussions []Discussion
+		err := s.readSnapshot(ctx, func(reader *Service) error {
+			var err error
+			discussions, err = reader.queryDiscussions(ctx, query, args...)
+			return err
+		})
+		return discussions, err
+	}
+	rows, err := s.reader().QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -251,13 +260,14 @@ func (s *Service) queryDiscussions(ctx context.Context, query string, args ...an
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
-	topicsByRevisionFile := map[string]map[fileKey][]string{}
+	rows.Close()
+	graphs := map[string]*ReviewGraph{}
 	for i := range discussions {
 		d := &discussions[i]
 		if d.Messages, err = s.messages(ctx, d.ID); err != nil {
 			return nil, err
 		}
-		if d.TopicIDs, err = s.anchorTopics(ctx, *d, topicsByRevisionFile); err != nil {
+		if d.TopicIDs, err = s.anchorTopics(ctx, *d, graphs); err != nil {
 			return nil, err
 		}
 	}
@@ -265,7 +275,7 @@ func (s *Service) queryDiscussions(ctx context.Context, query string, args ...an
 }
 
 func (s *Service) messages(ctx context.Context, discussionID string) ([]Message, error) {
-	rows, err := s.db.Reader().QueryContext(ctx, `SELECT id, author_kind, author_id, body, created_at
+	rows, err := s.reader().QueryContext(ctx, `SELECT id, author_kind, author_id, body, created_at
 		FROM discussion_messages WHERE discussion_id = ? ORDER BY created_at, id`, discussionID)
 	if err != nil {
 		return nil, err
@@ -284,34 +294,68 @@ func (s *Service) messages(ctx context.Context, discussionID string) ([]Message,
 	return messages, rows.Err()
 }
 
-// anchorTopicQueries find the topics related to a record anchor, by anchor type.
-var anchorTopicQueries = map[string]string{
-	"INTENT":          `SELECT topic_id FROM topic_intents WHERE intent_id = ? ORDER BY topic_id`,
-	"CHANGE":          `SELECT topic_id FROM topic_changes WHERE change_id = ? ORDER BY topic_id`,
-	"FINDING":         `SELECT topic_id FROM topic_findings WHERE finding_id = ? ORDER BY topic_id`,
-	"EVIDENCE":        `WITH ` + topicEvidenceCTE + ` SELECT DISTINCT topic_id FROM topic_reachable_evidence WHERE evidence_id = ? ORDER BY topic_id`,
-	"DIAGRAM_ELEMENT": `SELECT topic_id FROM representations WHERE id = ?`,
+func (s *Service) anchorTopics(ctx context.Context, d Discussion, graphs map[string]*ReviewGraph) ([]string, error) {
+	if d.Anchor.Type == "REVIEW" {
+		return []string{}, nil
+	}
+	if d.Anchor.Type == "TOPIC" {
+		return []string{*d.Anchor.ID}, nil
+	}
+	graph, ok := graphs[d.RevisionID]
+	if !ok {
+		view, err := s.revisionView(ctx, d.ReviewID, &d.RevisionID)
+		if err != nil {
+			return nil, err
+		}
+		graph = view.Graph
+		graphs[d.RevisionID] = graph
+	}
+	if graph == nil {
+		return []string{}, nil
+	}
+	return graph.anchorTopics(d.Anchor), nil
 }
 
-// anchorTopics returns the topics a discussion's anchor relates to. A code range relates to the topics
-// owning its file under the canonical topic→file rule; topicsByRevisionFile caches that rule per revision.
-func (s *Service) anchorTopics(ctx context.Context, d Discussion, topicsByRevisionFile map[string]map[fileKey][]string) ([]string, error) {
-	switch d.Anchor.Type {
-	case "REVIEW":
-		return []string{}, nil
-	case "TOPIC":
-		return []string{*d.Anchor.ID}, nil
-	case "CODE_RANGE":
-		topicsByFile, ok := topicsByRevisionFile[d.RevisionID]
-		if !ok {
-			var err error
-			if topicsByFile, err = s.topicsByFile(ctx, d.RevisionID); err != nil {
-				return nil, err
-			}
-			topicsByRevisionFile[d.RevisionID] = topicsByFile
+func (g *ReviewGraph) anchorTopics(anchor Anchor) []string {
+	ids := []string{}
+	if anchor.CodeRange != nil {
+		if g.SourceChanges == nil {
+			return ids
 		}
-		r := d.Anchor.CodeRange
-		return nonNil(topicsByFile[fileKey{r.RepositoryID, r.Path}]), nil
+		for _, repo := range g.SourceChanges.Repositories {
+			if repo.RepositoryID == anchor.CodeRange.RepositoryID {
+				for _, file := range repo.Files {
+					if file.Path == anchor.CodeRange.Path {
+						return file.TopicIDs
+					}
+				}
+			}
+		}
+		return ids
 	}
-	return queryStrings(ctx, s.db.Reader(), anchorTopicQueries[d.Anchor.Type], *d.Anchor.ID)
+	for _, topic := range g.Topics {
+		matches := false
+		switch anchor.Type {
+		case "TOPIC":
+			matches = topic.ID == *anchor.ID
+		case "INTENT":
+			matches = slices.Contains(topic.IntentIDs, *anchor.ID)
+		case "CHANGE":
+			matches = slices.Contains(topic.ChangeIDs, *anchor.ID)
+		case "FINDING":
+			matches = slices.Contains(topic.FindingIDs, *anchor.ID)
+		case "EVIDENCE":
+			_, evidenceIDs := g.reachableEvidence(topic)
+			matches = slices.Contains(evidenceIDs, *anchor.ID)
+		case "DIAGRAM_ELEMENT":
+			matches = slices.ContainsFunc(g.Representations, func(rep Representation) bool {
+				return rep.TopicID == topic.ID && rep.ID != nil && *rep.ID == *anchor.ID
+			})
+		}
+		if matches {
+			ids = append(ids, topic.ID)
+		}
+	}
+	slices.Sort(ids)
+	return ids
 }

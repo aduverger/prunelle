@@ -109,7 +109,9 @@ export function Diagram({
   select,
   discuss,
   elementID,
+  revisionID,
 }: {
+  revisionID?: string;
   elementID: string | null;
   representation: Model['Representation'];
   select: (node: DiagramNode) => void;
@@ -218,13 +220,13 @@ export function Diagram({
             <button className="link" onClick={() => select(node)}>
               {node.label}
             </button>
-            {representation.id && representation.revision_id && (
+            {representation.id && revisionID && (
               <button
                 className="quiet"
                 aria-label={'Discuss ' + node.label}
                 onClick={() =>
                   discuss({
-                    revisionID: representation.revision_id!,
+                    revisionID,
                     topicID: representation.topic_id,
                     anchor: {
                       type: 'DIAGRAM_ELEMENT',
@@ -254,9 +256,13 @@ export function RepresentationView({
   evidence,
   code,
   openEvidence,
+  openSource,
+  revisionID,
   selectNode,
   discuss,
 }: {
+  revisionID?: string;
+  openSource: (source: Model['SourceFileRef']) => void;
   type: View;
   representationID?: string;
   chooseRepresentation: (id: string) => void;
@@ -274,6 +280,25 @@ export function RepresentationView({
   const items = ids
     .map((id) => evidence.find((e) => e.id === id))
     .filter((e): e is Model['Evidence'] => !!e);
+  const unrepresentedFiles = (rep?.source_files || []).filter(
+    (file) =>
+      !items.some(
+        (evidence) =>
+          evidence.revision_id === file.revision_id &&
+          evidence.code_range?.repository_id === file.repository_id &&
+          evidence.code_range.path === file.path,
+      ),
+  );
+  const sourceChoices =
+    unrepresentedFiles.length > 0 ? (
+      <div className="file-choices">
+        {unrepresentedFiles.map((file) => (
+          <button key={file.repository_id + file.path} onClick={() => openSource(file)}>
+            {file.path}
+          </button>
+        ))}
+      </div>
+    ) : null;
   let content: React.ReactNode;
   if (type === 'CODE_DIFF' && code) {
     content = (
@@ -284,6 +309,7 @@ export function RepresentationView({
             <EvidenceLinks ids={ids} evidence={evidence} select={openEvidence} />
           </details>
         )}
+        {sourceChoices}
         {code}
       </>
     );
@@ -301,6 +327,12 @@ export function RepresentationView({
           <span className="badge">{rep.origin}</span>
         </div>
         {rep.author && <Attribution author={rep.author} />}
+        {rep.revision_id && rep.revision_id !== revisionID && (
+          <small className="muted">
+            Authored against earlier source · {rep.revision_id}. Evidence keeps its original
+            revision.
+          </small>
+        )}
         {type === 'TEXT' &&
           rep.text?.sections.map((section, i) => (
             <section className="text-section" key={i}>
@@ -312,6 +344,7 @@ export function RepresentationView({
         {type === 'DIAGRAM' && (
           <Diagram
             representation={rep}
+            revisionID={revisionID}
             elementID={elementID}
             select={selectNode}
             discuss={discuss}
@@ -319,6 +352,7 @@ export function RepresentationView({
         )}
         {type === 'CODE_DIFF' && (
           <div className="file-choices">
+            {sourceChoices}
             {items.map((e) => (
               <button key={e.id} onClick={() => openEvidence(e)}>
                 {e.code_range?.path} · {e.title}
