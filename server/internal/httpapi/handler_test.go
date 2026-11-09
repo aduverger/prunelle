@@ -166,6 +166,13 @@ func TestFixtureReviewOverHTTP(t *testing.T) {
 	ctx := context.Background()
 	s := newTestServer(t, nil)
 	rv, revision, imported := s.seed(t)
+	expectOK := func(response interface {
+		StatusCode() int
+		GetBody() []byte
+	}) {
+		t.Helper()
+		expectStatus(t, response.StatusCode(), http.StatusOK, response.GetBody())
+	}
 
 	health := must(s.client.GetHealthWithResponse(ctx))
 	expectStatus(t, health.StatusCode(), http.StatusOK, health.Body)
@@ -177,15 +184,15 @@ func TestFixtureReviewOverHTTP(t *testing.T) {
 	if len(*reviews.JSON200) != 1 || *(*reviews.JSON200)[0].CurrentRevisionID != revision.ID {
 		t.Fatalf("reviews = %s", reviews.Body)
 	}
-	must(s.client.ListRevisionsWithResponse(ctx, rv.ID))
-	must(s.client.GetRevisionWithResponse(ctx, revision.ID))
+	expectOK(must(s.client.ListRevisionsWithResponse(ctx, rv.ID)))
+	expectOK(must(s.client.GetRevisionWithResponse(ctx, revision.ID)))
 
 	topics := must(s.client.ListTopicsWithResponse(ctx, rv.ID))
 	if len(*topics.JSON200) != 4 {
 		t.Fatalf("topics = %s", topics.Body)
 	}
 	for _, topic := range *topics.JSON200 {
-		must(s.client.GetTopicWithResponse(ctx, topic.ID))
+		expectOK(must(s.client.GetTopicWithResponse(ctx, topic.ID)))
 		reps := must(s.client.ListTopicRepresentationsWithResponse(ctx, topic.ID))
 		if len(*reps.JSON200) != 4 {
 			t.Errorf("%s representations = %s", topic.Title, reps.Body)
@@ -202,14 +209,14 @@ func TestFixtureReviewOverHTTP(t *testing.T) {
 		expectStatus(t, file.StatusCode(), http.StatusOK, file.Body)
 	}
 
-	must(s.client.ListIntentsWithResponse(ctx, rv.ID))
-	must(s.client.ListChangesWithResponse(ctx, rv.ID, &api.ListChangesParams{RevisionId: &revision.ID}))
-	must(s.client.ListFindingsWithResponse(ctx, rv.ID))
-	must(s.client.ListAttentionWithResponse(ctx, rv.ID))
-	must(s.client.ListImportsWithResponse(ctx, rv.ID))
+	expectOK(must(s.client.ListIntentsWithResponse(ctx, rv.ID)))
+	expectOK(must(s.client.ListChangesWithResponse(ctx, rv.ID, &api.ListChangesParams{RevisionId: &revision.ID})))
+	expectOK(must(s.client.ListFindingsWithResponse(ctx, rv.ID)))
+	expectOK(must(s.client.ListAttentionWithResponse(ctx, rv.ID)))
+	expectOK(must(s.client.ListImportsWithResponse(ctx, rv.ID)))
 	evidence := must(s.client.ListEvidenceWithResponse(ctx, rv.ID))
 	for _, e := range *evidence.JSON200 {
-		must(s.client.GetEvidenceWithResponse(ctx, e.ID))
+		expectOK(must(s.client.GetEvidenceWithResponse(ctx, e.ID)))
 	}
 	if imported.IDs["topics"]["T-async"] == "" {
 		t.Errorf("import ids = %v", imported.IDs)

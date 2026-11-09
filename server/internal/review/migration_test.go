@@ -54,6 +54,13 @@ func TestVersionFourHistorySurvivesOwnershipMigrationAndScopedDeletion(t *testin
 		`INSERT INTO attention_evidence VALUES ('att_old','evd_old')`,
 		`INSERT INTO decisions VALUES ('dec_old','rvw_a','rev_a','REQUEST_CHANGES','Fix this','HUMAN','human','2026-11-01T10:00:00Z')`,
 		`INSERT INTO decision_findings VALUES ('dec_old','fnd_old')`,
+		`INSERT INTO topics VALUES ('top_kept','rvw_b',NULL,'Surviving topic','Keep this summary','MANUAL','ACTIVE',0,'HUMAN','human',NULL,'2026-11-01T10:00:00Z','2026-11-01T10:00:00Z',1)`,
+		`INSERT INTO findings VALUES ('fnd_kept','rvw_b','rev_b','CORRECTNESS','HIGH','OPEN','Surviving finding','Keep this reason','OBSERVED','HUMAN','human',NULL,'2026-11-01T10:00:00Z','2026-11-01T10:00:00Z')`,
+		`INSERT INTO discussions (id,review_id,revision_id,anchor_type,topic_id,status,author_kind,author_id,version,created_at,updated_at) VALUES ('d_kept','rvw_b','rev_b','TOPIC','top_kept','OPEN','HUMAN','human',1,'2026-11-01T10:00:00Z','2026-11-01T10:00:00Z')`,
+		`INSERT INTO discussion_messages VALUES ('msg_kept','d_kept','HUMAN','human','Keep this conversation','2026-11-01T10:00:00Z')`,
+		`INSERT INTO decisions VALUES ('dec_kept','rvw_b','rev_b','REQUEST_CHANGES','Keep this verdict','HUMAN','human','2026-11-01T10:00:00Z')`,
+		`INSERT INTO decision_findings VALUES ('dec_kept','fnd_kept')`,
+		`INSERT INTO decision_discussions VALUES ('dec_kept','d_kept')`,
 	} {
 		if _, err := legacy.ExecContext(ctx, statement); err != nil {
 			t.Fatalf("legacy fixture: %v: %s", err, statement)
@@ -99,8 +106,11 @@ func TestVersionFourHistorySurvivesOwnershipMigrationAndScopedDeletion(t *testin
 	e := &env{ctx: ctx, db: db, svc: svc}
 	first := e.reviewContent(t, "rvw_a")
 	second := e.reviewContent(t, "rvw_b")
-	if len(first.discussions) != 8 || first.decisions[0].ID != "dec_old" || first.topics[0].ID != "top_old" || first.imports[0].ID != "imp_old" {
+	if len(first.discussions) != 8 || len(first.decisions) != 1 || first.decisions[0].ID != "dec_old" || len(first.topics) != 2 || first.topics[0].ID != "top_old" || len(first.imports) != 1 || first.imports[0].ID != "imp_old" {
 		t.Fatalf("history lost during migration: %+v", first)
+	}
+	if len(second.topics) != 1 || second.topics[0].Title != "Surviving topic" || len(second.findings) != 1 || second.findings[0].ID != "fnd_kept" || len(second.discussions) != 1 || len(second.discussions[0].Messages) != 1 || second.discussions[0].Messages[0].Body != "Keep this conversation" || len(second.decisions) != 1 || second.decisions[0].ID != "dec_kept" {
+		t.Fatalf("surviving migrated history was lost: %+v", second)
 	}
 	for _, r := range []review.Review{first.review, second.review} {
 		if len(r.Repositories) != 1 || r.Repositories[0].ID != "repo_old" || r.ContextPath == nil || *r.ContextPath != "/historical/source" {

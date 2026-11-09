@@ -362,10 +362,28 @@ func TestImportRejectsInvalidManifestWithoutWriting(t *testing.T) {
 	}
 }
 
-func TestCreateReviewRejectsNonRepositorySource(t *testing.T) {
+func TestCreateReviewRejectsInvalidRepositorySets(t *testing.T) {
 	e := newEnv(t)
-	_, err := e.svc.CreateReview(e.ctx, review.CreateReviewRequest{Repositories: []review.CreateRepositoryRequest{{Label: "invalid", Path: t.TempDir()}}}, reviewer)
-	expectError(t, err, review.CodeInvalidArgument, "repository invalid")
+	alias := filepath.Join(t.TempDir(), "api-alias")
+	if err := os.Symlink(e.repos.API, alias); err != nil {
+		t.Fatal(err)
+	}
+	for name, repositories := range map[string][]review.CreateRepositoryRequest{
+		"non-repository":             {{Label: "invalid", Path: t.TempDir()}},
+		"duplicate labels":           {{Label: "same", Path: e.repos.API}, {Label: "same", Path: e.repos.Worker}},
+		"duplicate canonical source": {{Label: "api", Path: e.repos.API}, {Label: "alias", Path: alias}},
+		"blank label":                {{Label: " ", Path: e.repos.API}},
+		"relative server path":       {{Label: "api", Path: "relative/api"}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			_, err := e.svc.CreateReview(e.ctx, review.CreateReviewRequest{Repositories: repositories}, reviewer)
+			expectError(t, err, review.CodeInvalidArgument)
+		})
+	}
+	remaining := must[[]review.Review](t)(e.svc.ListReviews(e.ctx))
+	if len(remaining) != 1 || remaining[0].ID != e.review.ID {
+		t.Fatal("invalid repository sets created review metadata")
+	}
 }
 
 func TestImportRequiresARevisionOfTheSameReview(t *testing.T) {

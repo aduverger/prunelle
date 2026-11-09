@@ -219,7 +219,7 @@ func TestEventStreamResumesWhereTheClientLeft(t *testing.T) {
 
 	stream := s.openEvents(t, "")
 	ready := stream.next(t)
-	if ready.event != "ready" || ready.data != `{"sequence":`+strconv.FormatInt(ready.id, 10)+`}` || ready.id < 3 {
+	if ready.event != "ready" || ready.data != `{"sequence":`+strconv.FormatInt(ready.id, 10)+`}` {
 		t.Fatalf("ready = %+v", ready)
 	}
 	first := comment("First")

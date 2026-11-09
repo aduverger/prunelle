@@ -27,13 +27,6 @@ func TestCLIInfersActualInvocationDirectoryAndPreservesExplicitOverrides(t *test
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, path := range []string{repos.API, repos.Worker} {
-		cmd := exec.Command("git", "-C", path, "update-ref", "refs/remotes/origin/main", "refs/heads/main")
-		cmd.Env = []string{"PATH=" + os.Getenv("PATH"), "GIT_CONFIG_GLOBAL=" + os.DevNull, "GIT_CONFIG_NOSYSTEM=1"}
-		if output, err := cmd.CombinedOutput(); err != nil {
-			t.Fatalf("fixture tracking ref: %v: %s", err, output)
-		}
-	}
 	db, err := store.Open(ctx, t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -104,10 +97,10 @@ func TestCLIInfersActualInvocationDirectoryAndPreservesExplicitOverrides(t *test
 	run(outside, true, "review", "capture", created.ID)
 	run(outside, false, "review", "create", "--base-ref", "main", "Creation is not capture")
 	var manual review.Review
-	if err := json.Unmarshal(run(outside, true, "review", "create", "--repo", "api="+repos.API, "--repo", "worker="+repos.Worker, "Selected repositories"), &manual); err != nil {
+	if err := json.Unmarshal(run(root, true, "review", "create", "--repo", "api=feature/api", "--repo", "worker=feature/worker", "Selected repositories"), &manual); err != nil {
 		t.Fatal(err)
 	}
-	if manual.ContextPath != nil || len(manual.Repositories) != 2 {
+	if manual.ContextPath != nil || len(manual.Repositories) != 2 || manual.Repositories[0].RootPath != repos.API || manual.Repositories[1].RootPath != repos.Worker {
 		t.Fatalf("inline sources changed: %+v", manual)
 	}
 	var mixed review.Revision

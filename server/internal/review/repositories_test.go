@@ -198,6 +198,10 @@ func TestReviewSourcesAreIndependentAndSelectedOnDemand(t *testing.T) {
 		t.Fatalf("unknown first context guessed a parent: %+v", single)
 	}
 	groupPath := filepath.Dir(repos.API)
+	fixtureGit(t, root, "init", "-b", "main", filepath.Join(groupPath, "nested", "deeper-repo"))
+	if err := os.Symlink(repos.API, filepath.Join(groupPath, "api-alias")); err != nil {
+		t.Fatal(err)
+	}
 	group := must[review.Review](t)(svc.CreateReview(ctx, review.CreateReviewRequest{Path: groupPath}, reviewer))
 	if group.Title != "unblock_elems" || len(group.Repositories) != 4 {
 		t.Fatalf("source set = %+v", group)
@@ -217,9 +221,15 @@ func TestReviewSourcesAreIndependentAndSelectedOnDemand(t *testing.T) {
 	_, err = svc.ResolveReview(ctx, repos.API)
 	expectError(t, err, review.CodeConflict, single.ID, group.ID, next.ID)
 	outside := must[fixture.Repos](t)(fixture.BuildRepos(filepath.Join(t.TempDir(), "outside")))
-	explicit := must[review.Review](t)(svc.CreateReview(ctx, review.CreateReviewRequest{Repositories: []review.CreateRepositoryRequest{{Label: "outside", Path: outside.API}, {Label: "worker", Path: repos.Worker}}}, reviewer))
-	if explicit.ContextPath != nil || len(explicit.Repositories) != 2 {
+	includeUntracked := false
+	explicit := must[review.Review](t)(svc.CreateReview(ctx, review.CreateReviewRequest{Repositories: []review.CreateRepositoryRequest{{Label: "outside", Path: outside.API}, {Label: "worker", Path: repos.Worker, IncludeUntracked: &includeUntracked}}}, reviewer))
+	if explicit.ContextPath != nil || len(explicit.Repositories) != 2 || explicit.Repositories[1].IncludeUntracked {
 		t.Fatalf("explicit source set: %+v", explicit)
+	}
+	reloaded := must[review.Review](t)(svc.GetReview(ctx, group.ID))
+	workerIndex := slices.IndexFunc(reloaded.Repositories, func(repository review.Repository) bool { return repository.RootPath == repos.Worker })
+	if workerIndex < 0 || !reloaded.Repositories[workerIndex].IncludeUntracked {
+		t.Fatal("another review changed the original capture settings")
 	}
 }
 
@@ -247,19 +257,23 @@ func TestReviewContextAndCreationRollbackRecover(t *testing.T) {
 	_, err := svc.ResolveReview(ctx, path)
 	expectError(t, err, review.CodeInvalidArgument, "no reviews")
 	if err := db.Write(ctx, func(tx *sql.Tx) error {
-		_, err := tx.ExecContext(ctx, "CREATE TRIGGER reject_review BEFORE INSERT ON reviews BEGIN SELECT RAISE(ABORT, 'fixture failure'); END")
+		_, err := tx.ExecContext(ctx, "CREATE TRIGGER reject_membership BEFORE INSERT ON review_repositories BEGIN SELECT RAISE(ABORT, 'fixture failure'); END")
 		return err
 	}); err != nil {
 		t.Fatal(err)
 	}
 	_, err = svc.CreateReview(ctx, review.CreateReviewRequest{Path: path}, reviewer)
-	if err == nil {
-		t.Fatal("injected creation failure ignored")
+	if err == nil || !strings.Contains(err.Error(), "fixture failure") {
+		t.Fatalf("expected injected membership failure: %v", err)
 	}
 	if got := must[[]review.Review](t)(svc.ListReviews(ctx)); len(got) != 0 {
 		t.Fatal("partial review after failed creation")
 	}
-	if err := db.Write(ctx, func(tx *sql.Tx) error { _, err := tx.ExecContext(ctx, "DROP TRIGGER reject_review"); return err }); err != nil {
+	var orphanSources int
+	if err := db.Reader().QueryRowContext(ctx, "SELECT COUNT(*) FROM repositories").Scan(&orphanSources); err != nil || orphanSources != 0 {
+		t.Fatalf("failed creation leaked source identities: %d %v", orphanSources, err)
+	}
+	if err := db.Write(ctx, func(tx *sql.Tx) error { _, err := tx.ExecContext(ctx, "DROP TRIGGER reject_membership"); return err }); err != nil {
 		t.Fatal(err)
 	}
 	first := must[review.Review](t)(svc.CreateReview(ctx, review.CreateReviewRequest{Path: path}, reviewer))
@@ -270,8 +284,14 @@ func TestReviewContextAndCreationRollbackRecover(t *testing.T) {
 		t.Fatal("sole review not resolved")
 	}
 	second := must[review.Review](t)(svc.CreateReview(ctx, review.CreateReviewRequest{Path: path}, reviewer))
-	if second.ID == first.ID || second.Repositories[0].ID == first.Repositories[0].ID {
-		t.Fatal("new review reused mutable source scope")
+	if second.ID == first.ID {
+		t.Fatal("new review reused a review identity")
+	}
+	if err := db.Write(ctx, func(tx *sql.Tx) error {
+		_, err := tx.ExecContext(ctx, "UPDATE reviews SET status = 'CLOSED' WHERE id = ?", first.ID)
+		return err
+	}); err != nil {
+		t.Fatal(err)
 	}
 	_, err = svc.ResolveReview(ctx, path)
 	expectError(t, err, review.CodeConflict, first.ID, second.ID)
@@ -310,7 +330,7 @@ func TestCaptureDefaultsAndOverridesBelongToSnapshots(t *testing.T) {
 	svc, db, root, _ := sourceEnv(t)
 	ctx := context.Background()
 	path := filepath.Join(root, "ecomapping")
-	fixtureGit(t, path, "update-ref", "refs/remotes/origin/main", "refs/heads/main")
+	fixtureGit(t, path, "update-ref", "refs/remotes/origin/main", "HEAD")
 	r := must[review.Review](t)(svc.CreateReview(ctx, review.CreateReviewRequest{Path: path}, reviewer))
 	old := must[review.Revision](t)(svc.CaptureRevision(ctx, r.ID, review.CaptureRequest{}, reviewer))
 	configured := review.NewService(db, "origin/main")
@@ -319,22 +339,32 @@ func TestCaptureDefaultsAndOverridesBelongToSnapshots(t *testing.T) {
 	if old.Snapshots[0].BaseRef != "main" || next.Snapshots[0].BaseRef != "origin/main" || explicit.Snapshots[0].BaseRef != "main" {
 		t.Fatal("capture precedence/default was not applied")
 	}
+	if old.Snapshots[0].BaseSHA == next.Snapshots[0].BaseSHA || next.Snapshots[0].BaseSHA != next.Snapshots[0].HeadSHA || explicit.Snapshots[0].BaseSHA != old.Snapshots[0].BaseSHA {
+		t.Fatal("requested comparison refs were recorded but not resolved")
+	}
 	persisted := must[review.Revision](t)(configured.GetRevision(ctx, old.ID))
 	if !reflect.DeepEqual(persisted, old) {
 		t.Fatal("default change rewrote old snapshots")
 	}
-	for _, input := range []review.CaptureRequest{
-		{BaseRef: "refs/heads/missing"},
-		{RepositoryBaseRefs: []review.RepositoryBaseRef{{RepositoryID: "foreign", BaseRef: "main"}}},
-		{RepositoryBaseRefs: []review.RepositoryBaseRef{{RepositoryID: r.Repositories[0].ID, BaseRef: "main"}, {RepositoryID: r.Repositories[0].ID, BaseRef: "main"}}},
+	for name, invalid := range map[string]struct {
+		input review.CaptureRequest
+		code  string
+	}{
+		"missing ref":        {review.CaptureRequest{BaseRef: "refs/heads/missing"}, review.CodeCaptureFailed},
+		"foreign repository": {review.CaptureRequest{RepositoryBaseRefs: []review.RepositoryBaseRef{{RepositoryID: "foreign", BaseRef: "main"}}}, review.CodeInvalidArgument},
+		"duplicate override": {review.CaptureRequest{RepositoryBaseRefs: []review.RepositoryBaseRef{{RepositoryID: r.Repositories[0].ID, BaseRef: "main"}, {RepositoryID: r.Repositories[0].ID, BaseRef: "main"}}}, review.CodeInvalidArgument},
 	} {
-		_, err := configured.CaptureRevision(ctx, r.ID, input, reviewer)
-		if err == nil {
-			t.Fatal("invalid capture input accepted")
-		}
+		t.Run(name, func(t *testing.T) {
+			_, err := configured.CaptureRevision(ctx, r.ID, invalid.input, reviewer)
+			expectError(t, err, invalid.code)
+		})
 	}
 	if revisions := must[[]review.Revision](t)(svc.ListRevisions(ctx, r.ID)); len(revisions) != 3 {
 		t.Fatal("failed capture left a partial revision")
+	}
+	current := must[review.Review](t)(svc.GetReview(ctx, r.ID))
+	if current.CurrentRevisionID == nil || *current.CurrentRevisionID != explicit.ID {
+		t.Fatal("failed capture changed the current revision")
 	}
 }
 
@@ -356,6 +386,14 @@ func TestCaptureSupportsMixedRepositoryRefs(t *testing.T) {
 	fixtureGit(t, repos.Worker, "update-ref", "refs/remotes/origin/main", "refs/heads/main")
 	r := must[review.Review](t)(svc.CreateReview(ctx, review.CreateReviewRequest{Repositories: []review.CreateRepositoryRequest{{Label: "api", Path: apiPath}, {Label: "worker", Path: repos.Worker}}}, reviewer))
 	configured := review.NewService(db, "origin/main")
+	_, err := configured.CaptureRevision(ctx, r.ID, review.CaptureRequest{RepositoryBaseRefs: []review.RepositoryBaseRef{{RepositoryID: r.Repositories[1].ID, BaseRef: "refs/heads/missing"}}}, reviewer)
+	expectError(t, err, review.CodeCaptureFailed)
+	if revisions := must[[]review.Revision](t)(svc.ListRevisions(ctx, r.ID)); len(revisions) != 0 {
+		t.Fatal("later repository failure published an earlier partial snapshot")
+	}
+	if failed := must[review.Review](t)(svc.GetReview(ctx, r.ID)); failed.CurrentRevisionID != nil {
+		t.Fatal("failed first capture set a current revision")
+	}
 	snapshot := must[review.Revision](t)(configured.CaptureRevision(ctx, r.ID, review.CaptureRequest{RepositoryBaseRefs: []review.RepositoryBaseRef{{RepositoryID: r.Repositories[0].ID, BaseRef: "main"}}}, reviewer))
 	if snapshot.Snapshots[0].BaseRef != "main" || snapshot.Snapshots[1].BaseRef != "origin/main" {
 		t.Fatalf("mixed comparison inputs were lost: %+v", snapshot.Snapshots)

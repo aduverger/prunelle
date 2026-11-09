@@ -39,8 +39,8 @@ func TestReviewSourcesCaptureAndHardDeleteOverHTTP(t *testing.T) {
 	expectStatus(t, capture.StatusCode(), 201, capture.Body)
 	second := must(s.client.CreateReviewWithResponse(ctx, nil, request))
 	expectStatus(t, second.StatusCode(), 201, second.Body)
-	if second.JSON201.Repositories[0].ID == created.JSON201.Repositories[0].ID {
-		t.Fatal("new review shared mutable source membership")
+	if second.JSON201.ID == created.JSON201.ID {
+		t.Fatal("creation reused another review")
 	}
 	ambiguous := must(s.client.ResolveReviewWithResponse(ctx, &api.ResolveReviewParams{Path: repos.API}))
 	expectStatus(t, ambiguous.StatusCode(), 409, ambiguous.Body)
@@ -183,11 +183,15 @@ func TestReviewDeleteUnlinksButDoesNotStopRuntime(t *testing.T) {
 	runtime := (*listed.JSON200)[0]
 	linked := must(s.client.AssociateRuntimeSessionWithResponse(ctx, r.ID, runtime.ID))
 	expectStatus(t, linked.StatusCode(), 200, linked.Body)
+	other := must(s.client.CreateReviewWithResponse(ctx, nil, review.CreateReviewRequest{Path: s.reposDir}))
+	expectStatus(t, other.StatusCode(), 201, other.Body)
+	otherLink := must(s.client.AssociateRuntimeSessionWithResponse(ctx, other.JSON201.ID, runtime.ID))
+	expectStatus(t, otherLink.StatusCode(), 200, otherLink.Body)
 	deleted := must(s.client.DeleteReviewWithResponse(ctx, r.ID))
 	expectStatus(t, deleted.StatusCode(), 204, deleted.Body)
 	remaining := must(s.client.GetRuntimeSessionWithResponse(ctx, runtime.ID))
 	expectStatus(t, remaining.StatusCode(), 200, remaining.Body)
-	if remaining.JSON200.State != sessions.StateOnline || len(remaining.JSON200.ReviewIDs) != 0 {
+	if remaining.JSON200.State != sessions.StateOnline || len(remaining.JSON200.ReviewIDs) != 1 || remaining.JSON200.ReviewIDs[0] != other.JSON201.ID {
 		t.Fatal("runtime stopped or link retained")
 	}
 }

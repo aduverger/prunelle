@@ -36,12 +36,12 @@ func TestOpenAppliesMigrationsOnceAndEnforcesForeignKeys(t *testing.T) {
 	}
 
 	err = db.Write(ctx, func(tx *sql.Tx) error {
-		_, err := tx.ExecContext(ctx, `INSERT INTO repositories (id, workspace_id, label, root_path, base_ref, include_untracked, created_at, updated_at)
-			VALUES ('repo_1', 'ws_missing', 'api', '/tmp/api', 'main', 1, 'now', 'now')`)
+		_, err := tx.ExecContext(ctx, `INSERT INTO reviews (id, title, description, status, current_revision_id, created_at, updated_at)
+			VALUES ('rvw_fixture', 'Review', '', 'OPEN', 'rev_missing', 'now', 'now')`)
 		return err
 	})
-	if err == nil {
-		t.Fatal("expected foreign key violation")
+	if err == nil || !strings.Contains(err.Error(), "FOREIGN KEY constraint failed") {
+		t.Fatalf("a valid write referencing a missing revision must fail on its foreign key: %v", err)
 	}
 }
 

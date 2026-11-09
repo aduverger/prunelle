@@ -28,30 +28,21 @@ func TestLoadAppliesDefaultsAndExpandsHome(t *testing.T) {
 	}
 }
 
-func TestLoadRejectsObsoleteAllowedRoots(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "config.toml")
-	if err := os.WriteFile(path, []byte("allowed_roots = [\"~/code\"]\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := Load(path); err == nil || !strings.Contains(err.Error(), "[snapshot]") {
-		t.Fatalf("obsolete configuration must fail with migration guidance: %v", err)
-	}
-}
-
 func TestLoadRejectsRetiredConfigAndInvalidCaptureDefaults(t *testing.T) {
-	for name, contents := range map[string]string{
-		"retired roots":           "workspace_root_paths = ['/source']\n",
-		"retired workspace table": "[[workspace]]\nroot_paths = ['/source']\n",
-		"empty base ref":          "[snapshot]\ndefault_base_ref = ''\n",
-		"invalid base ref":        "[snapshot]\ndefault_base_ref = '--upload-pack=evil'\n",
+	for name, input := range map[string]struct{ contents, errorHint string }{
+		"retired allowed roots":   {"allowed_roots = ['/source']\n", "[snapshot]"},
+		"retired roots":           {"workspace_root_paths = ['/source']\n", "[snapshot]"},
+		"retired workspace table": {"[[workspace]]\nroot_paths = ['/source']\n", "[snapshot]"},
+		"empty base ref":          {"[snapshot]\ndefault_base_ref = ''\n", "snapshot.default_base_ref"},
+		"invalid base ref":        {"[snapshot]\ndefault_base_ref = '--upload-pack=evil'\n", "snapshot.default_base_ref"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			path := filepath.Join(t.TempDir(), "config.toml")
-			if err := os.WriteFile(path, []byte(contents), 0o600); err != nil {
+			if err := os.WriteFile(path, []byte(input.contents), 0o600); err != nil {
 				t.Fatal(err)
 			}
-			if _, err := Load(path); err == nil {
-				t.Fatal("invalid configuration accepted")
+			if _, err := Load(path); err == nil || !strings.Contains(err.Error(), input.errorHint) {
+				t.Fatalf("expected actionable configuration error containing %q: %v", input.errorHint, err)
 			}
 		})
 	}
