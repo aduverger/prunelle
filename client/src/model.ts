@@ -2,7 +2,7 @@ import { serverURL, type AnchorInput, type CodeRangeInput, type Model } from './
 export type View = Model['Representation']['type'];
 export type TopicOrder = 'manual' | 'attention' | 'intent';
 export type Perspective = 'Engineering' | 'Design' | 'Source';
-export type Navigation = 'Topics' | 'Findings' | 'All Source Changes';
+export type Navigation = 'Topics' | 'Findings' | 'All Source Changes' | 'Comments';
 export type FileSelection = {
   revisionID: string;
   repositoryID: string;

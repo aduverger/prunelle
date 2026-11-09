@@ -1,10 +1,8 @@
 import { Markdown } from './Markdown';
-import { useEffect, useMemo, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { MultiFileDiff, type SelectedLineRange } from '@pierre/diffs/react';
+import { useEffect, useState } from 'react';
 import ELK, { type ElkNode } from 'elkjs/lib/elk.bundled.js';
-import { result, type API, type Model, type DiagramNode } from './api/client';
-import type { DiscussionTarget, FileSelection, View } from './model';
+import type { Model, DiagramNode } from './api/client';
+import type { DiscussionTarget, View } from './model';
 
 export function Attribution({
   author,
@@ -246,132 +244,6 @@ export function Diagram({
   );
 }
 
-export function FileDiff({
-  api,
-  file,
-  repositoryLabel,
-  choose,
-  discuss,
-}: {
-  api: API;
-  file: FileSelection;
-  repositoryLabel?: string;
-  choose: (f: FileSelection) => void;
-  discuss: (t: DiscussionTarget) => void;
-}) {
-  const query = useQuery({
-    queryKey: ['file', file.revisionID, file.repositoryID, file.path],
-    queryFn: ({ signal }) =>
-      result(
-        api.GET('/v1/revisions/{revisionId}/file', {
-          params: {
-            path: { revisionId: file.revisionID },
-            query: { repository_id: file.repositoryID, path: file.path },
-          },
-          signal,
-        }),
-      ),
-  });
-  const content = query.data;
-  const oldFile = useMemo(
-    () =>
-      content?.base_text == null
-        ? null
-        : { name: content.old_path || file.path, contents: content.base_text },
-    [content, file.path],
-  );
-  const newFile = useMemo(
-    () => (content?.head_text == null ? null : { name: file.path, contents: content.head_text }),
-    [content, file.path],
-  );
-  const selected: SelectedLineRange | null = file.range
-    ? {
-        start: file.range.start_line,
-        end: file.range.end_line,
-        side: file.range.side === 'BASE' ? 'deletions' : 'additions',
-      }
-    : null;
-  function select(range: SelectedLineRange | null) {
-    if (!range || (range.endSide && range.endSide !== range.side)) return;
-    choose({
-      ...file,
-      range: {
-        repository_id: file.repositoryID,
-        path: file.path,
-        side: range.side === 'deletions' ? 'BASE' : 'HEAD',
-        start_line: Math.min(range.start, range.end),
-        end_line: Math.max(range.start, range.end),
-      },
-    });
-  }
-  if (!content)
-    return (
-      <>
-        <ErrorNotice error={query.error} />
-        <Notice>{query.isPending ? 'Loading stored source…' : 'Source unavailable.'}</Notice>
-      </>
-    );
-  const displayRepositoryLabel = repositoryLabel || file.repositoryID;
-  return (
-    <section className="file-diff" data-testid="file-diff">
-      <small className="muted">
-        Immutable snapshot · {file.revisionID}
-        {content.old_path && ' · renamed from ' + content.old_path}
-      </small>
-      {content.binary || content.content_omitted ? (
-        <>
-          <div className="file-heading">
-            <strong>
-              {displayRepositoryLabel}/{file.path}
-            </strong>
-            <span className="badge">{content.status}</span>
-          </div>
-          <Notice>{content.content_omitted || 'Binary file: no text preview.'}</Notice>
-        </>
-      ) : (
-        <>
-          <p className="muted">Select line numbers to discuss a range on one side.</p>
-          <MultiFileDiff
-            {...(oldFile ? { oldFile, newFile } : { oldFile: null, newFile: newFile! })}
-            selectedLines={selected}
-            renderHeaderPrefix={() => <span className="badge">{displayRepositoryLabel}</span>}
-            renderHeaderFilenameSuffix={() => <span className="badge">{content.status}</span>}
-            options={{
-              theme: 'github-light',
-              diffStyle: 'unified',
-              enableLineSelection: true,
-              onLineSelectionEnd: select,
-              expandUnchanged: true,
-            }}
-          />
-          {file.range && (
-            <div className="range-selection">
-              <span>
-                {file.range.side} lines {file.range.start_line}–{file.range.end_line}
-              </span>
-              <button
-                onClick={() => {
-                  const { repository_id, path, side, start_line, end_line } = file.range!;
-                  discuss({
-                    revisionID: file.revisionID,
-                    anchor: {
-                      type: 'CODE_RANGE',
-                      code_range: { repository_id, path, side, start_line, end_line },
-                    },
-                    label: `${file.path}:${start_line}–${end_line} (${side})`,
-                  });
-                }}
-              >
-                Discuss selected lines
-              </button>
-            </div>
-          )}
-        </>
-      )}
-    </section>
-  );
-}
-
 export function RepresentationView({
   type,
   representationID,
@@ -379,10 +251,7 @@ export function RepresentationView({
   elementID,
   representations,
   evidence,
-  file,
-  repositoryLabel,
-  api,
-  chooseFile,
+  code,
   openEvidence,
   selectNode,
   discuss,
@@ -393,10 +262,7 @@ export function RepresentationView({
   elementID: string | null;
   representations: Model['Representation'][];
   evidence: Model['Evidence'][];
-  file: FileSelection | null;
-  repositoryLabel?: string;
-  api: API;
-  chooseFile: (f: FileSelection) => void;
+  code?: React.ReactNode;
   openEvidence: (e: Model['Evidence']) => void;
   selectNode: (n: DiagramNode) => void;
   discuss: (t: DiscussionTarget) => void;
@@ -408,7 +274,7 @@ export function RepresentationView({
     .map((id) => evidence.find((e) => e.id === id))
     .filter((e): e is Model['Evidence'] => !!e);
   let content: React.ReactNode;
-  if (type === 'CODE_DIFF' && file) {
+  if (type === 'CODE_DIFF' && code) {
     content = (
       <>
         {items.length > 0 && (
@@ -417,13 +283,7 @@ export function RepresentationView({
             <EvidenceLinks ids={ids} evidence={evidence} select={openEvidence} />
           </details>
         )}
-        <FileDiff
-          api={api}
-          file={file}
-          repositoryLabel={repositoryLabel}
-          choose={chooseFile}
-          discuss={discuss}
-        />
+        {code}
       </>
     );
   } else if (!rep || !rep.available) {

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   apiFor,
@@ -9,7 +9,7 @@ import {
   type Model,
   type DiagramNode,
 } from './api/client';
-import { useConnection, useReview, useSubmit, type ReviewData } from './hooks';
+import { useConnection, useReview, useSourceChanges, useSubmit, type ReviewData } from './hooks';
 import {
   attentionFor,
   loadPreferences,
@@ -32,7 +32,14 @@ import {
   Notice,
   RepresentationView,
 } from './Views';
-import { Decisions, DiscussionPanel } from './Discussions';
+import {
+  Decisions,
+  CommentIndex,
+  ContextDiscussions,
+  DiscussionProvider,
+  useDiscussionComposer,
+} from './Discussions';
+import { CodeReview, sourceFileID } from './CodeReview';
 import { Sessions } from './Sessions';
 import { IntentCard, ChangeCard } from './Records';
 import { SourceTree } from './SourceTree';
@@ -41,9 +48,10 @@ function hasTextDrafts() {
   return Array.from(document.querySelectorAll('textarea')).some((t) => t.value.trim());
 }
 
-function leaveDrafts() {
+function leaveDrafts(hiddenDrafts: boolean) {
   return (
-    !hasTextDrafts() || window.confirm('Leave this review? Unposted drafts will be discarded.')
+    !(hiddenDrafts || hasTextDrafts()) ||
+    window.confirm('Leave this review? Unposted drafts will be discarded.')
   );
 }
 
@@ -52,6 +60,10 @@ export function App() {
   const [address, setAddress] = useState(preferences.server);
   const [addressError, setAddressError] = useState('');
   const [reviewID, setReviewID] = useState('');
+  const hiddenDrafts = useRef(false);
+  const reportDrafts = useCallback((dirty: boolean) => {
+    hiddenDrafts.current = dirty;
+  }, []);
   const cache = useQueryClient();
   const api = useMemo(() => apiFor(preferences.server), [preferences.server]);
   const status = useConnection(api);
@@ -72,7 +84,7 @@ export function App() {
   }, [preferences]);
   useEffect(() => {
     const warn = (e: BeforeUnloadEvent) => {
-      if (hasTextDrafts()) e.preventDefault();
+      if (hiddenDrafts.current || hasTextDrafts()) e.preventDefault();
     };
     window.addEventListener('beforeunload', warn);
     return () => window.removeEventListener('beforeunload', warn);
@@ -80,7 +92,7 @@ export function App() {
   function connect() {
     try {
       const server = serverURL(address.trim());
-      if (!leaveDrafts()) return;
+      if (!leaveDrafts(hiddenDrafts.current)) return;
       void cache.cancelQueries();
       cache.clear();
       setReviewID('');
@@ -103,7 +115,7 @@ export function App() {
           aria-label="Feature review"
           value={selected?.id || ''}
           onChange={(e) => {
-            if (leaveDrafts()) setReviewID(e.target.value);
+            if (leaveDrafts(hiddenDrafts.current)) setReviewID(e.target.value);
           }}
         >
           {reviews.data?.map((r) => (
@@ -156,6 +168,7 @@ export function App() {
           reviewID={selected.id}
           preferences={preferences}
           setPreferences={setPreferences}
+          onDraftChange={reportDrafts}
         />
       ) : (
         <div className="welcome">
@@ -177,6 +190,7 @@ export function App() {
 }
 
 function ReviewLoader(props: {
+  onDraftChange: (dirty: boolean) => void;
   api: API;
   reviewID: string;
   preferences: Preferences;
@@ -202,13 +216,17 @@ function ReviewPage({
   data,
   preferences: pref,
   setPreferences,
+  onDraftChange,
 }: {
+  onDraftChange: (dirty: boolean) => void;
   api: API;
   data: ReviewData;
   preferences: Preferences;
   setPreferences: React.Dispatch<React.SetStateAction<Preferences>>;
 }) {
-  const [topicID, setTopicID] = useState<string | null>(data.topics[0]?.id || null);
+  const [topicID, setTopicID] = useState<string | null>(
+    pref.perspective === 'Source' ? null : data.topics[0]?.id || null,
+  );
   const [revisionID, setRevisionID] = useState<string | null>(null);
   const revision =
     data.revisions.find((r) => r.id === revisionID) ||
@@ -217,8 +235,11 @@ function ReviewPage({
   const [order, setOrder] = useState(presets[pref.perspective].order);
   const [file, setFile] = useState<FileSelection | null>(null);
   const [inspector, setInspector] = useState<Inspector>(null);
-  const [panel, setPanel] = useState<'discussions' | 'decision' | 'sessions'>('discussions');
-  const [target, setTarget] = useState<DiscussionTarget | null>(null);
+  const [panel, setPanel] = useState<'decision' | 'sessions' | null>(null);
+  const [navigation, setNavigation] = useState(0);
+  const [focusedDiscussionID, setFocusedDiscussionID] = useState<string | null>(null);
+  const [discussionNavigation, setDiscussionNavigation] = useState(0);
+  const composer = useDiscussionComposer(api, data.review.id);
   const [representationIDs, setRepresentationIDs] = useState<Partial<Record<View, string>>>({});
   const [elementID, setElementID] = useState<string | null>(null);
   const topic = data.topics.find((t) => t.id === topicID);
@@ -233,19 +254,28 @@ function ReviewPage({
         }),
       ),
   });
-  const source = useQuery({
-    queryKey: ['source', revision?.id],
-    enabled: !!revision,
-    queryFn: ({ signal }) =>
-      result(
-        api.GET('/v1/revisions/{revisionId}/source-changes', {
-          params: { path: { revisionId: revision!.id } },
-          signal,
-        }),
-      ),
-  });
+  const source = useSourceChanges(api, revision?.id);
+  const sourceMode = !topic;
+  const codeRevision = data.revisions.find((r) => r.id === file?.revisionID) || revision;
+  const codeSource = useSourceChanges(api, sourceMode ? codeRevision?.id : undefined);
+  const sourceFiles = useMemo(
+    () =>
+      codeSource.data?.repositories.flatMap((repository) =>
+        repository.files.map((file) => ({
+          revisionID: codeSource.data!.revision_id,
+          repositoryID: repository.repository_id,
+          path: file.path,
+        })),
+      ) || [],
+    [codeSource.data],
+  );
   const capture = useSubmit();
+  function openFile(next: FileSelection) {
+    setFile(next);
+    setNavigation((value) => value + 1);
+  }
   function selectTopic(id: string) {
+    setFocusedDiscussionID(null);
     setTopicID(id);
     setFile(null);
     setInspector(null);
@@ -261,7 +291,7 @@ function ReviewPage({
   function openEvidence(e: Model['Evidence']) {
     setInspector({ type: 'evidence', id: e.id });
     if (e.code_range) {
-      setFile({
+      openFile({
         revisionID: e.revision_id,
         repositoryID: e.code_range.repository_id,
         path: e.code_range.path,
@@ -284,19 +314,30 @@ function ReviewPage({
       setInspector({ type: node.ref.type, id: node.ref.id });
   }
   function discuss(t: DiscussionTarget) {
-    setTarget(t);
-    setPanel('discussions');
+    composer.start(t);
   }
-  function openAnchor(d: Model['Discussion']) {
+  function openAnchor(d: {
+    id?: string;
+    anchor: DiscussionTarget['anchor'] | Model['Anchor'];
+    revision_id: string;
+    topic_ids?: string[];
+  }) {
     if (d.anchor.code_range) {
       const r = d.anchor.code_range;
-      setFile({ revisionID: d.revision_id, repositoryID: r.repository_id, path: r.path, range: r });
+      setTopicID(null);
+      setInspector(null);
+      openFile({
+        revisionID: d.revision_id,
+        repositoryID: r.repository_id,
+        path: r.path,
+        range: r,
+      });
       showCode();
     } else if (d.anchor.type === 'TOPIC' && d.anchor.id) selectTopic(d.anchor.id);
-    else if (d.anchor.type === 'DIAGRAM_ELEMENT' && d.anchor.id && d.topic_ids[0]) {
+    else if (d.anchor.type === 'DIAGRAM_ELEMENT' && d.anchor.id && d.topic_ids?.[0]) {
       selectTopic(d.topic_ids[0]);
       setRepresentationIDs((ids) => ({ ...ids, DIAGRAM: d.anchor.id! }));
-      setElementID(d.anchor.element_id);
+      setElementID(d.anchor.element_id || null);
       setView(0, 'DIAGRAM');
     } else if (d.anchor.type === 'FINDING' && d.anchor.id)
       setInspector({ type: 'finding', id: d.anchor.id });
@@ -304,10 +345,20 @@ function ReviewPage({
       setInspector({ type: d.anchor.type, id: d.anchor.id });
     else if (d.anchor.type === 'EVIDENCE') {
       const e = data.evidence.find((e) => e.id === d.anchor.id);
-      if (e) openEvidence(e);
+      if (e) setInspector({ type: 'evidence', id: e.id });
+    }
+    if (d.anchor.type !== 'CODE_RANGE') {
+      setFocusedDiscussionID(d.id || null);
+      setDiscussionNavigation((value) => value + 1);
     }
   }
+  function openDraft() {
+    composer.requestFocus();
+    if (composer.target)
+      openAnchor({ anchor: composer.target.anchor, revision_id: composer.target.revisionID });
+  }
   function perspective(p: Perspective) {
+    setTopicID(p === 'Source' ? null : topicID || data.topics[0]?.id || null);
     setPreferences((old) => ({ ...old, perspective: p, views: presets[p].views }));
     setTab(presets[p].tab);
     setOrder(presets[p].order);
@@ -315,9 +366,10 @@ function ReviewPage({
   function setView(index: number, type: View) {
     setPreferences((p) => ({ ...p, views: index === 0 ? [type, p.views[1]] : [p.views[0], type] }));
   }
+  const displayedSource = sourceMode ? codeSource.data : source.data;
   const sourceFile =
-    source.data?.revision_id === file?.revisionID
-      ? source.data?.repositories
+    displayedSource?.revision_id === file?.revisionID
+      ? displayedSource?.repositories
           .find((r) => r.repository_id === file?.repositoryID)
           ?.files.find((f) => f.path === file?.path)
       : null;
@@ -329,11 +381,150 @@ function ReviewPage({
     inspector?.type === 'INTENT' ? data.intents.find((i) => i.id === inspector.id) : null;
   const change =
     inspector?.type === 'CHANGE' ? data.changes.find((c) => c.id === inspector.id) : null;
-  const repositoryLabel = data.revisions
-    .find((r) => r.id === file?.revisionID)
-    ?.snapshots.find((s) => s.repository_id === file?.repositoryID)?.repository_label;
-  return (
+  const sourceMembership = sourceFile && (
+    <div className="row source-topics">
+      <small>File belongs to:</small>
+      {sourceFile.unassigned ? (
+        <span className="badge">Unassigned Changes</span>
+      ) : (
+        sourceFile.topic_ids.map((id) => (
+          <button key={id} className="link" onClick={() => selectTopic(id)}>
+            {data.topics.find((t) => t.id === id)?.title || id}
+          </button>
+        ))
+      )}
+    </div>
+  );
+  const reviewContext = (
     <>
+      {!revision && <Notice>No source snapshot yet. Capture one to comment or decide.</Notice>}
+      {revision && (
+        <details className="snapshot">
+          <summary>
+            Revision {revision.ordinal} · {new Date(revision.captured_at).toLocaleString()} ·{' '}
+            {revision.snapshots.length} repositories · {revision.status}
+          </summary>
+          {revision.snapshots.map((s) => (
+            <div key={s.repository_id}>
+              <strong>{s.repository_label}</strong> · {s.branch} · {s.base_sha.slice(0, 8)} →{' '}
+              {s.head_sha.slice(0, 8)} · {s.file_count} files
+              {s.warnings.map((w, i) => (
+                <p className="error" key={i}>
+                  {w}
+                </p>
+              ))}
+            </div>
+          ))}
+          <p>
+            Topics and explanations are the current review graph; revision-aware comparison arrives
+            in M3.
+          </p>
+        </details>
+      )}
+      <div className="topic-header">
+        <div className="eyebrow">{topic ? 'REVIEW TOPIC · ' + topic.state : 'SOURCE EXPLORER'}</div>
+        <h2>{topic?.title || 'All source changes'}</h2>
+        <p>{topic?.summary || 'Every changed file, including changes not assigned to a topic.'}</p>
+        {topic && (
+          <>
+            <Attribution author={topic.author} />
+            <button
+              className="link"
+              disabled={!revision}
+              onClick={() =>
+                discuss({
+                  revisionID: revision!.id,
+                  anchor: { type: 'TOPIC', id: topic.id },
+                  label: topic.title,
+                })
+              }
+            >
+              Discuss topic
+            </button>
+          </>
+        )}
+      </div>
+      {topic && (
+        <details className="context" open={pref.perspective === 'Design'}>
+          <summary>Intent, observed changes & attention</summary>
+          {data.intents
+            .filter((i) => topic.intent_ids.includes(i.id))
+            .map((i) => (
+              <IntentCard
+                key={i.id}
+                intent={i}
+                revisionID={revision?.id}
+                evidence={data.evidence}
+                open={openEvidence}
+                discuss={discuss}
+              />
+            ))}
+          {data.changes
+            .filter((c) => topic.change_ids.includes(c.id))
+            .map((c) => (
+              <ChangeCard
+                key={c.id}
+                change={c}
+                evidence={data.evidence}
+                open={openEvidence}
+                discuss={discuss}
+              />
+            ))}
+          {attentionFor(topic, data.attention).map((a) => (
+            <article className="card attention" key={a.id}>
+              <div className="eyebrow">ATTENTION · {a.priority} · NOT A DEFECT PROBABILITY</div>
+              <p>{a.rationale}</p>
+              <p>Unknown: {a.uncertainty || 'Not stated'}</p>
+              <Attribution author={a.author} provenance={a.provenance} />
+              <EvidenceLinks ids={a.evidence_ids} evidence={data.evidence} select={openEvidence} />
+            </article>
+          ))}
+          {!topic.intent_ids.length &&
+            !topic.change_ids.length &&
+            !attentionFor(topic, data.attention).length && (
+              <Notice>No intent, observed changes or attention signals linked.</Notice>
+            )}
+        </details>
+      )}
+      {topic && (
+        <div className="topic-findings">
+          {data.findings
+            .filter((f) => topic.finding_ids.includes(f.id))
+            .map((f) => (
+              <button key={f.id} onClick={() => setInspector({ type: 'finding', id: f.id })}>
+                <span className={'severity ' + f.severity.toLowerCase()}>{f.severity}</span>
+                {f.title}
+              </button>
+            ))}
+        </div>
+      )}
+    </>
+  );
+  const code = (files: FileSelection[], header?: React.ReactNode) => (
+    <CodeReview
+      api={api}
+      files={files}
+      file={file}
+      choose={setFile}
+      navigation={navigation}
+      repositories={codeRevision?.snapshots || []}
+      header={header}
+      loading={sourceMode && !!codeRevision && codeSource.isPending}
+      error={sourceMode ? codeSource.error || source.error : null}
+      openDraft={openDraft}
+    />
+  );
+  const codeVisible =
+    sourceMode || (pref.views.slice(0, pref.split ? 2 : 1).includes('CODE_DIFF') && !!file);
+  return (
+    <DiscussionProvider
+      api={api}
+      discussions={data.discussions}
+      revisions={data.revisions}
+      composer={composer}
+      openAnchor={openAnchor}
+      onDraftChange={onDraftChange}
+    >
       <div className="review-bar">
         <div>
           <div className="eyebrow">FEATURE REVIEW · {data.review.status}</div>
@@ -389,10 +580,7 @@ function ReviewPage({
         >
           {capture.busy ? 'Capturing…' : 'Capture'}
         </button>
-        <button
-          className="primary"
-          onClick={() => setPanel(panel === 'decision' ? 'discussions' : 'decision')}
-        >
+        <button className="primary" disabled={!revision} onClick={() => setPanel('decision')}>
           Review decision
         </button>
       </div>
@@ -404,62 +592,68 @@ function ReviewPage({
       <div className="workspace">
         <aside className="navigation">
           <nav className="nav-tabs" aria-label="Review navigation">
-            {(['Topics', 'Findings', 'All Source Changes'] as Navigation[]).map((t) => (
-              <button key={t} aria-pressed={tab === t} onClick={() => setTab(t)}>
-                {t}
+            {(['Topics', 'Findings', 'All Source Changes', 'Comments'] as Navigation[]).map((t) => (
+              <button
+                key={t}
+                aria-pressed={tab === t}
+                onClick={() => {
+                  setTab(t);
+                  if (t === 'All Source Changes') setTopicID(null);
+                }}
+              >
+                {t === 'All Source Changes' ? 'Files' : t}
               </button>
             ))}
           </nav>
-          {tab === 'Topics' && (
-            <>
-              <div className="nav-heading">
-                <span className="eyebrow">FEATURE MAP</span>
-                <select
-                  aria-label="Topic order"
-                  value={order}
-                  onChange={(e) => setOrder(e.target.value as typeof order)}
-                >
-                  <option value="manual">Manual order</option>
-                  <option value="attention">Attention first</option>
-                  <option value="intent">Intent first</option>
-                </select>
+          <div className="navigation-content">
+            {tab === 'Topics' && (
+              <>
+                <div className="nav-heading">
+                  <span className="eyebrow">FEATURE MAP</span>
+                  <select
+                    aria-label="Topic order"
+                    value={order}
+                    onChange={(e) => setOrder(e.target.value as typeof order)}
+                  >
+                    <option value="manual">Manual order</option>
+                    <option value="attention">Attention first</option>
+                    <option value="intent">Intent first</option>
+                  </select>
+                </div>
+                <TopicTree
+                  topics={data.topics}
+                  attention={data.attention}
+                  selected={topicID}
+                  select={selectTopic}
+                  order={order}
+                />
+                {!data.topics.length && (
+                  <Notice>No topics imported yet. All Source Changes remains exhaustive.</Notice>
+                )}
+              </>
+            )}
+            {tab === 'Findings' && (
+              <div className="nav-list">
+                <div className="eyebrow">{data.findings.length} FINDINGS</div>
+                {data.findings.map((f) => (
+                  <button
+                    key={f.id}
+                    aria-pressed={finding?.id === f.id}
+                    onClick={() => {
+                      setInspector({ type: 'finding', id: f.id });
+                    }}
+                  >
+                    <span className={'severity ' + f.severity.toLowerCase()}>{f.severity}</span>
+                    <strong>{f.title}</strong>
+                    <small>
+                      {f.kind} · {f.status}
+                    </small>
+                  </button>
+                ))}
+                {!data.findings.length && <Notice>No findings recorded.</Notice>}
               </div>
-              <TopicTree
-                topics={data.topics}
-                attention={data.attention}
-                selected={topicID}
-                select={selectTopic}
-                order={order}
-              />
-              {!data.topics.length && (
-                <Notice>No topics imported yet. All Source Changes remains exhaustive.</Notice>
-              )}
-            </>
-          )}
-          {tab === 'Findings' && (
-            <div className="nav-list">
-              <div className="eyebrow">{data.findings.length} FINDINGS</div>
-              {data.findings.map((f) => (
-                <button
-                  key={f.id}
-                  aria-pressed={finding?.id === f.id}
-                  onClick={() => {
-                    setInspector({ type: 'finding', id: f.id });
-                  }}
-                >
-                  <span className={'severity ' + f.severity.toLowerCase()}>{f.severity}</span>
-                  <strong>{f.title}</strong>
-                  <small>
-                    {f.kind} · {f.status}
-                  </small>
-                </button>
-              ))}
-              {!data.findings.length && <Notice>No findings recorded.</Notice>}
-            </div>
-          )}
-          {tab === 'All Source Changes' && (
-            <>
-              <ErrorNotice error={source.error} />
+            )}
+            <div hidden={tab !== 'All Source Changes'}>
               {source.data ? (
                 <SourceTree
                   key={source.data.revision_id}
@@ -468,7 +662,7 @@ function ReviewPage({
                   choose={(f) => {
                     setTopicID(null);
                     setInspector(null);
-                    setFile(f);
+                    openFile(f);
                     showCode();
                   }}
                 />
@@ -477,185 +671,104 @@ function ReviewPage({
                   {revision ? 'Loading source…' : 'Capture a revision to inspect source.'}
                 </Notice>
               )}
-            </>
-          )}
+            </div>
+            <div hidden={tab !== 'Comments'}>
+              <CommentIndex
+                topicID={topicID}
+                revisionID={revision?.id}
+                openAnchor={openAnchor}
+                openDraft={openDraft}
+              />
+            </div>
+          </div>
           <footer>
-            <button
-              className="quiet"
-              onClick={() => setPanel(panel === 'sessions' ? 'discussions' : 'sessions')}
-            >
-              ▤ Runtime sessions
+            <button className="quiet" onClick={() => setPanel('sessions')}>
+              Settings
             </button>
             <small>Review works without an agent.</small>
           </footer>
         </aside>
-        <main className="review-content">
-          {!revision && <Notice>No source snapshot yet. Capture one to comment or decide.</Notice>}
-          {revision && (
-            <details className="snapshot">
-              <summary>
-                Revision {revision.ordinal} · {new Date(revision.captured_at).toLocaleString()} ·{' '}
-                {revision.snapshots.length} repositories · {revision.status}
-              </summary>
-              {revision.snapshots.map((s) => (
-                <div key={s.repository_id}>
-                  <strong>{s.repository_label}</strong> · {s.branch} · {s.base_sha.slice(0, 8)} →{' '}
-                  {s.head_sha.slice(0, 8)} · {s.file_count} files
-                  {s.warnings.map((w, i) => (
-                    <p className="error" key={i}>
-                      {w}
-                    </p>
-                  ))}
-                </div>
-              ))}
-              <p>
-                Topics and explanations are the current review graph; revision-aware comparison
-                arrives in M3.
-              </p>
-            </details>
-          )}
-          <div className="topic-header">
-            <div className="eyebrow">
-              {topic ? 'REVIEW TOPIC · ' + topic.state : 'SOURCE EXPLORER'}
-            </div>
-            <h2>{topic?.title || 'All source changes'}</h2>
-            <p>
-              {topic?.summary || 'Every changed file, including changes not assigned to a topic.'}
-            </p>
-            {topic && (
+        <main className={'review-content ' + (sourceMode ? 'source-mode' : '')}>
+          {sourceMode ? (
+            code(
+              file && !sourceFiles.some((source) => sourceFileID(source) === sourceFileID(file))
+                ? [...sourceFiles, file]
+                : sourceFiles,
               <>
-                <Attribution author={topic.author} />
-                <button
-                  className="link"
-                  disabled={!revision}
-                  onClick={() =>
-                    discuss({
-                      revisionID: revision!.id,
-                      anchor: { type: 'TOPIC', id: topic.id },
-                      label: topic.title,
-                    })
-                  }
-                >
-                  Discuss topic
-                </button>
-              </>
-            )}
-          </div>
-          {topic && (
-            <details className="context" open={pref.perspective === 'Design'}>
-              <summary>Intent, observed changes & attention</summary>
-              {data.intents
-                .filter((i) => topic.intent_ids.includes(i.id))
-                .map((i) => (
-                  <IntentCard
-                    key={i.id}
-                    intent={i}
-                    revisionID={revision?.id}
-                    evidence={data.evidence}
-                    open={openEvidence}
-                    discuss={discuss}
-                  />
-                ))}
-              {data.changes
-                .filter((c) => topic.change_ids.includes(c.id))
-                .map((c) => (
-                  <ChangeCard
-                    key={c.id}
-                    change={c}
-                    evidence={data.evidence}
-                    open={openEvidence}
-                    discuss={discuss}
-                  />
-                ))}
-              {attentionFor(topic, data.attention).map((a) => (
-                <article className="card attention" key={a.id}>
-                  <div className="eyebrow">ATTENTION · {a.priority} · NOT A DEFECT PROBABILITY</div>
-                  <p>{a.rationale}</p>
-                  <p>Unknown: {a.uncertainty || 'Not stated'}</p>
-                  <Attribution author={a.author} provenance={a.provenance} />
-                  <EvidenceLinks
-                    ids={a.evidence_ids}
-                    evidence={data.evidence}
-                    select={openEvidence}
-                  />
-                </article>
-              ))}
-              {!topic.intent_ids.length &&
-                !topic.change_ids.length &&
-                !attentionFor(topic, data.attention).length && (
-                  <Notice>No intent, observed changes or attention signals linked.</Notice>
+                {reviewContext}
+                <p className="muted">Code snapshot: revision {codeRevision?.ordinal || '—'}</p>
+                {sourceMembership}
+                {codeSource.error && !codeSource.data && (
+                  <Notice>
+                    Source listing unavailable. Showing the selected stored file only.
+                  </Notice>
                 )}
-            </details>
-          )}
-          {topic && (
-            <div className="topic-findings">
-              {data.findings
-                .filter((f) => topic.finding_ids.includes(f.id))
-                .map((f) => (
-                  <button key={f.id} onClick={() => setInspector({ type: 'finding', id: f.id })}>
-                    <span className={'severity ' + f.severity.toLowerCase()}>{f.severity}</span>
-                    {f.title}
-                  </button>
-                ))}
-            </div>
-          )}
-          <div className="layout-bar">
-            <span className="eyebrow">VIEWS OF THE SAME TOPIC</span>
-            <div className="spacer" />
-            <label>
-              <input
-                type="checkbox"
-                checked={pref.split}
-                onChange={(e) => setPreferences((p) => ({ ...p, split: e.target.checked }))}
-              />
-              Two views
-            </label>
-          </div>
-          {sourceFile && (
-            <div className="row source-topics">
-              <small>File belongs to:</small>
-              {sourceFile.unassigned ? (
-                <span className="badge">Unassigned Changes</span>
-              ) : (
-                sourceFile.topic_ids.map((id) => (
-                  <button key={id} className="link" onClick={() => selectTopic(id)}>
-                    {data.topics.find((t) => t.id === id)?.title || id}
-                  </button>
-                ))
-              )}
-            </div>
-          )}
-          <ErrorNotice error={reps.error} />
-          <div className={'view-grid ' + (pref.split ? 'split' : '')}>
-            {pref.views.slice(0, pref.split ? 2 : 1).map((v, i) => (
-              <section className="view-block" key={i}>
-                <nav className="view-tabs" aria-label={i === 0 ? 'Primary view' : 'Secondary view'}>
-                  {(Object.keys(viewNames) as View[]).map((type) => (
-                    <button key={type} aria-pressed={v === type} onClick={() => setView(i, type)}>
-                      {viewNames[type]}
-                    </button>
-                  ))}
-                </nav>
-                <RepresentationView
-                  type={v}
-                  representationID={representationIDs[v]}
-                  chooseRepresentation={(id) =>
-                    setRepresentationIDs((ids) => ({ ...ids, [v]: id }))
-                  }
-                  elementID={elementID}
-                  representations={reps.data || []}
-                  evidence={data.evidence}
-                  file={file}
-                  repositoryLabel={repositoryLabel}
-                  api={api}
-                  chooseFile={setFile}
-                  openEvidence={openEvidence}
-                  selectNode={inspectNode}
-                  discuss={discuss}
+                <ContextDiscussions
+                  topicID={null}
+                  focusedID={focusedDiscussionID}
+                  navigation={discussionNavigation}
                 />
-              </section>
-            ))}
-          </div>
+              </>,
+            )
+          ) : (
+            <>
+              {reviewContext}
+              <div className="layout-bar">
+                <span className="eyebrow">VIEWS OF THE SAME TOPIC</span>
+                <div className="spacer" />
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={pref.split}
+                    onChange={(e) => setPreferences((p) => ({ ...p, split: e.target.checked }))}
+                  />
+                  Two views
+                </label>
+              </div>
+              {sourceMembership}
+              <ErrorNotice error={reps.error} />
+              <div className={'view-grid ' + (pref.split ? 'split' : '')}>
+                {pref.views.slice(0, pref.split ? 2 : 1).map((v, i) => (
+                  <section className="view-block" key={i}>
+                    <nav
+                      className="view-tabs"
+                      aria-label={i === 0 ? 'Primary view' : 'Secondary view'}
+                    >
+                      {(Object.keys(viewNames) as View[]).map((type) => (
+                        <button
+                          key={type}
+                          aria-pressed={v === type}
+                          onClick={() => setView(i, type)}
+                        >
+                          {viewNames[type]}
+                        </button>
+                      ))}
+                    </nav>
+                    <RepresentationView
+                      type={v}
+                      representationID={representationIDs[v]}
+                      chooseRepresentation={(id) =>
+                        setRepresentationIDs((ids) => ({ ...ids, [v]: id }))
+                      }
+                      elementID={elementID}
+                      representations={reps.data || []}
+                      evidence={data.evidence}
+                      code={file && v === 'CODE_DIFF' ? code([file]) : undefined}
+                      openEvidence={openEvidence}
+                      selectNode={inspectNode}
+                      discuss={discuss}
+                    />
+                  </section>
+                ))}
+              </div>
+              <ContextDiscussions
+                topicID={topicID}
+                includeCode={!codeVisible}
+                focusedID={focusedDiscussionID}
+                navigation={discussionNavigation}
+              />
+            </>
+          )}
           {inspector && (
             <section className="inspector" aria-label="Selected evidence or finding">
               <div className="section-heading">
@@ -734,48 +847,60 @@ function ReviewPage({
             </section>
           )}
         </main>
-        <aside className="review-panel">
-          <div className="panel-tabs">
-            <button aria-pressed={panel === 'discussions'} onClick={() => setPanel('discussions')}>
-              Discussions
-            </button>
-            <button aria-pressed={panel === 'decision'} onClick={() => setPanel('decision')}>
-              Decisions
-            </button>
-            <button aria-pressed={panel === 'sessions'} onClick={() => setPanel('sessions')}>
-              Sessions
-            </button>
-          </div>
-          {revision && (
-            <div hidden={panel !== 'discussions'}>
-              <DiscussionPanel
-                api={api}
-                reviewID={data.review.id}
-                revisionID={revision.id}
-                topicID={topicID}
-                discussions={data.discussions}
-                target={target}
-                setTarget={setTarget}
-                openAnchor={openAnchor}
-              />
-            </div>
-          )}
-          {revision && (
-            <div hidden={panel !== 'decision'}>
-              <Decisions
-                api={api}
-                reviewID={data.review.id}
-                revision={revision}
-                findings={data.findings}
-                discussions={data.discussions}
-                decisions={data.decisions}
-              />
-            </div>
-          )}
-          {panel === 'sessions' && <Sessions api={api} workspaceID={data.review.workspace_id} />}
-        </aside>
       </div>
-    </>
+      <ReviewDialog
+        open={panel === 'decision'}
+        title="Review decision"
+        close={() => setPanel(null)}
+      >
+        {revision && (
+          <Decisions
+            api={api}
+            reviewID={data.review.id}
+            revision={revision}
+            findings={data.findings}
+            discussions={data.discussions}
+            decisions={data.decisions}
+          />
+        )}
+      </ReviewDialog>
+      <ReviewDialog
+        open={panel === 'sessions'}
+        title="Settings · Integrations"
+        close={() => setPanel(null)}
+      >
+        {panel === 'sessions' && <Sessions api={api} workspaceID={data.review.workspace_id} />}
+      </ReviewDialog>
+    </DiscussionProvider>
+  );
+}
+
+function ReviewDialog({
+  open,
+  title,
+  close,
+  children,
+}: {
+  open: boolean;
+  title: string;
+  close: () => void;
+  children: React.ReactNode;
+}) {
+  const dialog = useRef<HTMLDialogElement>(null);
+  useEffect(() => {
+    if (open && !dialog.current?.open) dialog.current?.showModal();
+    else if (!open && dialog.current?.open) dialog.current.close();
+  }, [open]);
+  return (
+    <dialog ref={dialog} aria-label={title} onClose={close} onCancel={close}>
+      <div className="section-heading">
+        <h2>{title}</h2>
+        <button aria-label={'Close ' + title} onClick={close}>
+          Close
+        </button>
+      </div>
+      {children}
+    </dialog>
   );
 }
 

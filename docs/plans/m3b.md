@@ -1,6 +1,6 @@
 # M3b — Pierre-native code review and inline discussions
 
-**Status: draft for review; implementation not started.**
+**Status: implemented locally on `m3b-client`; not yet published or merged.**
 
 Ticket: [M3b #6](https://github.com/aduverger/prunelle/issues/6). M2b [#5](https://github.com/aduverger/prunelle/issues/5) remains the workspace/CLI milestone required before M3. This plan uses the requested M3b name; it does not rename M2b or add a new ordering dependency between M3 and M3b.
 
@@ -117,11 +117,11 @@ Reuse the actual Go server, disposable two-repository fixtures and existing Play
 - Update existing tests for the new placements without deleting behavior assertions. Run client formatting/lint/unit checks, TypeScript/production build, all browser scenarios and native smoke; check generated types only if the API changes. Run affected Go checks/builds if shell/packaging changes become necessary.
 - Inspect source-mode screenshots against the supplied DiffsHub page at comparable viewport sizes. Test without a right sidebar and with a visible inline thread; importing Pierre libraries alone is not visual/interaction acceptance.
 
-No runtime tests or defect reproduction were performed while drafting this plan. The live reference and docs/API inspection above are planning evidence, not Prunelle validation.
+The original planning commit performed documentation/reference inspection only. Implementation evidence and validation are recorded below.
 
-## Proposed decision ledger — least confident first
+## Draft choices recorded before implementation
 
-These are draft choices for review, not newly accepted product/API rules.
+These proposals were recorded in planning commit `6561918`. The implementation decisions below supersede their open choices.
 
 1. **Source-mode composition:** a continuous CodeView and Files/Comments switch, while retaining semantic navigation/representations. This is the closest fit to the supplied reference; would ask whether the existing two-representation composition should remain exposed in source mode or only semantic modes.
 2. **Decision/session surfaces:** native modal dialog for decisions and Settings → Integrations for sessions. This satisfies on-demand decisions and secondary runtime access without adding a UI framework; would ask whether a decision popover is preferred over a modal. Dirty drafts must survive either choice.
@@ -130,3 +130,49 @@ These are draft choices for review, not newly accepted product/API rules.
 5. **Controller ownership:** preserve state above recycled annotation views, with stable draft/thread IDs and existing independent mutations. The precise factoring must stay within the discussion domain; the concrete requirement is draft/idempotency survival, not a generic state framework.
 6. **CodeView/highlighter integration:** controlled items, stable presentation versions and callbacks, supported header/footer/gutter/annotation APIs, Highlights with the documented capability fallback, no new worker pool by default. These follow the current state owner and pinned Pierre APIs, not speculative scale requirements.
 7. **Milestone naming/order:** M3b is recorded exactly as requested and kept separate from M2b #5. No new M3 prerequisite or server contract change is inferred from the name; confirm scheduling when approving implementation.
+
+## Implementation record
+
+- Replaced the single-file `MultiFileDiff` integration with controlled `CodeReview.tsx`/Pierre CodeView. Source mode is a continuous, virtualized list; semantic views still use their existing representation/evidence path. Native headers/statistics, measured header/footer slots and split/unified rendering remain Pierre-owned.
+- Source item identity is revision + repository + path. Selection updates do not issue navigation requests. Explicit navigation waits for the source collection/file reads to settle, expands a collapsed target, then uses CodeView's item/range API once. Typing, SSE and presentation updates do not replay that request.
+- Code composers and saved threads use side-specific annotations beneath their final anchored line. One annotation groups all discussion/composer IDs at the same side/end line; each retains its own complete range and controller. Request ranges are projected once into the five input fields.
+- Discussion controllers stay mounted for the review and portal their views into Pierre annotation slots or non-code context. Recycling/collapse removes only view hosts, not reply text or the existing independent `useSubmit` hooks. Hidden drafts participate in review-change/before-unload warnings. Nothing beyond preferences is persisted locally.
+- Files/Comments navigation and settings remain visible outside the sidebar's scrolling content. Files and Comments retain their models/filter state across tab switches. Non-code comment navigation opens its record context and focuses its thread.
+- Removed the permanent right column. Decisions use a native modal with focus return and retained dirty state. Sessions mount only under Settings → Integrations; their existing polling ends when closed.
+- Highlights is verified through the actual shared highlighter type on cold startup. Added only `wasm-unsafe-eval` to the CSP, not JavaScript `unsafe-eval`. No new dependency, theme registry, worker pool, API, migration or server logic.
+
+### Defect evidence and limits
+
+The pre-change long-file test kept a selected line visible in Chrome: selection alone did **not** reproduce the reported jump. Its inline-composer assertion failed because the old composer was outside the file surface. The replacement is validated through real pointer-range selection, composing/typing/posting, SSE, navigation and reload; no claim is made that the original macOS-specific symptom was independently reproduced.
+
+Implementation checks also exposed and corrected two integration failures: navigation consumed before earlier source items finished loading, and repeated optimistic query selection producing new parsed-metadata objects during cached-revision switches. Navigation now waits for a settled list, while presentation reconciliation uses immutable snapshot identity rather than parser-object identity.
+
+### Implementation decision ledger — least confident first
+
+1. **Historical comments change code scope, not the global picker.** Their original revision is explicit in the code context and comment label. A dirty decision is never retargeted. If asking were free, would ask whether the global picker should follow historical code navigation instead.
+2. **Source is one code canvas; semantic modes retain two views.** The requested DiffsHub-like source workflow takes the main area without discarding topic/diagram/evidence functionality or changing saved semantic preferences. Would ask whether a source-specific secondary representation should remain exposed.
+3. **Native decision modal; settings opens integrations.** Reused existing decision/session behavior instead of adding a UI framework. Untouched COMMENT forms follow the selected revision; edited verdict/text/references freeze the draft revision. Closing does not clear it. Would ask only about modal versus popover presentation.
+4. **Split/light/readable defaults, no new preference fields.** Use bundled `pierre-light`, 13px code and a local unified toggle. No custom Highlights theme, theme management, code editor or batch pending-review workflow.
+5. **Accessible gutter slot plus a range form.** The pinned library forbids combining `onGutterUtilityClick` with `renderGutterUtility`. Use its custom slot for a labelled button and its selection/hover getters, plus a labelled numeric BASE/HEAD range form for keyboard access; do not recreate hit-testing or drag selection.
+6. **Review-lifetime controllers with view-only portal hosts.** This preserves existing mutation hooks, rather than creating a generic draft/retry registry. Multiple code views can share a controller. Drafts survive view recycling, not a completed app reload; leaving/reloading warns rather than writing sensitive drafts to storage.
+7. **Group annotation presentation by side/end line.** Pierre names slots by location. Grouping IDs into one annotation avoids duplicate location slots while keeping each discussion's anchor, messages, status and retry state independent.
+8. **Treat stored source identity as immutable.** Query observers can reselect cached content into a fresh parser object. That must not cause a render loop or remount. The server's immutable snapshot tuple is the content identity; annotation/collapse changes alone bump presentation versions.
+9. **Keep explicit source fallback and conversations accessible on read failure.** If exhaustive listing fails, an already-grounded selection can still fetch its exact stored file, with a partial-list notice. If that file fetch fails, its messages/drafts appear under an unavailable-source heading and move inline after recovery without losing state.
+10. **Use React render callbacks for changing context, stable options for code mechanics.** A permanently stable header callback would leave CodeView's memoized React slot stale. Updating the React header/footer content does not replace files or add another scroll/measurement system.
+11. **Enable WASM narrowly and verify the real engine.** CSP was the observed reason the first browser run selected `shiki-js`. The supported-runtime path now selects Highlights; a capability-disabled test verifies the real JS fallback. Existing JavaScript-evaluation restrictions remain intact.
+12. **M3b is a client milestone on this request.** M2b remains pending and required before M3; revision-aware comparison/re-anchoring remains M3 work. No compatibility layer or server contract change was added.
+
+### Validation
+
+- Client formatting, lint, two existing model tests, TypeScript and production build passed.
+- Eighteen real-server browser scenarios passed: the eight existing scenarios retained their behavior assertions, plus ten code-review cases. Coverage includes pointer multiline selection, BASE/HEAD anchoring, gutter creation, code-context geometry, SSE, same-location threads, old revisions, actual TS/Python/Go highlighting, unsupported-language/JS fallback, virtualized/collapsed drafts, a committed-but-lost reply followed by resolve/recycling/retry, cancelled navigation with a hidden draft, read-failure recovery, non-code navigation, empty CodeView and stopped session polling.
+- Native Linux MyGo/WebKit smoke passed with bundled assets, Go-backed REST/SSE, actual Highlights, Pierre Trees navigation, a durable inline code-range comment and the decision modal.
+- Frozen install/peer check and generated-type freshness passed without dependency/API changes.
+- Client Go formatting/vet/race tests and Linux/darwin-arm64 builds passed. MyGo Linux packaging and unsigned darwin-arm64 app packaging passed with the pinned SDK.
+- Compared `/tmp/prunelle-m3b-implemented.png` and the native capture against the supplied DiffsHub reference. The main code area uses the same native diff/header/selection primitives, with Prunelle attribution and durable thread controls rather than demo personas.
+
+### Remaining verification / known warnings
+
+- Native macOS launch, signing/notarization and a live tailnet streaming session remain unverified here. The unsigned Mac bundle is cross-built, not a native-Mac test result.
+- Chrome development runs emit bounded `ResizeObserver loop completed with undelivered notifications` messages during some rapid annotation/revision transitions. Functional/geometry checks pass; no global error suppression or custom observer/scroll loop was added. This warning is not represented as a resolved library defect.
+- The existing large-bundle warning remains. Maximum-capacity performance and a separate browser 5xx/409 unknown-outcome presentation scenario were not benchmarked/added; real lost-response idempotency and disconnection/reconnect paths were exercised.

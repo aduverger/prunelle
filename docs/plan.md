@@ -16,7 +16,7 @@ Each PR starts with its own plan in [`plans/`](plans/), followed by its implemen
 M3+ (revision-aware review, analysis, Pi adapter) get separate plans.
 
 - **M2b:** [workspace/CLI usability #5](https://github.com/aduverger/prunelle/issues/5), including automatic discovery, context inference and workspace deletion. Complete before M3.
-- **M3b:** [Pierre-native code review UI #6](https://github.com/aduverger/prunelle/issues/6): inline comments, stable code scrolling, Highlights, left comment navigation and on-demand decision/integration surfaces. [Draft plan](plans/m3b.md); implementation not started. Keep separate from M2b; confirm scheduling relative to M3 when approving the plan.
+- **M3b:** [Pierre-native code review UI #6](https://github.com/aduverger/prunelle/issues/6): inline comments, stable code scrolling, Highlights, left comment navigation and on-demand decision/integration surfaces. [Implementation plan and ledger](plans/m3b.md); implemented locally on explicit request. Separate from M2b and M3's revision-aware domain changes.
 
 ## Server
 
@@ -53,7 +53,7 @@ M3+ (revision-aware review, analysis, Pi adapter) get separate plans.
 ## Client
 
 - React + Vite web UI bundled into a MyGo desktop app; the server serves only the API.
-- Diffs: Pierre Diffs from stored base/head contents. Diagrams: ELK.js layout, escaped SVG, no model-supplied HTML.
+- Diffs: Pierre CodeView/annotations from stored base/head contents, Highlights with capability fallback, inline code discussions and left comment navigation. Decisions and optional session integrations open on demand, not in a permanent right column. Diagrams: ELK.js layout, escaped SVG, no model-supplied HTML.
 - Engineering, Design, Source perspectives as built-in presets; perspective and layout persisted locally.
 - No topic editing UI in M2; captures are triggered manually.
 - Plain-browser mode only for development and Playwright tests.
