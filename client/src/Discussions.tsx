@@ -1,43 +1,34 @@
 import { Markdown } from './Markdown';
-import { useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useId, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { result, type API, type Model } from './api/client';
 import { useSubmit } from './hooks';
 import type { DiscussionTarget } from './model';
 import { Attribution, Notice } from './Views';
 
-export function anchorLabel(anchor: Model['Anchor']) {
+export function anchorLabel(anchor: DiscussionTarget['anchor'] | Model['Anchor']) {
   const range = anchor.code_range;
   return range
     ? `${range.path}:${range.start_line}–${range.end_line} (${range.side})`
     : `${anchor.type.replaceAll('_', ' ')} ${anchor.element_id || ''}`;
 }
-export function DiscussionPanel({
-  api,
-  reviewID,
-  revisionID,
-  topicID,
-  discussions,
-  target,
-  setTarget,
-  openAnchor,
-}: {
-  api: API;
-  reviewID: string;
-  revisionID: string;
-  topicID: string | null;
-  discussions: Model['Discussion'][];
-  target: DiscussionTarget | null;
-  setTarget: (target: DiscussionTarget | null) => void;
-  openAnchor: (d: Model['Discussion']) => void;
-}) {
-  const [body, setBody] = useState('');
+
+export function useDiscussionComposer(api: API, reviewID: string) {
+  const [target, setTarget] = useState<DiscussionTarget | null>(null);
   const [draftTarget, setDraftTarget] = useState<DiscussionTarget | null>(null);
-  const [scope, setScope] = useState<'topic' | 'all'>('topic');
+  const [body, setBody] = useState('');
+  const focusRequested = useRef(false);
   const action = useSubmit();
   const currentTarget = draftTarget || target;
-  const inScope = (d: Model['Discussion']) =>
-    scope === 'all' || !topicID || d.topic_ids.includes(topicID);
-  const visible = discussions.filter(inScope);
+  function start(next: DiscussionTarget) {
+    setTarget(next);
+    focusRequested.current = true;
+  }
+  function discard() {
+    setBody('');
+    setDraftTarget(null);
+    setTarget(null);
+  }
   async function post() {
     if (!currentTarget || !body.trim()) return;
     const request = { revision_id: currentTarget.revisionID, anchor: currentTarget.anchor, body };
@@ -50,109 +41,298 @@ export function DiscussionPanel({
           }),
         ),
       )
-    ) {
-      setBody('');
-      setDraftTarget(null);
-      setTarget(null);
-    }
+    )
+      discard();
   }
+  return {
+    target: currentTarget,
+    body,
+    start,
+    discard,
+    post,
+    action,
+    requestFocus() {
+      focusRequested.current = true;
+    },
+    focus(node: HTMLTextAreaElement | null) {
+      if (node && focusRequested.current) {
+        node.focus({ preventScroll: currentTarget?.anchor.type === 'CODE_RANGE' });
+        focusRequested.current = false;
+      }
+    },
+    moved: !!(draftTarget && target && JSON.stringify(draftTarget) !== JSON.stringify(target)),
+    edit(value: string) {
+      if (!draftTarget) setDraftTarget(currentTarget);
+      setBody(value);
+    },
+  };
+}
+type Composer = ReturnType<typeof useDiscussionComposer>;
+type Host = { id: string; node: HTMLElement; reveal?: number };
+const DiscussionContext = createContext<{
+  composer: Composer;
+  discussions: Model['Discussion'][];
+  revisions: Model['Revision'][];
+  register: (key: string, id: string, node: HTMLElement | null, reveal?: number) => void;
+} | null>(null);
+
+export function useDiscussions() {
+  const context = useContext(DiscussionContext);
+  if (!context) throw new Error('Discussion surface must be inside its review provider.');
+  return context;
+}
+
+export function DiscussionSlot({ id, reveal }: { id: string; reveal?: number }) {
+  const { register } = useDiscussions();
+  const key = useId();
+  const ref = useCallback(
+    (node: HTMLDivElement | null) => register(key, id, node, reveal),
+    [register, key, id, reveal],
+  );
+  return <div ref={ref} data-discussion-slot={id} />;
+}
+
+export function DiscussionProvider({
+  api,
+  discussions,
+  revisions,
+  composer,
+  openAnchor,
+  onDraftChange,
+  children,
+}: {
+  api: API;
+  discussions: Model['Discussion'][];
+  revisions: Model['Revision'][];
+  composer: Composer;
+  openAnchor: (d: Model['Discussion']) => void;
+  onDraftChange: (dirty: boolean) => void;
+  children: React.ReactNode;
+}) {
+  const [hosts, setHosts] = useState<Record<string, Host>>({});
+  const [replyDrafts, setReplyDrafts] = useState<Set<string>>(() => new Set());
+  const register = useCallback(
+    (key: string, id: string, node: HTMLElement | null, reveal?: number) => {
+      setHosts((previous) => {
+        if (
+          (previous[key]?.node === node && previous[key]?.reveal === reveal) ||
+          (!node && !previous[key])
+        )
+          return previous;
+        const next = { ...previous };
+        if (node) next[key] = { id, node, reveal };
+        else delete next[key];
+        return next;
+      });
+    },
+    [],
+  );
+  const reportReply = useCallback((id: string, dirty: boolean) => {
+    setReplyDrafts((previous) => {
+      if (previous.has(id) === dirty) return previous;
+      const next = new Set(previous);
+      if (dirty) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+  }, []);
+  useEffect(() => {
+    onDraftChange(!!composer.body.trim() || replyDrafts.size > 0);
+  }, [composer.body, replyDrafts, onDraftChange]);
+  useEffect(() => () => onDraftChange(false), [onDraftChange]);
   return (
-    <section className="discussion-panel" aria-label="Discussions">
-      <header className="section-heading">
+    <DiscussionContext.Provider value={{ composer, discussions, revisions, register }}>
+      {children}
+      {Object.entries(hosts)
+        .filter(([, host]) => host.id === 'composer')
+        .map(([key, host]) => createPortal(<ComposerForm composer={composer} />, host.node, key))}
+      {discussions.map((d) => (
+        <ThreadController
+          key={d.id}
+          api={api}
+          discussion={d}
+          contextLabel={discussionRevisionLabel(d, revisions)}
+          hosts={Object.entries(hosts).filter(([, host]) => host.id === d.id)}
+          open={() => openAnchor(d)}
+          reportDraft={reportReply}
+        />
+      ))}
+    </DiscussionContext.Provider>
+  );
+}
+
+function ComposerForm({ composer: c }: { composer: Composer }) {
+  if (!c.target) return null;
+  return (
+    <form
+      className="composer"
+      onSubmit={(event) => {
+        event.preventDefault();
+        void c.post();
+      }}
+    >
+      <strong>New discussion · {c.target.label}</strong>
+      <small>Against {c.target.revisionID}</small>
+      {c.moved && (
+        <Notice>
+          Your draft stays on its original anchor. Post or discard it before starting another.
+        </Notice>
+      )}
+      <textarea
+        aria-label="New discussion"
+        disabled={c.action.busy}
+        placeholder="What needs a closer look?"
+        value={c.body}
+        required
+        ref={c.focus}
+        onChange={(event) => c.edit(event.target.value)}
+      />
+      {c.action.error && (
+        <p role="alert" className="error">
+          {c.action.error} Your draft is kept; retrying unchanged is safe.
+        </p>
+      )}
+      <div className="row">
+        <button type="submit" className="primary" disabled={c.action.busy || !c.body.trim()}>
+          {c.action.busy ? 'Posting…' : 'Post discussion'}
+        </button>
+        <button type="button" disabled={c.action.busy} onClick={c.discard}>
+          Discard
+        </button>
+      </div>
+    </form>
+  );
+}
+
+function discussionRevisionLabel(discussion: Model['Discussion'], revisions: Model['Revision'][]) {
+  const revision = revisions.find((revision) => revision.id === discussion.revision_id);
+  const repository = revision?.snapshots.find(
+    (snapshot) => snapshot.repository_id === discussion.anchor.code_range?.repository_id,
+  );
+  return `Revision ${revision?.ordinal || discussion.revision_id}${repository ? ' · ' + repository.repository_label : ''}`;
+}
+
+function discussionInTopic(discussion: Model['Discussion'], topicID: string | null) {
+  return !topicID || discussion.topic_ids.includes(topicID) || discussion.anchor.type === 'REVIEW';
+}
+
+export function CommentIndex({
+  topicID,
+  revisionID,
+  openAnchor,
+  openDraft,
+}: {
+  topicID: string | null;
+  revisionID?: string;
+  openAnchor: (d: Model['Discussion']) => void;
+  openDraft: () => void;
+}) {
+  const { discussions, composer, revisions } = useDiscussions();
+  const [scope, setScope] = useState<'topic' | 'all'>('topic');
+  const visible = discussions.filter((d) => scope === 'all' || discussionInTopic(d, topicID));
+  return (
+    <section className="comment-index" aria-label="Comments">
+      <div className="section-heading">
         <h2>
-          Discussions <span className="count">{visible.length}</span>
+          Comments <span className="count">{visible.length}</span>
         </h2>
         <select
           aria-label="Discussion scope"
           value={scope}
-          onChange={(e) => setScope(e.target.value as 'topic' | 'all')}
+          onChange={(event) => setScope(event.target.value as 'topic' | 'all')}
         >
           <option value="topic">Selected topic</option>
           <option value="all">Entire review</option>
         </select>
-      </header>
-      <p className="muted">Comments never change code or start an agent.</p>
-      <button
-        className="link"
-        onClick={() =>
-          setTarget({ revisionID, anchor: { type: 'REVIEW' }, label: 'Entire review' })
-        }
-      >
-        Discuss review
-      </button>
-      {currentTarget && (
-        <form
-          className="composer"
-          onSubmit={(e) => {
-            e.preventDefault();
-            void post();
-          }}
+      </div>
+      {revisionID && (
+        <button
+          className="link"
+          onClick={() =>
+            composer.start({
+              revisionID,
+              anchor: { type: 'REVIEW' },
+              label: 'Entire review',
+            })
+          }
         >
-          <strong>New discussion · {currentTarget.label}</strong>
-          <small>Against {currentTarget.revisionID}</small>
-          {draftTarget && target && JSON.stringify(draftTarget) !== JSON.stringify(target) && (
-            <Notice>
-              Your draft stays on its original anchor. Post or discard it before starting another.
-            </Notice>
-          )}
-          <textarea
-            aria-label="New discussion"
-            disabled={action.busy}
-            placeholder="What needs a closer look?"
-            value={body}
-            required
-            onChange={(e) => {
-              if (!draftTarget) setDraftTarget(currentTarget);
-              setBody(e.target.value);
-            }}
-          />
-          {action.error && (
-            <p role="alert" className="error">
-              {action.error} Your draft is kept; retrying unchanged is safe.
-            </p>
-          )}
-          <div className="row">
-            <button type="submit" className="primary" disabled={action.busy || !body.trim()}>
-              {action.busy ? 'Posting…' : 'Post discussion'}
-            </button>
-            <button
-              type="button"
-              disabled={action.busy}
-              onClick={() => {
-                setBody('');
-                setDraftTarget(null);
-                setTarget(null);
-              }}
-            >
-              Discard
-            </button>
-          </div>
-        </form>
+          Discuss review
+        </button>
+      )}
+      {composer.target && (
+        <button className="draft-link" onClick={openDraft}>
+          Unposted draft · {composer.target.label}
+        </button>
       )}
       {!visible.length && <Notice>No discussions yet.</Notice>}
-      {discussions.map((d) => (
-        <div key={d.id} hidden={!inScope(d)}>
-          <Thread api={api} discussion={d} open={() => openAnchor(d)} />
-        </div>
+      {visible.map((d) => (
+        <button className="comment-link" key={d.id} onClick={() => openAnchor(d)}>
+          <strong>{anchorLabel(d.anchor)}</strong>
+          <span className="badge">{d.status}</span>
+          <span>{d.messages[0]?.body}</span>
+          <small>{discussionRevisionLabel(d, revisions)}</small>
+        </button>
       ))}
     </section>
   );
 }
 
-function Thread({
+export function ContextDiscussions({
+  topicID,
+  includeCode = false,
+  focusedID,
+  navigation,
+}: {
+  topicID: string | null;
+  includeCode?: boolean;
+  focusedID?: string | null;
+  navigation?: number;
+}) {
+  const { discussions, composer } = useDiscussions();
+  const visible = discussions.filter(
+    (d) =>
+      (discussionInTopic(d, topicID) || d.id === focusedID) &&
+      (includeCode || d.anchor.type !== 'CODE_RANGE'),
+  );
+  const showComposer =
+    composer.target && (includeCode || composer.target.anchor.type !== 'CODE_RANGE');
+  if (!visible.length && !showComposer) return null;
+  return (
+    <section className="context-discussions" aria-label="Discussions">
+      <h2>Discussions</h2>
+      {showComposer && <DiscussionSlot id="composer" />}
+      {visible.map((d) => (
+        <DiscussionSlot key={d.id} id={d.id} reveal={d.id === focusedID ? navigation : undefined} />
+      ))}
+    </section>
+  );
+}
+
+function ThreadController({
   api,
   discussion: d,
+  contextLabel,
+  hosts,
   open,
+  reportDraft,
 }: {
   api: API;
   discussion: Model['Discussion'];
+  contextLabel: string;
+  hosts: [string, Host][];
   open: () => void;
+  reportDraft: (id: string, dirty: boolean) => void;
 }) {
   const [reply, setReply] = useState('');
+  const revealed = useRef<number>(undefined);
+  const reveal = hosts.find(([, host]) => host.reveal !== undefined)?.[1].reveal;
   const replyAction = useSubmit();
   const statusAction = useSubmit();
   const busy = replyAction.busy || statusAction.busy;
   const error = [replyAction.error, statusAction.error].filter(Boolean).join('\n');
+  useEffect(() => {
+    reportDraft(d.id, !!reply.trim());
+  }, [d.id, reply, reportDraft]);
   async function post() {
     if (!reply.trim()) return;
     if (
@@ -177,15 +357,28 @@ function Thread({
       ),
     );
   }
-  return (
-    <article className="thread">
+  const content = (
+    <article
+      className="thread"
+      data-discussion-id={d.id}
+      tabIndex={-1}
+      ref={(node) => {
+        if (node && reveal !== undefined && revealed.current !== reveal) {
+          revealed.current = reveal;
+          node.scrollIntoView({ block: 'nearest' });
+          node.focus({ preventScroll: true });
+        }
+      }}
+    >
       <div className="section-heading">
         <button className="link" onClick={open}>
           {anchorLabel(d.anchor)}
         </button>
         <span className="badge">{d.status}</span>
       </div>
-      <small className="muted">{d.revision_id}</small>
+      <small className="muted" title={d.revision_id}>
+        {contextLabel}
+      </small>
       {d.messages.map((m) => (
         <div className="message" key={m.id}>
           <Attribution author={m.author} />
@@ -194,8 +387,8 @@ function Thread({
         </div>
       ))}
       <form
-        onSubmit={(e) => {
-          e.preventDefault();
+        onSubmit={(event) => {
+          event.preventDefault();
           void post();
         }}
       >
@@ -204,7 +397,7 @@ function Thread({
           disabled={busy}
           placeholder="Reply…"
           value={reply}
-          onChange={(e) => setReply(e.target.value)}
+          onChange={(event) => setReply(event.target.value)}
         />
         <div className="row">
           <button disabled={busy || !reply.trim()} type="submit">
@@ -228,6 +421,7 @@ function Thread({
       )}
     </article>
   );
+  return hosts.map(([key, host]) => createPortal(content, host.node, key));
 }
 
 export function Decisions({
@@ -277,6 +471,14 @@ export function Decisions({
       setDiscussionIDs([]);
     }
   }
+  if (
+    !body &&
+    verdict === 'COMMENT' &&
+    !findingIDs.length &&
+    !discussionIDs.length &&
+    draftRevision.id !== revision.id
+  )
+    setDraftRevision(revision);
   const invalid =
     (verdict === 'COMMENT' && !body.trim()) ||
     (verdict === 'REQUEST_CHANGES' && !findingIDs.length && !discussionIDs.length);

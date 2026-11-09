@@ -105,10 +105,11 @@ try {
   assert(
     (
       await evaluate(
-        "document.querySelector('diffs-container').shadowRoot.querySelector('[data-content]').textContent",
+        "Array.from(document.querySelector('diffs-container').shadowRoot.querySelectorAll('[data-content]')).map(node => node.textContent).join('\\n')",
       )
     ).includes('PENDING'),
   );
+  await waitFor("document.querySelector('.code-review')?.dataset.highlighter === 'highlights'");
   await evaluate(
     "Array.from(document.querySelectorAll('button')).find(b=>b.textContent==='Discuss topic').click(); true",
   );
@@ -120,7 +121,7 @@ try {
     "!!Array.from(document.querySelectorAll('.message')).find(e=>e.textContent.includes('Native WebKit comment'))",
   );
   await evaluate(
-    "Array.from(document.querySelectorAll('button')).find(b=>b.textContent==='All Source Changes').click(); true",
+    "Array.from(document.querySelectorAll('.nav-tabs button')).find(button => button.textContent === 'Files').click(); true",
   );
   await waitFor(
     `!!document.querySelector('file-tree-container')?.shadowRoot?.querySelector('[role="treeitem"][data-item-path="docs/async-upload.md"]')`,
@@ -131,10 +132,57 @@ try {
   await waitFor(
     `!!document.querySelector('diffs-container')?.shadowRoot?.querySelector('[data-content]')?.textContent.includes('Uploads return 202 Accepted')`,
   );
+  await evaluate("document.querySelector('.line-comment-form').open = true; true");
+  await evaluate(
+    "const input = document.querySelector('[aria-label=\"Start line\"]'); Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(input,'3'); input.dispatchEvent(new Event('input',{bubbles:true})); true",
+  );
+  await evaluate("document.querySelector('.line-comment-form form').requestSubmit(); true");
+  await waitFor("!!document.querySelector('.code-review .composer')");
+  await evaluate(
+    "const t=document.querySelector('[aria-label=\"New discussion\"]'); Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value').set.call(t,'Native inline code comment'); t.dispatchEvent(new Event('input',{bubbles:true})); true",
+  );
+  await evaluate("document.querySelector('.composer').requestSubmit(); true");
+  await waitFor(
+    "Array.from(document.querySelectorAll('.code-review .thread')).some(thread => thread.textContent.includes('Native inline code comment') && thread.textContent.includes('HEAD'))",
+  );
+  const threads = await fixture.get(`/v1/reviews/${fixture.review.id}/discussions`);
+  const inlineThread = threads.find(
+    (thread) => thread.messages[0].body === 'Native inline code comment',
+  );
+  assert(inlineThread, 'Inline comment was not persisted');
+  assert.equal(inlineThread.revision_id, fixture.revision.id);
+  assert.equal(inlineThread.anchor.type, 'CODE_RANGE');
+  const range = inlineThread.anchor.code_range;
+  assert.equal(
+    range.repository_id,
+    fixture.revision.snapshots.find((snapshot) => snapshot.repository_label === 'api')
+      .repository_id,
+  );
+  assert.equal(range.path, 'docs/async-upload.md');
+  assert.equal(range.side, 'HEAD');
+  assert.equal(range.start_line, 3);
+  assert.equal(range.end_line, 3);
+  const externalReply = await globalThis.fetch(
+    `${target}/v1/discussions/${inlineThread.id}/messages`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ body: 'An external reply streamed into native WebKit.' }),
+    },
+  );
+  assert.equal(externalReply.status, 201);
+  await waitFor(
+    "Array.from(document.querySelectorAll('.code-review .thread')).some(thread => thread.textContent.includes('An external reply streamed into native WebKit.'))",
+  );
+  await evaluate(
+    "Array.from(document.querySelectorAll('button')).find(button => button.textContent === 'Review decision').click(); true",
+  );
+  await waitFor('!!document.querySelector(\'dialog[aria-label="Review decision"]\').open');
+  await evaluate('document.querySelector(\'[aria-label="Close Review decision"]\').click(); true');
   const png = await call('capture');
   if (png.png) writeFileSync(resolve('native-smoke.png'), Buffer.from(png.png, 'base64'));
   console.log(
-    'Native MyGo/WebKit: bundled UI, Go-backed REST, streamed events, Pierre tree navigation, stored diff and persisted comment passed.',
+    'Native MyGo/WebKit: bundled UI, Go-backed REST/SSE, Highlights, Pierre tree navigation, inline stored-code comments and decision dialog passed.',
   );
   lines.close();
 } finally {

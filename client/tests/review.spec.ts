@@ -1,7 +1,17 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
 import { mkdirSync, rmSync, unlinkSync, writeFileSync } from 'node:fs';
 import { Fixture, buildServer, server } from './fixture';
 import type { Model } from '../src/api/client';
+
+function storedDiff(page: Page, path: string, repositoryID?: string) {
+  const identity =
+    `[data-source-path=${JSON.stringify(path)}]` +
+    (repositoryID ? `[data-repository-id=${JSON.stringify(repositoryID)}]` : '');
+  return page
+    .getByTestId('file-diff')
+    .locator('diffs-container')
+    .filter({ has: page.locator(identity) });
+}
 
 let build: ReturnType<typeof buildServer>;
 let fixture: Fixture;
@@ -14,7 +24,8 @@ test.beforeEach(async () => {
   await fixture.start();
   await fixture.seed();
 });
-test.afterEach(async () => {
+test.afterEach(async ({ page }) => {
+  await page.close();
   await fixture.close();
 });
 test('topics, grounding, exhaustive source and persistent perspectives', async ({ page }) => {
@@ -80,7 +91,7 @@ test('topics, grounding, exhaustive source and persistent perspectives', async (
     .getByRole('treeitem', { name: f.path.split('/').at(-1)!, exact: true })
     .click();
   await expect(page.getByTestId('file-diff')).toContainText(f.path);
-  await page.getByRole('button', { name: 'Runtime sessions', exact: false }).click();
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
   await expect(page.getByRole('region', { name: 'Runtime sessions' })).toContainText('UNREACHABLE');
   expect(errors).toEqual([]);
 });
@@ -115,28 +126,36 @@ test('Pierre source trees keep repository and revision identity through navigati
   const apiFile = api.getByRole('treeitem', { name: 'review.txt', exact: true });
   const workerFile = worker.getByRole('treeitem', { name: 'review.txt', exact: true });
   const diff = page.getByTestId('file-diff');
+  const apiID = fixture.revision.snapshots.find((s) => s.repository_label === 'api')!.repository_id;
+  const workerID = fixture.revision.snapshots.find(
+    (s) => s.repository_label === 'worker',
+  )!.repository_id;
   await worker
     .getByRole('region', { name: 'Deleted files', exact: true })
     .getByRole('treeitem', { name: 'README.md', exact: true })
     .click();
   await expect(diff).toContainText('DELETED');
-  await expect(diff.locator('[data-content]')).toContainText('Background jobs');
+  await expect(storedDiff(page, 'README.md', workerID)).toContainText('Background jobs');
   await worker
     .getByRole('region', { name: 'Changed files', exact: true })
     .getByRole('treeitem', { name: 'replacement.txt', exact: true })
     .click();
-  await expect(diff.locator('[data-content]')).toContainText('A directory replaced this file');
+  await expect(storedDiff(page, 'README.md/replacement.txt', workerID)).toContainText(
+    'A directory replaced this file',
+  );
   await api
     .getByRole('region', { name: 'Deleted files', exact: true })
     .getByRole('treeitem', { name: 'upload.ts', exact: true })
     .click();
   await expect(diff).toContainText('DELETED');
-  await expect(diff.locator('[data-content]')).toContainText('processDocument');
+  await expect(storedDiff(page, 'src/routes/upload.ts', apiID)).toContainText('processDocument');
   await api
     .getByRole('region', { name: 'Changed files', exact: true })
     .getByRole('treeitem', { name: 'routes', exact: true })
     .click();
-  await expect(diff.locator('[data-content]')).toContainText('A file replaced this directory');
+  await expect(storedDiff(page, 'src/routes', apiID)).toContainText(
+    'A file replaced this directory',
+  );
   await expect(shared).toHaveAttribute('aria-expanded', 'true');
   await shared.click();
   await expect(shared).toHaveAttribute('aria-expanded', 'false');
@@ -148,7 +167,7 @@ test('Pierre source trees keep repository and revision identity through navigati
   await apiFile.press('Enter');
   await expect(apiFile).toHaveAttribute('aria-selected', 'true');
   await expect(apiFile.getByText('U', { exact: true })).toBeVisible();
-  await expect(diff.locator('[data-content]')).toContainText('Stored api source');
+  await expect(storedDiff(page, 'shared/review.txt', apiID)).toContainText('Stored api source');
   await apiFile.press('Control+f');
   const search = api
     .getByRole('region', { name: 'Changed files', exact: true })
@@ -160,7 +179,9 @@ test('Pierre source trees keep repository and revision identity through navigati
   await workerFile.click();
   await expect(workerFile).toHaveAttribute('aria-selected', 'true');
   await expect(apiFile).toHaveAttribute('aria-selected', 'false');
-  await expect(diff.locator('[data-content]')).toContainText('Stored worker source');
+  await expect(storedDiff(page, 'shared/review.txt', workerID)).toContainText(
+    'Stored worker source',
+  );
   await expect(diff).toContainText(revisionID);
   await expect(
     page
@@ -176,7 +197,9 @@ test('Pierre source trees keep repository and revision identity through navigati
   await expect(page.getByRole('alert')).toBeVisible();
   await expect(shared).toHaveAttribute('aria-expanded', 'false');
   await expect(workerFile).toHaveAttribute('aria-selected', 'true');
-  await expect(diff.locator('[data-content]')).toContainText('Stored worker source');
+  await expect(storedDiff(page, 'shared/review.txt', workerID)).toContainText(
+    'Stored worker source',
+  );
   await page.unroute('**/source-changes');
   const refreshed = page.waitForResponse((r) => r.url().endsWith('/source-changes') && r.ok());
   await page.getByRole('button', { name: 'Refresh', exact: true }).click();
@@ -187,19 +210,72 @@ test('Pierre source trees keep repository and revision identity through navigati
 
   await api.getByRole('treeitem', { name: 'review.bin', exact: true }).click();
   await expect(diff).toContainText('api/assets/review.bin');
-  await expect(diff).toContainText('BINARY');
-  await expect(diff.locator('diffs-container')).toHaveCount(0);
+  await expect(
+    page.getByRole('heading', { name: 'api/assets/review.bin', exact: true }),
+  ).toBeInViewport();
+  await expect(page.getByText('BINARY', { exact: true })).toBeVisible();
+  await expect(
+    page.getByRole('button', { name: 'Comment on selected lines', exact: true }),
+  ).toBeDisabled();
   await page.getByLabel('Revision', { exact: true }).selectOption(fixture.revision.id);
   await expect(all.getByRole('treeitem', { name: 'review.txt', exact: true })).toHaveCount(0);
   await expect(all.getByRole('treeitem', { selected: true })).toHaveCount(0);
   writeFileSync(`${fixture.dir}/repos/worker/shared/review.txt`, 'Uncaptured working copy\n');
   await page.getByLabel('Revision', { exact: true }).selectOption(revisionID);
   await workerFile.click();
-  await expect(diff.locator('[data-content]')).toContainText('Stored worker source');
-  await expect(diff.locator('[data-content]')).not.toContainText('Uncaptured working copy');
+  await expect(storedDiff(page, 'shared/review.txt', workerID)).toContainText(
+    'Stored worker source',
+  );
+  await expect(storedDiff(page, 'shared/review.txt', workerID)).not.toContainText(
+    'Uncaptured working copy',
+  );
   expect(
     await fixture.get<Model['Discussion'][]>(`/v1/reviews/${fixture.review.id}/discussions`),
   ).toHaveLength(0);
+});
+
+test('a diagram draft returns to its owning topic, diagram and element', async ({ page }) => {
+  const representations = await fixture.get<Model['Representation'][]>(
+    `/v1/topics/${fixture.ids.topics['T-async']}/representations`,
+  );
+  const diagram = representations.find((representation) => representation.type === 'DIAGRAM')!;
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Discuss Client', exact: true }).click();
+  const body = 'Keep this question on the original diagram element.';
+  await page.getByRole('textbox', { name: 'New discussion', exact: true }).fill(body);
+  await page.getByRole('button', { name: /Configuration and tests/ }).click();
+  await page.getByRole('button', { name: 'Files', exact: true }).click();
+  await page.getByRole('button', { name: 'Comments', exact: true }).click();
+  await page
+    .getByRole('region', { name: 'Comments', exact: true })
+    .getByRole('button', { name: /Unposted draft/ })
+    .click();
+  await expect(
+    page.getByRole('heading', { name: 'Asynchronous upload', exact: true }),
+  ).toBeVisible();
+  await expect(page.getByRole('img', { name: 'Upload flow', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Inspect Client', exact: true })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  );
+  await expect(page.getByRole('textbox', { name: 'New discussion', exact: true })).toHaveValue(
+    body,
+  );
+  const posted = page.waitForResponse(
+    (response) => response.request().method() === 'POST' && response.url().endsWith('/discussions'),
+  );
+  await page.getByRole('button', { name: 'Post discussion', exact: true }).click();
+  expect((await posted).status()).toBe(201);
+  const discussions = await fixture.get<Model['Discussion'][]>(
+    `/v1/reviews/${fixture.review.id}/discussions`,
+  );
+  expect(discussions).toMatchObject([
+    {
+      revision_id: fixture.revision.id,
+      topic_ids: [fixture.ids.topics['T-async']],
+      anchor: { type: 'DIAGRAM_ELEMENT', id: diagram.id, element_id: 'client' },
+    },
+  ]);
 });
 
 test('exact code discussion is shared across views, replies and resolution persist', async ({
@@ -216,7 +292,7 @@ test('exact code discussion is shared across views, replies and resolution persi
   await diff
     .locator('[data-gutter] [data-line-type="change-addition"][data-column-number="9"]')
     .click();
-  await page.getByRole('button', { name: 'Discuss selected lines' }).click();
+  await page.getByRole('button', { name: 'Comment on selected lines' }).click();
   await page
     .getByRole('textbox', { name: 'New discussion', exact: true })
     .fill('Why is the upload status PENDING here?');
@@ -317,7 +393,7 @@ test('evidence-loaded and reopened ranges keep their original revision when disc
     })
     .click();
 
-  await page.getByRole('button', { name: 'All Source Changes', exact: true }).click();
+  await page.getByRole('button', { name: 'Files', exact: true }).click();
   const source = page.getByRole('region', { name: 'All repositories', exact: true });
   await expect(
     source
@@ -332,13 +408,16 @@ test('evidence-loaded and reopened ranges keep their original revision when disc
       await expect(page.getByLabel('Revision', { exact: true })).not.toHaveValue(
         evidence.revision_id,
       );
+      await page.getByRole('button', { name: 'Comments', exact: true }).click();
       await page
-        .locator('.thread')
-        .getByRole('button', { name: /src\/routes\/upload.ts:/ })
+        .getByRole('region', { name: 'Comments', exact: true })
+        .getByRole('button')
+        .filter({ hasText: 'Comment from linked evidence' })
         .click();
+      await page.getByRole('button', { name: 'Files', exact: true }).click();
       await expect(source.getByRole('treeitem', { selected: true })).toHaveCount(0);
     }
-    await page.getByRole('button', { name: 'Discuss selected lines', exact: true }).click();
+    await page.getByRole('button', { name: 'Comment on selected lines', exact: true }).click();
     await page
       .getByRole('textbox', { name: 'New discussion', exact: true })
       .fill('Comment from ' + origin);
@@ -348,10 +427,7 @@ test('evidence-loaded and reopened ranges keep their original revision when disc
     await page.getByRole('button', { name: 'Post discussion', exact: true }).click();
     expect((await posted).status()).toBe(201);
     await expect(
-      page
-        .getByRole('region', { name: 'Discussions', exact: true })
-        .getByRole('article')
-        .getByText('Comment from ' + origin, { exact: true }),
+      page.locator('.thread').getByText('Comment from ' + origin, { exact: true }),
     ).toBeVisible();
   }
 
@@ -394,8 +470,11 @@ test('decisions name a revision and source history survives working-tree edits',
   await page
     .getByRole('textbox', { name: 'Decision notes' })
     .fill('A draft must not move to a new snapshot.');
+  await page.getByRole('button', { name: 'Close Review decision', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Review decision', exact: true })).toBeFocused();
   await page.getByRole('button', { name: 'Capture', exact: true }).click();
   await expect(page.getByLabel('Revision', { exact: true })).not.toHaveValue(fixture.revision.id);
+  await page.getByRole('button', { name: 'Review decision', exact: true }).click();
   await expect(page.getByRole('region', { name: 'Review decision' })).toContainText(
     'Your decision draft still targets revision 1.',
   );
@@ -403,20 +482,21 @@ test('decisions name a revision and source history survives working-tree edits',
     'A draft must not move to a new snapshot.',
   );
   await page.getByRole('textbox', { name: 'Decision notes' }).fill('');
+  await page.getByRole('button', { name: 'Close Review decision', exact: true }).click();
   await page.getByLabel('Revision', { exact: true }).selectOption(fixture.revision.id);
+  await page.getByRole('button', { name: 'Review decision', exact: true }).click();
   await expect(page.getByRole('region', { name: 'Review decision' })).toContainText(
     'Guard the side effect before retrying.',
   );
+  await page.getByRole('button', { name: 'Close Review decision', exact: true }).click();
   await page
     .getByRole('button', {
       name: 'src/routes/upload.ts · Upload enqueues instead of processing',
       exact: true,
     })
     .click();
-  await expect(page.getByTestId('file-diff').locator('[data-content]')).toContainText('PENDING');
-  await expect(page.getByTestId('file-diff').locator('[data-content]')).not.toContainText(
-    'UNSAVED_NEW_REVISION',
-  );
+  await expect(storedDiff(page, 'src/routes/upload.ts')).toContainText('PENDING');
+  await expect(storedDiff(page, 'src/routes/upload.ts')).not.toContainText('UNSAVED_NEW_REVISION');
 });
 
 test('lost response retries safely and reconnect refetches after a real server restart', async ({

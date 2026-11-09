@@ -48,6 +48,20 @@ export function useReview(api: API, reviewID: string) {
 }
 export type ReviewData = NonNullable<ReturnType<typeof useReview>['data']>;
 
+export function useSourceChanges(api: API, revisionID: string | undefined) {
+  return useQuery({
+    queryKey: ['source', revisionID],
+    enabled: !!revisionID,
+    queryFn: ({ signal }) =>
+      result(
+        api.GET('/v1/revisions/{revisionId}/source-changes', {
+          params: { path: { revisionId: revisionID! } },
+          signal,
+        }),
+      ),
+  });
+}
+
 export function useConnection(api: API) {
   const cache = useQueryClient();
   const [status, setStatus] = useState('Connecting');

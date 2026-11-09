@@ -2,14 +2,19 @@ import { serverURL, type AnchorInput, type CodeRangeInput, type Model } from './
 export type View = Model['Representation']['type'];
 export type TopicOrder = 'manual' | 'attention' | 'intent';
 export type Perspective = 'Engineering' | 'Design' | 'Source';
-export type Navigation = 'Topics' | 'Findings' | 'All Source Changes';
+export type Navigation = 'Topics' | 'Findings' | 'All Source Changes' | 'Comments';
 export type FileSelection = {
   revisionID: string;
   repositoryID: string;
   path: string;
   range?: CodeRangeInput;
 };
-export type DiscussionTarget = { revisionID: string; anchor: AnchorInput; label: string };
+export type DiscussionTarget = {
+  revisionID: string;
+  anchor: AnchorInput;
+  label: string;
+  topicID?: string;
+};
 
 export const viewNames: Record<View, string> = {
   TEXT: 'Text',

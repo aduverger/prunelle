@@ -58,6 +58,7 @@ test('draft anchors, safe Markdown, stale resolution and reply drafts survive na
     await thread.getByRole('button', { name: 'Resolve', exact: true }).click();
     await expect(thread).toContainText('RESOLVED');
   } finally {
+    await page.close();
     await fixture.close();
     build.close();
   }

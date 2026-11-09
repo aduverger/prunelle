@@ -70,7 +70,7 @@ curl -X PATCH localhost:7390/v1/discussions/DISCUSSION_ID -H 'If-Match: "1"' -H 
 
 `prunelle events` follows changes as they happen (`/v1/events`, server-sent events).
 
-## Desktop client (M2)
+## Desktop client
 
 Requires Go, Node.js 26 and pnpm 12. On Linux, install GTK 3 and WebKitGTK 4.1 (`sudo apt install libgtk-3-0t64 libwebkit2gtk-4.1-0`). Packaged macOS builds target macOS 13.3+.
 
@@ -85,11 +85,12 @@ pnpm desktop
 
 Use **Server** in the app to connect to `http://127.0.0.1:7390` locally or `https://<machine>.<tailnet>.ts.net` through Tailscale Serve. The desktop fetches through Go; it adds no identity headers or credentials. The API server remains API-only, with no CORS exception.
 
-- Navigate Topics, Findings, or All Source Changes (including Unassigned Changes). Source navigation uses Pierre Trees: arrow keys to navigate, Enter to open, and Ctrl/Cmd+F to search the focused tree. Deleted files have a separate tree so file/directory replacements remain inspectable.
-- Switch Text / Diagram / Code / Evidence, or show two views. Evidence links and diagram nodes trace back to canonical records and stored source. Select line numbers to discuss an exact range.
-- Discussions, replies, resolution and decisions are shared across views. Decisions name an exact revision; request changes selects actionable findings or threads. Comments never start an agent or change code.
+- Navigate Topics, Findings, Files (including Unassigned Changes), or Comments. Source navigation uses Pierre Trees: arrow keys to navigate, Enter to open, and Ctrl/Cmd+F to search the focused tree. Deleted files have a separate tree so file/directory replacements remain inspectable.
+- Source review uses a continuous Pierre CodeView with split/unified diffs and Highlights syntax coloring (JS fallback when WebAssembly/SIMD is unavailable). Use the gutter `+`, selected line numbers, or **Comment on lines…** to compose inline on an exact BASE/HEAD range. Comments navigate to their original immutable snapshot.
+- Semantic topics retain Text / Diagram / Code / Evidence and one/two-view layouts. Evidence links and diagram nodes trace back to canonical records and stored source. Drafts and explicit retry identities survive virtualized view recycling; they remain in memory, with warnings before leaving the review.
+- Discussions, replies and resolution are shared across views. **Review decision** opens a modal with revision-specific verdicts/history; request changes selects actionable findings or threads. Closing the modal keeps a dirty draft. Comments never start an agent or change code.
 - Perspectives and layout are local preferences. Capture is manual; source can be inspected at older revisions, while topic/representation metadata is the current graph (revision-aware comparison is M3).
-- The sessions panel is optional, polls while open, and allows only explicit workspace association/removal. It has no process-control or agent-chat UI.
+- **Settings → Integrations** contains optional runtime sessions, polls only while open, and allows only explicit workspace association/removal. It has no process-control or agent-chat UI.
 
 Package the desktop app (`build/` is ignored):
 
@@ -116,7 +117,7 @@ pnpm test:native
 
 Both integration test commands build the real server and create disposable two-repository reviews. They never connect to the user's Rex server. `test:native` launches the bundled MyGo/WebKit app under Xvfb with isolated app storage and writes the ignored `client/native-smoke.png`. Its automation endpoint is compiled only with the `e2e` build tag, never into ordinary/release builds. The smoke test disables WebKit's sandbox only in that disposable test subprocess (for restricted CI containers).
 
-The [M2 plan](docs/plans/m2.md) records implementation choices and verification.
+The [M2 plan](docs/plans/m2.md) and [M3b plan](docs/plans/m3b.md) record implementation choices and verification.
 
 ## License
 
