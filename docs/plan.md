@@ -1,4 +1,4 @@
-# Prunelle - Delivery Plan (M0–M2)
+# Prunelle - Delivery Plan
 
 Source spec: [`Prunelle_Architecture_Implementation_Spec_2026-11-05.md`](Prunelle_Architecture_Implementation_Spec_2026-11-05.md).
 Decisions that refine or depart from the spec: [`decisions.md`](decisions.md).
@@ -14,6 +14,9 @@ Each PR starts with its own plan in [`plans/`](plans/), followed by its implemen
 | M2 | Desktop client: React + Vite web UI in a MyGo shell. Topic tree, Findings, All Source Changes, Text/Diagram/Code/Evidence views, discussions, decisions, perspectives, session panel. |
 
 M3+ (revision-aware review, analysis, Pi adapter) get separate plans.
+
+- **M2b:** [workspace/CLI usability #5](https://github.com/aduverger/prunelle/issues/5), including automatic discovery, context inference and workspace deletion. Complete before M3.
+- **M3b:** [Pierre-native code review UI #6](https://github.com/aduverger/prunelle/issues/6): inline comments, stable code scrolling, Highlights, left comment navigation and on-demand decision/integration surfaces. [Draft plan](plans/m3b.md); implementation not started. Keep separate from M2b; confirm scheduling relative to M3 when approving the plan.
 
 ## Server
 
