@@ -270,10 +270,15 @@ test('an original diagram discussion opens its frozen graph rather than the curr
     page.getByRole('button', { name: 'Inspect Replacement flow', exact: true }),
   ).toBeVisible();
   await page.getByRole('button', { name: 'Inspect Replacement flow', exact: true }).click();
+  const grounding = page.getByRole('region', { name: 'Selected evidence or finding' });
+  await expect(grounding).toContainText('Replacement flow');
   await page.getByLabel('Revision', { exact: true }).selectOption(fixture.revision.id);
   await expect(
     page.getByRole('button', { name: 'Inspect ' + node.label, exact: true }),
   ).toBeVisible();
+  await expect(
+    grounding.getByRole('heading', { name: 'Replacement flow', exact: true }),
+  ).not.toBeVisible();
   await page.getByLabel('Revision', { exact: true }).selectOption(second.id);
   await expect(
     page.getByRole('button', { name: 'Inspect Replacement flow', exact: true }),

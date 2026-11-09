@@ -237,7 +237,7 @@ type Inspector =
   | { type: 'evidence'; id: string }
   | { type: 'finding'; id: string }
   | { type: 'INTENT' | 'CHANGE'; id: string }
-  | { type: 'node'; node: DiagramNode }
+  | { type: 'node'; node: DiagramNode; revisionID: string | null }
   | null;
 function ReviewPage({
   api,
@@ -327,6 +327,8 @@ function ReviewPage({
   const [order, setOrder] = useState(presets[pref.perspective].order);
   const [file, setFile] = useState<FileSelection | null>(null);
   const [inspector, setInspector] = useState<Inspector>(null);
+  if (inspector?.type === 'node' && inspector.revisionID !== effectiveRevisionID)
+    setInspector(null);
   const [panel, setPanel] = useState<'decision' | 'sessions' | 'source-topics' | null>(null);
   const [navigation, setNavigation] = useState(0);
   const [focusedDiscussionID, setFocusedDiscussionID] = useState<string | null>(null);
@@ -385,7 +387,7 @@ function ReviewPage({
   function inspectNode(node: DiagramNode) {
     if (node.ref?.type === 'TOPIC') selectTopic(node.ref.id);
     setElementID(node.id);
-    setInspector({ type: 'node', node });
+    setInspector({ type: 'node', node, revisionID: effectiveRevisionID });
     const e = data.evidence.find(
       (e) =>
         node.evidence_ids.includes(e.id) || (node.ref?.type === 'EVIDENCE' && e.id === node.ref.id),
