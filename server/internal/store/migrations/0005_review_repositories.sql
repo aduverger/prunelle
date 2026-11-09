@@ -81,15 +81,17 @@ CREATE TABLE idempotency_keys_new (
     review_id TEXT REFERENCES reviews(id) ON DELETE CASCADE,
     PRIMARY KEY (caller, key)
 );
+WITH receipts AS (
+    SELECT k.*, (SELECT review_id FROM resource_reviews
+        WHERE id = CASE WHEN json_valid(CAST(k.body AS TEXT))
+            THEN COALESCE(json_extract(CAST(k.body AS TEXT), '$.id'), json_extract(CAST(k.body AS TEXT), '$.import_id')) END
+    ) AS review_id
+    FROM idempotency_keys k
+)
 INSERT INTO idempotency_keys_new
-SELECT k.caller, k.key, k.request_hash, k.status, k.headers, k.body, k.created_at,
-    (SELECT review_id FROM resource_reviews WHERE id = CASE WHEN json_valid(CAST(k.body AS TEXT))
-        THEN COALESCE(json_extract(CAST(k.body AS TEXT), '$.id'), json_extract(CAST(k.body AS TEXT), '$.import_id')) END)
-FROM idempotency_keys k
-WHERE k.status IS NULL OR k.workspace_id IS NULL OR EXISTS (
-    SELECT 1 FROM resource_reviews WHERE id = CASE WHEN json_valid(CAST(k.body AS TEXT))
-        THEN COALESCE(json_extract(CAST(k.body AS TEXT), '$.id'), json_extract(CAST(k.body AS TEXT), '$.import_id')) END
-);
+SELECT caller, key, request_hash, status, headers, body, created_at, review_id
+FROM receipts
+WHERE status IS NULL OR workspace_id IS NULL OR review_id IS NOT NULL;
 
 DROP TABLE idempotency_keys;
 ALTER TABLE idempotency_keys_new RENAME TO idempotency_keys;

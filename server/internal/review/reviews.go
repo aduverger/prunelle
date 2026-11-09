@@ -286,9 +286,9 @@ func (s *Service) GetRevision(ctx context.Context, id string) (Revision, error) 
 	rows, err := s.db.Reader().QueryContext(ctx, `SELECT s.repository_id, p.label, s.base_ref, s.base_sha, s.head_sha, s.branch,
 			s.staged_count, s.unstaged_count, s.untracked_count, s.status, s.warnings,
 			(SELECT COUNT(*) FROM snapshot_files f WHERE f.snapshot_id = s.id)
-		FROM repo_snapshots s JOIN revisions v ON v.id = s.revision_id
-		JOIN review_repositories p ON p.repository_id = s.repository_id AND p.review_id = v.review_id
-		WHERE s.revision_id = ? ORDER BY p.label`, id)
+		FROM repo_snapshots s
+		JOIN review_repositories p ON p.repository_id = s.repository_id AND p.review_id = ?
+		WHERE s.revision_id = ? ORDER BY p.label`, r.ReviewID, id)
 	if err != nil {
 		return Revision{}, err
 	}

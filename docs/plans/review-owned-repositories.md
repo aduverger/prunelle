@@ -211,3 +211,29 @@ Detailed local logs: `/tmp/prunelle-review-owned-final-{server,client,browser,na
 ### Historical planning validation
 
 The initial draft was documentation-only, based on main at `3842868`; it made no implementation-test claims. Implementation began only after the user accepted the trust/default decisions.
+
+## Ship simplification — reviewer/PR intent
+
+**User requirements and accepted decisions:** reviews are the sole product/lifecycle object and own independent source membership, history and runtime links. Capture chooses refs (per-repository override → capture-wide override → `[snapshot]` default → built-in `main`) with existing merge-base semantics, immutable requested refs/SHAs/source and unchanged committed retry results. Unknown first-use multi-repo context needs an explicit container; later cwd inference must be unambiguous, including closed reviews. All authenticated callers, including allowed logins, are explicitly trusted with any server-readable Git source; Git validation is not authorization. Preserve historical IDs/anchors, attribution, human-only decisions, SSE/ETag/retry guarantees and in-memory draft retention after remote deletion. Hard deletion removes owned Prunelle content, never source files/Git history or running processes, and preserves other owners of shared identities/blobs.
+
+**Operational assumptions/non-goals:** retain Go/Linux-first pure-Go SQLite (WAL, one writer), React/MyGo/Pierre and loopback API behind Tailscale Serve; no new credentials, server UI or CORS exception. CLI paths use invocation cwd; unrelated config path semantics do not change. Config edits require server restart, not a hot-reload worker. Stop/back up the server and upgrade server/CLI/desktop together; old binaries reject the newer schema. Do not restore workspace registration/root lists, recursive namespace guessing, global/latest selection or rewritten historical repository IDs. No fetch/branch switching, automatic membership refresh, repository catalog/search UI, archive/editor, runtime/conversation control, persistent drafts/outbox or automatic write retries.
+
+**Agent mechanisms, not extra product requirements:** `review_repositories` preserves actual shared historical identities; fresh reviews receive fresh source IDs. `context_path`/`infer_context`, repeatable CLI flag spelling, repository-only session suggestions and the startup-only FK rebuild are implementation choices recorded in the ledger above. Existing runtime links fan out only to existing reviews, never future ones.
+
+**Review disposition item retained, not silently removed:** the approved legacy-preference audit/export recommendation was implemented as owned `legacy_base_ref` metadata, not an emitted export or audit command. Capture never reads it and last-owner deletion purges it. This was an agent-selected alternative to an unpurged JSON sidecar; the reviewer should confirm it meets the approved audit intent. Simplification preserves it rather than discarding values or inventing another export workflow.
+
+### Simplification ledger — least confident first
+
+1. Define each migrated receipt's owner once in a CTE, then use that same value for copying/filtering. Existing completed/global/pending retention and retired-workspace removal stay unchanged; this is not a cache or a changed retry rule.
+2. Bind the immutable revision owner already read by `GetRevision` when resolving membership labels, instead of joining `revisions` a second time. No label-history field or alternate owner lookup is introduced.
+3. Remove the former multi-review `owned_reviews` wrapper from single-ID deletion. Keep dependency-ordered cleanup, explicit link removal, reference-protected blob/identity cleanup, rollback and the durable deletion event.
+4. Omit the eagerly allocated empty repository slice during preparation: successful creation already requires and appends at least one repository, so the API's successful array representation is unchanged.
+
+No new product decisions were needed. No public API or test assertions changed; test curation remains the next phase.
+
+### Simplification validation
+
+- Passed Go formatting, focused vet and race suites for `review`, `store`, `httpapi`, `sessions` and `cmd/prunelle`, including version-4 migration/rollback/retry, original-revision reads, hard deletion/isolation, late receipts and SSE resume.
+- Passed byte-identical Go/TS regeneration, client type checking (including exclusive-source negative fixtures) and both model tests.
+- Passed the real-server review-lifecycle browser suite with hermetic Git identity/config: remote deletion retains code/reply/decision drafts, deliberate navigation warns, and source folders do not register themselves.
+- Full browser/native/package/Darwin suites were not repeated in this focused phase; previous implementation results above remain historical. No production data or live Rex process was used. Logs: `/tmp/prunelle-review-owned-simplification-{go,contracts,browser}.log`.

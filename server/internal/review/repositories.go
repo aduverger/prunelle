@@ -22,7 +22,7 @@ func (s *Service) prepareReview(ctx context.Context, req CreateReviewRequest) (R
 		return Review{}, invalid("review title must not be blank")
 	}
 	now := s.now()
-	r := Review{ID: store.NewID("rvw"), Title: title, Description: req.Description, Status: "OPEN", Repositories: []Repository{}, CreatedAt: now, UpdatedAt: now}
+	r := Review{ID: store.NewID("rvw"), Title: title, Description: req.Description, Status: "OPEN", CreatedAt: now, UpdatedAt: now}
 	repositories := req.Repositories
 	if req.Path != "" {
 		path, inputs, err := s.sourceRepositories(ctx, req.Path, req.InferContext)
