@@ -115,7 +115,7 @@ test('unused discovered folders stay out of navigation until the first review is
   });
   await page.goto('/');
   const picker = page.getByLabel('Feature review', { exact: true });
-  await expect(picker.getByRole('option')).toHaveCount(2);
+  await expect(picker).toHaveValue(fixture.review.id);
   await expect(picker).not.toContainText('unused-project');
   const response = await fetch(`${server}/v1/reviews`, {
     method: 'POST',
@@ -125,7 +125,6 @@ test('unused discovered folders stay out of navigation until the first review is
   expect(response.status).toBe(201);
   const review = (await response.json()) as Model['Review'];
   expect(review.title).toBe('unused-project');
-  await expect(picker.getByRole('option')).toHaveCount(3);
   await picker.selectOption(review.id);
   await expect(page.getByRole('heading', { name: review.title, exact: true })).toBeVisible();
 });

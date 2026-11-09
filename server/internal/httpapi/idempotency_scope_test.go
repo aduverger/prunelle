@@ -3,6 +3,7 @@ package httpapi
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"testing"
 
 	"github.com/aduverger/prunelle/server/internal/review"
@@ -40,7 +41,9 @@ func TestLateReceiptCannotRestoreDeletedContent(t *testing.T) {
 	if status.Valid || len(body) != 0 {
 		t.Fatalf("late receipt restored deleted content: %s", body)
 	}
-	if _, err := cache.claim(ctx, "fixture", "create", "hash"); err == nil {
-		t.Fatal("unknown-outcome claim was released, allowing an implicit duplicate")
+	_, err = cache.claim(ctx, "fixture", "create", "hash")
+	var conflict *review.Error
+	if !errors.As(err, &conflict) || conflict.Code != review.CodeConflict {
+		t.Fatalf("unknown-outcome retry must conflict without replay or execution: %v", err)
 	}
 }

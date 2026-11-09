@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"path/filepath"
+	"strconv"
 	"testing"
 
 	"github.com/aduverger/prunelle/server/api"
@@ -92,6 +93,55 @@ func TestAutomaticWorkspaceContextAndHardDeleteOverHTTP(t *testing.T) {
 	expectStatus(t, must(s.client.DeleteWorkspaceWithResponse(ctx, created.JSON201.WorkspaceID)).StatusCode(), http.StatusNoContent, nil)
 	stillHere := must(s.client.GetReviewWithResponse(ctx, fresh.JSON201.ID))
 	expectStatus(t, stillHere.StatusCode(), http.StatusOK, stillHere.Body)
+}
+
+func TestEventStreamResumesAcrossDeletedWorkspaceHistory(t *testing.T) {
+	ctx := context.Background()
+	s := newTestServer(t, nil)
+	rv, _, _ := s.seed(t)
+	stream := s.openEvents(t, "")
+	checkpoint := stream.next(t)
+	if checkpoint.event != "ready" {
+		t.Fatalf("missing initial checkpoint: %+v", checkpoint)
+	}
+	stream.stop()
+	deletedDiscussion := must(s.client.CreateDiscussionWithResponse(ctx, rv.ID, nil, review.CreateDiscussionRequest{Anchor: review.AnchorInput{Type: "REVIEW"}, Body: "A deleted discussion while disconnected"}))
+	expectStatus(t, deletedDiscussion.StatusCode(), http.StatusCreated, deletedDiscussion.Body)
+	other := must(s.client.CreateReviewWithResponse(ctx, nil, review.CreateReviewRequest{WorkspacePath: filepath.Join(s.reposDir, "api"), Title: "Keep this review"}))
+	expectStatus(t, other.StatusCode(), http.StatusCreated, other.Body)
+	deleted := must(s.client.DeleteWorkspaceWithResponse(ctx, rv.WorkspaceID))
+	expectStatus(t, deleted.StatusCode(), http.StatusNoContent, deleted.Body)
+	s.stop()
+	restarted := startTestServer(t, s.root, nil)
+	resumed := restarted.openEvents(t, strconv.FormatInt(checkpoint.id, 10))
+	if ready := resumed.next(t); ready.event != "ready" || ready.id != checkpoint.id {
+		t.Fatalf("invalid resume checkpoint: %+v", ready)
+	}
+	seenOtherReview := false
+	previousSequence := checkpoint.id
+	for {
+		next := resumed.next(t)
+		event := next.decode(t)
+		if event.Sequence <= previousSequence || event.Sequence != next.id {
+			t.Fatalf("event sequence did not advance across deletion: %+v", next)
+		}
+		previousSequence = event.Sequence
+		if event.EntityID == deletedDiscussion.JSON201.ID || (event.ReviewID != nil && *event.ReviewID == rv.ID) {
+			t.Fatalf("deleted workspace history was replayed: %+v", event)
+		}
+		if next.event == "review.created" && event.EntityID == other.JSON201.ID {
+			seenOtherReview = true
+		}
+		if next.event == "workspace.deleted" {
+			if event.EntityID != rv.WorkspaceID || event.ReviewID != nil {
+				t.Fatalf("wrong deletion notification: %+v", event)
+			}
+			break
+		}
+	}
+	if !seenOtherReview {
+		t.Fatal("deletion discarded an unrelated missed review event")
+	}
 }
 
 func TestWorkspaceDeleteUnlinksButDoesNotStopRuntime(t *testing.T) {

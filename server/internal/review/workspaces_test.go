@@ -120,6 +120,10 @@ func TestReviewContextCreatesAtomicallyDefaultsTitleAndDoesNotGuess(t *testing.T
 	single := must[review.Review](t)(svc.CreateReview(ctx, review.CreateReviewRequest{WorkspacePath: filepath.Join(root, "ecomapping")}, reviewer))
 	_, err := svc.ResolveReview(ctx, repos.API)
 	expectError(t, err, review.CodeInvalidArgument, "has no reviews")
+	candidate := must[[]review.WorkspaceCandidate](t)(svc.DiscoverWorkspaces(ctx))[1]
+	must[review.Workspace](t)(svc.CreateWorkspace(ctx, review.CreateWorkspaceRequest{Name: candidate.Name, Repositories: candidate.Repositories}, reviewer))
+	_, err = svc.ResolveReview(ctx, repos.API)
+	expectError(t, err, review.CodeInvalidArgument, "has no reviews")
 	group := must[review.Review](t)(svc.CreateReview(ctx, review.CreateReviewRequest{WorkspacePath: filepath.Join(repos.API, "src")}, reviewer))
 	if group.Title != "unblock_elems" || group.WorkspaceID == single.WorkspaceID {
 		t.Fatalf("group review = %+v", group)
@@ -161,6 +165,13 @@ func TestReviewContextCreatesAtomicallyDefaultsTitleAndDoesNotGuess(t *testing.T
 	}
 	if got := must[[]review.Workspace](t)(svc.ListWorkspaces(ctx)); len(got) != 1 || got[0].ID != group.WorkspaceID {
 		t.Fatalf("failed creation left registration: %+v", got)
+	}
+	if err := db.Write(ctx, func(tx *sql.Tx) error { _, err := tx.ExecContext(ctx, `DROP TRIGGER reject_review`); return err }); err != nil {
+		t.Fatal(err)
+	}
+	retried := must[review.Review](t)(svc.CreateReview(ctx, review.CreateReviewRequest{WorkspacePath: filepath.Join(root, "ecomapping")}, reviewer))
+	if resolved := must[review.Review](t)(svc.ResolveReview(ctx, filepath.Join(root, "ecomapping"))); resolved.ID != retried.ID {
+		t.Fatalf("creation did not recover after rollback: %+v", resolved)
 	}
 }
 
@@ -232,6 +243,41 @@ func TestAmbiguousLegacyWorkspacesRequireExplicitID(t *testing.T) {
 	}
 }
 
+type reviewContentSnapshot struct {
+	review          review.Review
+	topics          []review.Topic
+	intents         []review.Intent
+	changes         []review.ObservedChange
+	findings        []review.Finding
+	evidence        []review.Evidence
+	attention       []review.AttentionSignal
+	representations []review.Representation
+	imports         []review.Import
+	discussions     []review.Discussion
+	decisions       []review.Decision
+}
+
+func (e *env) reviewContent(t *testing.T, reviewID string) reviewContentSnapshot {
+	t.Helper()
+	topics := must[[]review.Topic](t)(e.svc.ListTopics(e.ctx, reviewID))
+	var representations []review.Representation
+	for _, topic := range topics {
+		representations = append(representations, must[[]review.Representation](t)(e.svc.TopicRepresentations(e.ctx, topic.ID))...)
+	}
+	return reviewContentSnapshot{
+		review: must[review.Review](t)(e.svc.GetReview(e.ctx, reviewID)), topics: topics,
+		intents:         must[[]review.Intent](t)(e.svc.ListIntents(e.ctx, reviewID)),
+		changes:         must[[]review.ObservedChange](t)(e.svc.ListChanges(e.ctx, reviewID, nil)),
+		findings:        must[[]review.Finding](t)(e.svc.ListFindings(e.ctx, reviewID)),
+		evidence:        must[[]review.Evidence](t)(e.svc.ListEvidence(e.ctx, reviewID)),
+		attention:       must[[]review.AttentionSignal](t)(e.svc.ListAttention(e.ctx, reviewID)),
+		representations: representations,
+		imports:         must[[]review.Import](t)(e.svc.ListImports(e.ctx, reviewID)),
+		discussions:     must[[]review.Discussion](t)(e.svc.ListDiscussions(e.ctx, reviewID)),
+		decisions:       must[[]review.Decision](t)(e.svc.ListDecisions(e.ctx, reviewID)),
+	}
+}
+
 func TestHardDeleteRemovesHistoryButPreservesFilesSharedBlobsAndOtherWorkspaces(t *testing.T) {
 	e := newEnv(t)
 	ids := e.importFixture(t).IDs
@@ -259,6 +305,10 @@ func TestHardDeleteRemovesHistoryButPreservesFilesSharedBlobsAndOtherWorkspaces(
 	otherWS := must[review.Workspace](t)(e.svc.CreateWorkspace(e.ctx, fixture.WorkspaceRequest(e.repos), reviewer))
 	other := must[review.Review](t)(e.svc.CreateReview(e.ctx, review.CreateReviewRequest{WorkspaceID: otherWS.ID}, reviewer))
 	otherRevision := must[review.Revision](t)(e.svc.CaptureRevision(e.ctx, other.ID, reviewer))
+	must[review.ImportResult](t)(e.svc.Import(e.ctx, other.ID, review.ImportRequest{Manifest: fixture.Manifest()}, reviewer))
+	must[review.Discussion](t)(e.svc.CreateDiscussion(e.ctx, other.ID, review.CreateDiscussionRequest{Anchor: review.AnchorInput{Type: "REVIEW"}, Body: "Keep this other workspace's discussion"}, reviewer))
+	must[review.Decision](t)(e.svc.CreateDecision(e.ctx, other.ID, review.CreateDecisionRequest{Decision: "COMMENT", Body: "Keep this other workspace's decision"}, reviewer))
+	otherContent := e.reviewContent(t, other.ID)
 	otherFile := must[review.FileContent](t)(e.svc.GetFile(e.ctx, otherRevision.ID, otherRevision.Snapshots[0].RepositoryID, "src/routes/upload.ts"))
 	before := map[string]string{}
 	for _, path := range []string{e.repos.API, e.repos.Worker} {
@@ -291,12 +341,19 @@ func TestHardDeleteRemovesHistoryButPreservesFilesSharedBlobsAndOtherWorkspaces(
 	if err := rows.Err(); err != nil {
 		t.Fatal(err)
 	}
-	for _, table := range []string{"topics", "intents", "observed_changes", "findings", "evidence", "attention_signals", "representations", "imports", "discussions", "discussion_messages", "decisions"} {
-		var count int
-		if err := e.db.Reader().QueryRowContext(e.ctx, "SELECT COUNT(*) FROM "+table).Scan(&count); err != nil || count != 0 {
-			t.Fatalf("%s still contains deleted history: %d, %v", table, count, err)
-		}
+	if got := e.reviewContent(t, other.ID); !reflect.DeepEqual(got, otherContent) {
+		t.Fatal("other workspace's semantic content, discussions or decisions changed")
 	}
+	for _, topicID := range ids["topics"] {
+		_, err := e.svc.GetTopic(e.ctx, topicID)
+		expectError(t, err, review.CodeNotFound)
+	}
+	for _, evidenceID := range ids["evidence"] {
+		_, err := e.svc.GetEvidence(e.ctx, evidenceID)
+		expectError(t, err, review.CodeNotFound)
+	}
+	_, err = e.svc.GetDiscussion(e.ctx, discussionID)
+	expectError(t, err, review.CodeNotFound)
 	if err := e.svc.DeleteWorkspace(e.ctx, e.review.WorkspaceID, reviewer); err != nil {
 		t.Fatal("repeated deletion failed:", err)
 	}
