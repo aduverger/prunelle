@@ -16,8 +16,9 @@ Each PR starts with its own plan in [`plans/`](plans/), followed by its implemen
 M3+ (revision-aware review, analysis, Pi adapter) get separate plans.
 
 - **M2b:** [workspace/CLI usability #5](https://github.com/aduverger/prunelle/issues/5), including automatic discovery, context inference and workspace deletion. [Implementation plan and ledger](plans/m2b.md); merged in [PR #8](https://github.com/aduverger/prunelle/pull/8).
-- **Review-owned repositories:** [model revision plan and ledger](plans/review-owned-repositories.md), following M2b: review-owned source/lifecycle, capture-time defaults and no mandatory path allowlist. Recommendations and trust model approved; implementation and local validation complete, publication pending.
+- **Review-owned repositories:** [model revision plan and ledger](plans/review-owned-repositories.md), following M2b: review-owned source/lifecycle, capture-time defaults and no mandatory path allowlist. Merged in [PR #9](https://github.com/aduverger/prunelle/pull/9); production deployment remains separate.
 - **M3b:** [Pierre-native code review UI #6](https://github.com/aduverger/prunelle/issues/6): inline comments, stable code scrolling, Highlights, left comment navigation and on-demand decision/integration surfaces. [Implementation plan and ledger](plans/m3b.md); merged in [PR #7](https://github.com/aduverger/prunelle/pull/7). Separate from M2b and M3's revision-aware domain changes.
+- **M3:** [revision-aware review implementation draft](plans/m3.md): historical semantic views, revision comparison, conservative anchor validity, finding lifecycle and reviewer file-topic corrections. Draft for approval; M3b did not implement this domain milestone.
 
 ## Server
 
