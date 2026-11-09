@@ -4,6 +4,18 @@
 
 Ticket: [M3b #6](https://github.com/aduverger/prunelle/issues/6). M2b [#5](https://github.com/aduverger/prunelle/issues/5) remains the workspace/CLI milestone required before M3. This plan uses the requested M3b name; it does not rename M2b or add a new ordering dependency between M3 and M3b.
 
+## Workspace intent for ship review
+
+**User requirements:** make source review feel like the supplied DiffsHub reference using Pierre CodeView, native gutter utilities, line annotations and measured header/footer slots. Show composers and durable conversations beneath exact BASE/HEAD single/multiline ranges; keep code context stable through selection, typing, posting, replies, status changes and SSE. Add left Files/Comments navigation, remove the permanent right review column, launch decisions through **Review decision**, and make sessions secondary. Actually enable Highlights where supported.
+
+**Preserved contracts and operations:** topics/findings and Text/Diagram/Code/Evidence remain available; exhaustive/unassigned and deleted source remain navigable without fake paths/content. The server owns immutable source, anchors, authorship, messages, decisions and membership. Old comments open their original revision, never an inferred current line. Freeze edited drafts, retain independent reply/status retry identities through virtualization, honor stale If-Match handling and explicit retries, keep Markdown safe and decisions human-only. Drafts remain in memory with navigation/reload warnings; only preferences persist. Keep the existing MyGo Go-backed REST/SSE transport, API-only loopback/Tailscale server, separate authenticated identity/agent attribution, and optional Rex metadata/explicit associations. Tests use disposable repositories and a disconnected fake Rex backend, never user worktrees/sessions.
+
+**Agent-chosen mechanisms, not independent user requirements:** controlled CodeView items with revision/repository/path IDs; one continuous source canvas while semantic modes retain two views; split/light defaults and the numeric keyboard range form; native decision modal and Settings → Integrations; historical code scope without moving the global revision picker; untouched COMMENT forms follow the picker while dirty forms stay frozen. Review-lifetime controllers/portal hosts preserve existing mutation hooks; grouped annotations avoid duplicate location slots. These observable choices are retained during simplification, not silently removed.
+
+**Non-goals/rejected approaches:** no server/API/schema changes, re-anchoring/comparison (M3), automatic workspace/CLI work (M2b), code editing, agent chat/process control, batch pending-review comments, persisted draft/outbox/retry framework, custom diff/token renderer or scroll/measurement system, speculative workers/provider/theme abstractions, fabricated authors or DiffsHub demo deletion/storage semantics. Keep the pinned Pierre/MyGo integrations; permit WASM narrowly, not JavaScript `unsafe-eval`. M2b remains required before M3, not an inferred blocker for the explicitly requested M3b work.
+
+**Evidence limits:** the original macOS selection jump was not independently reproduced. Existing geometry/browser/native checks validate the replacement flow; Chrome ResizeObserver warnings, native macOS launch/signing and live tailnet verification remain the documented gaps below.
+
 ## Goal and required behavior
 
 Make source review feel close to DiffsHub: a file/comment navigator on the left, a generous code viewport, good highlighting, a gutter `+`, and composers and saved threads directly below their code. Remove the permanent Discussions / Decisions / Sessions column. Preserve Prunelle's feature/topic/evidence model and existing review guarantees rather than replacing the product with a GitHub PR viewer.
@@ -176,3 +188,16 @@ Implementation checks also exposed and corrected two integration failures: navig
 - Native macOS launch, signing/notarization and a live tailnet streaming session remain unverified here. The unsigned Mac bundle is cross-built, not a native-Mac test result.
 - Chrome development runs emit bounded `ResizeObserver loop completed with undelivered notifications` messages during some rapid annotation/revision transitions. Functional/geometry checks pass; no global error suppression or custom observer/scroll loop was added. This warning is not represented as a resolved library defect.
 - The existing large-bundle warning remains. Maximum-capacity performance and a separate browser 5xx/409 unknown-outcome presentation scenario were not benchmarked/added; real lost-response idempotency and disconnection/reconnect paths were exercised.
+
+## Scoped ship simplification
+
+Architecture review retained CodeView's required item versions, the keyboard range control and review-lifetime discussion controllers: removing them would change observable behavior or discard mutation/draft state during recycling. No product behavior or public API was removed, and tests were left for the Test phase to curate.
+
+### Simplification decisions — least confident first
+
+1. Use one stable `FileContent` parser selector rather than JSON-round-tripping file identities to memoize per-file selectors. The existing required response fields are authoritative; `Service.GetFile` fills revision/repository/path directly from the request. Query keys, null-side/binary/omitted handling, snapshot IDs and async annotation guards stay unchanged.
+2. Reuse the controlled selected range for explicit navigation, and pass the keyboard form its already-chosen file/content instead of letting it reconstruct selection from entire collections. Preserve the existing selected-file/first-file fallback and validation.
+3. Keep one immutable item-ID comparison rather than also checking the identical parser cache key; retain annotation/collapse version reconciliation. Simplify redundant header callback union types without changing supported item kinds.
+4. Alias the existing composer action directly and remove only the unused single-file header CSS. No new dependencies, stores, retry registries or compatibility paths.
+
+Focused rerun passed: client formatting/lint/typecheck, two model tests, all 18 existing real-server browser scenarios, production build and native Linux MyGo/WebKit smoke. Existing ResizeObserver and bundle warnings remain visible. No tests were added/removed/restructured, and no commit was made; ship owns the remaining workflow. Native macOS/live-tailnet checks remain unverified as above.

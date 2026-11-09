@@ -313,9 +313,7 @@ function ReviewPage({
     if (node.ref?.type === 'INTENT' || node.ref?.type === 'CHANGE')
       setInspector({ type: node.ref.type, id: node.ref.id });
   }
-  function discuss(t: DiscussionTarget) {
-    composer.start(t);
-  }
+  const discuss = composer.start;
   function openAnchor(d: {
     id?: string;
     anchor: DiscussionTarget['anchor'] | Model['Anchor'];

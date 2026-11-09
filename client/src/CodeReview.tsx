@@ -35,10 +35,37 @@ type Presentation = CodeViewDiffItem<string[]> & { annotationKey: string };
 function samePresentation(item: Presentation, previous: Presentation | undefined) {
   return (
     previous?.id === item.id &&
-    previous.fileDiff.cacheKey === item.fileDiff.cacheKey &&
     previous.annotationKey === item.annotationKey &&
     previous.collapsed === item.collapsed
   );
+}
+
+function parseStoredFile(content: Model['FileContent']): LoadedFile {
+  const id = sourceFileID({
+    revisionID: content.revision_id,
+    repositoryID: content.repository_id,
+    path: content.path,
+  });
+  const oldFile =
+    content.base_text == null
+      ? null
+      : {
+          name: content.old_path || content.path,
+          contents: content.base_text,
+        };
+  const newFile =
+    content.head_text == null
+      ? null
+      : {
+          name: content.path,
+          contents: content.head_text,
+        };
+  const fileDiff =
+    content.binary || content.content_omitted || (!oldFile && !newFile)
+      ? null
+      : parseDiffFromFile(oldFile, newFile);
+  if (fileDiff) fileDiff.cacheKey = id;
+  return { ...content, id, fileDiff };
 }
 
 export function CodeReview({
@@ -85,41 +112,22 @@ export function CodeReview({
   const [style, setStyle] = useState<'split' | 'unified'>('split');
   const [selectionError, setSelectionError] = useState('');
   const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set());
-  const fileKeys = JSON.stringify(files.map((f) => [f.revisionID, f.repositoryID, f.path]));
-  const queries = useMemo(() => {
-    const identities: [string, string, string][] = JSON.parse(fileKeys);
-    return identities.map(([revisionID, repositoryID, path]) => {
-      const id = sourceFileID({ revisionID, repositoryID, path });
-      return {
-        queryKey: ['file', revisionID, repositoryID, path],
-        queryFn: ({ signal }: { signal: AbortSignal }) =>
-          result(
-            api.GET('/v1/revisions/{revisionId}/file', {
-              params: {
-                path: { revisionId: revisionID },
-                query: { repository_id: repositoryID, path },
-              },
-              signal,
-            }),
-          ),
-        select(content: Model['FileContent']): LoadedFile {
-          const oldFile =
-            content.base_text == null
-              ? null
-              : { name: content.old_path || path, contents: content.base_text };
-          const newFile =
-            content.head_text == null ? null : { name: path, contents: content.head_text };
-          const fileDiff =
-            content.binary || content.content_omitted || (!oldFile && !newFile)
-              ? null
-              : parseDiffFromFile(oldFile, newFile);
-          if (fileDiff) fileDiff.cacheKey = id;
-          return { ...content, id, fileDiff };
-        },
-      };
-    });
-  }, [api, fileKeys]);
-  const loaded = useQueries({ queries });
+  const loaded = useQueries({
+    queries: files.map(({ revisionID, repositoryID, path }) => ({
+      queryKey: ['file', revisionID, repositoryID, path],
+      queryFn: ({ signal }: { signal: AbortSignal }) =>
+        result(
+          api.GET('/v1/revisions/{revisionId}/file', {
+            params: {
+              path: { revisionId: revisionID },
+              query: { repository_id: repositoryID, path },
+            },
+            signal,
+          }),
+        ),
+      select: parseStoredFile,
+    })),
+  });
   const annotations = new Map<string, DiffLineAnnotation<string[]>[]>();
   function annotate(id: string, range: NonNullable<FileSelection['range']>, metadata: string) {
     const values = annotations.get(id) || [];
@@ -302,49 +310,45 @@ export function CodeReview({
       +
     </button>
   ));
-  const renderHeaderPrefix = useStableCallback(
-    (item: CodeViewDiffItem<string[]> | { id: string }) => {
-      const identity = files.find((value) => sourceFileID(value) === item.id);
-      const label =
-        repositories.find((repository) => repository.repository_id === identity?.repositoryID)
-          ?.repository_label || identity?.repositoryID;
-      return (
-        <span
-          className="badge"
-          data-source-path={identity?.path}
-          data-repository-id={identity?.repositoryID}
-        >
-          {label}
-        </span>
-      );
-    },
-  );
-  const renderHeaderFilenameSuffix = useStableCallback(
-    (item: CodeViewDiffItem<string[]> | { id: string }) => (
-      <span className="row">
-        <span className="badge">
-          {loaded.find((query) => query.data?.id === item.id)?.data?.status}
-        </span>
-        <button
-          className="quiet"
-          aria-label={
-            (collapsed.has(item.id) ? 'Expand ' : 'Collapse ') +
-            files.find((f) => sourceFileID(f) === item.id)?.path
-          }
-          onClick={() =>
-            setCollapsed((previous) => {
-              const next = new Set(previous);
-              if (next.has(item.id)) next.delete(item.id);
-              else next.add(item.id);
-              return next;
-            })
-          }
-        >
-          {collapsed.has(item.id) ? 'Expand' : 'Collapse'}
-        </button>
+  const renderHeaderPrefix = useStableCallback((item: { id: string }) => {
+    const identity = files.find((value) => sourceFileID(value) === item.id);
+    const label =
+      repositories.find((repository) => repository.repository_id === identity?.repositoryID)
+        ?.repository_label || identity?.repositoryID;
+    return (
+      <span
+        className="badge"
+        data-source-path={identity?.path}
+        data-repository-id={identity?.repositoryID}
+      >
+        {label}
       </span>
-    ),
-  );
+    );
+  });
+  const renderHeaderFilenameSuffix = useStableCallback((item: { id: string }) => (
+    <span className="row">
+      <span className="badge">
+        {loaded.find((query) => query.data?.id === item.id)?.data?.status}
+      </span>
+      <button
+        className="quiet"
+        aria-label={
+          (collapsed.has(item.id) ? 'Expand ' : 'Collapse ') +
+          files.find((f) => sourceFileID(f) === item.id)?.path
+        }
+        onClick={() =>
+          setCollapsed((previous) => {
+            const next = new Set(previous);
+            if (next.has(item.id)) next.delete(item.id);
+            else next.add(item.id);
+            return next;
+          })
+        }
+      >
+        {collapsed.has(item.id) ? 'Expand' : 'Collapse'}
+      </button>
+    </span>
+  ));
   useEffect(() => {
     if (!file) {
       lastNavigation.current = navigation;
@@ -364,23 +368,20 @@ export function CodeReview({
       return;
     }
     viewer.current?.scrollTo(
-      file.range
+      selectedLines
         ? {
             type: 'range',
             id,
-            range: {
-              start: file.range.start_line,
-              end: file.range.end_line,
-              side: file.range.side === 'BASE' ? 'deletions' : 'additions',
-            },
+            range: selectedLines.range,
             align: 'center',
             behavior: 'instant',
           }
         : { type: 'item', id, align: 'start', behavior: 'instant' },
     );
     lastNavigation.current = navigation;
-  }, [file, navigation, items, loaded, loading]);
-  const selectedQuery = loaded[files.findIndex((file) => sourceFileID(file) === selectedID)];
+  }, [file, navigation, items, loaded, loading, selectedLines]);
+  const selectedFileIndex = files.findIndex((file) => sourceFileID(file) === selectedID);
+  const selectedQuery = loaded[selectedFileIndex];
   const selectedContent = selectedQuery?.data;
   const selectedError = selectedQuery?.error;
   useEffect(() => {
@@ -472,9 +473,8 @@ export function CodeReview({
           </button>
         )}
         <LineCommentForm
-          files={files}
-          selectedID={selectedID}
-          loaded={loaded.map((query) => query.data)}
+          file={files[selectedID ? selectedFileIndex : 0]}
+          content={selectedID ? selectedContent : loaded[0]?.data}
           begin={begin}
         />
       </div>
@@ -499,28 +499,25 @@ export function CodeReview({
 }
 
 function LineCommentForm({
-  files,
-  selectedID,
-  loaded,
+  file,
+  content,
   begin,
 }: {
-  files: FileSelection[];
-  selectedID: string | null;
-  loaded: (LoadedFile | undefined)[];
+  file: FileSelection | undefined;
+  content: LoadedFile | undefined;
   begin: (id: string, range: SelectedLineRange, reveal?: boolean) => void;
 }) {
   const [side, setSide] = useState<'BASE' | 'HEAD'>('HEAD');
   const [start, setStart] = useState(1);
   const [end, setEnd] = useState('');
   const [error, setError] = useState('');
-  const id = selectedID || (files[0] ? sourceFileID(files[0]) : null);
+  const id = file ? sourceFileID(file) : null;
   return (
     <details className="line-comment-form">
       <summary>Comment on lines…</summary>
       <form
         onSubmit={(event) => {
           event.preventDefault();
-          const content = loaded.find((value) => value?.id === id);
           const text = side === 'BASE' ? content?.base_text : content?.head_text;
           const last = end ? Number(end) : start;
           const count = text?.split('\n').length;
@@ -540,7 +537,7 @@ function LineCommentForm({
           begin(id, { start, end: last, side: side === 'BASE' ? 'deletions' : 'additions' }, true);
         }}
       >
-        <p>{files.find((file) => sourceFileID(file) === id)?.path || 'Select a file first.'}</p>
+        <p>{file?.path || 'Select a file first.'}</p>
         <label>
           Side
           <select

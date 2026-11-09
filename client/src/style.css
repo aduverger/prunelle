@@ -654,15 +654,6 @@ summary {
   text-align: left;
   font-size: 11px;
 }
-.file-heading {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 7px;
-  font-size: 10px;
-  overflow-wrap: anywhere;
-  margin-bottom: 6px;
-}
 .code-review {
   display: flex;
   flex-direction: column;
