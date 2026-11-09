@@ -343,6 +343,7 @@ export function RepresentationView({
           ))}
         {type === 'DIAGRAM' && (
           <Diagram
+            key={`${rep.id}:${revisionID}:${rep.version}`}
             representation={rep}
             revisionID={revisionID}
             elementID={elementID}

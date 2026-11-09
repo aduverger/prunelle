@@ -262,6 +262,22 @@ test('an original diagram discussion opens its frozen graph rather than the curr
   });
   expect(changed.status).toBe(200);
   await page.goto('/');
+  await expect(
+    page.getByRole('button', { name: 'Inspect POST /documents', exact: true }),
+  ).toBeVisible();
+  await page.getByRole('button', { name: /Processing status flow/ }).click();
+  await expect(
+    page.getByRole('button', { name: 'Inspect Replacement flow', exact: true }),
+  ).toBeVisible();
+  await page.getByRole('button', { name: 'Inspect Replacement flow', exact: true }).click();
+  await page.getByLabel('Revision', { exact: true }).selectOption(fixture.revision.id);
+  await expect(
+    page.getByRole('button', { name: 'Inspect ' + node.label, exact: true }),
+  ).toBeVisible();
+  await page.getByLabel('Revision', { exact: true }).selectOption(second.id);
+  await expect(
+    page.getByRole('button', { name: 'Inspect Replacement flow', exact: true }),
+  ).toBeVisible();
   await page.getByRole('button', { name: 'Comments', exact: true }).click();
   await page.getByLabel('Discussion scope').selectOption('all');
   const comment = page

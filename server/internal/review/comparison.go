@@ -332,8 +332,13 @@ func (s *Service) DiscussionAnchorStatuses(ctx context.Context, reviewID, target
 					break
 				}
 				before, existsBefore := anchorValue(original.Graph, discussion.Anchor)
+				if !existsBefore {
+					status.Status = "UNAVAILABLE"
+					status.Reason = "The original semantic target is absent from this revision's recorded state. Its ID is retained; per-edit snapshots were not recorded."
+					break
+				}
 				after, existsAfter := anchorValue(target.Graph, discussion.Anchor)
-				if existsBefore && existsAfter && reflect.DeepEqual(before, after) {
+				if existsAfter && reflect.DeepEqual(before, after) {
 					status.Status = "UNCHANGED"
 					status.Reason = "The anchored semantic content is unchanged; open its original revision for context."
 				} else {

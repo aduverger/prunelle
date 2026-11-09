@@ -296,6 +296,11 @@ func TestFrozenSemanticAnchorsUseOriginalGraphAndMembership(t *testing.T) {
 	for _, anchor := range anchors {
 		original = append(original, must[review.Discussion](t)(e.svc.CreateDiscussion(e.ctx, e.review.ID, review.CreateDiscussionRequest{Anchor: anchor, Body: "Preserve original semantic context"}, reviewer)))
 	}
+	transientConfig := *diagram.Diagram
+	transientConfig.Nodes = append(slices.Clone(transientConfig.Nodes), review.DiagramNode{ID: "transient", Label: "Transient node", Kind: "STATE", EvidenceIDs: []string{}})
+	edited := must[review.Representation](t)(e.svc.UpdateRepresentation(e.ctx, *diagram.ID, *diagram.Version, review.UpdateRepresentationRequest{RepresentationConfig: review.RepresentationConfig{Diagram: &transientConfig}}, reviewer))
+	transientThread := must[review.Discussion](t)(e.svc.CreateDiscussion(e.ctx, e.review.ID, review.CreateDiscussionRequest{Anchor: review.AnchorInput{Type: "DIAGRAM_ELEMENT", ID: diagram.ID, ElementID: id("transient")}, Body: "Discussed before removal"}, reviewer))
+	must[review.Representation](t)(e.svc.UpdateRepresentation(e.ctx, *diagram.ID, *edited.Version, review.UpdateRepresentationRequest{RepresentationConfig: review.RepresentationConfig{Diagram: diagram.Diagram}}, reviewer))
 	second := must[review.Revision](t)(e.svc.CaptureRevision(e.ctx, e.review.ID, review.CaptureRequest{}, reviewer))
 	for _, topic := range graphAt(t, e, second.ID).Topics {
 		empty := []string{}
@@ -316,6 +321,13 @@ func TestFrozenSemanticAnchorsUseOriginalGraphAndMembership(t *testing.T) {
 	diagramStatus := statuses[slices.IndexFunc(statuses, func(v review.DiscussionAnchorStatus) bool { return v.DiscussionID == original[len(original)-1].ID })]
 	if diagramStatus.Status != "OUTDATED" {
 		t.Fatal("missing diagram element was not flagged")
+	}
+	for _, revisionID := range []string{e.revision.ID, second.ID} {
+		statuses := must[[]review.DiscussionAnchorStatus](t)(e.svc.DiscussionAnchorStatuses(e.ctx, e.review.ID, revisionID))
+		status := statuses[slices.IndexFunc(statuses, func(v review.DiscussionAnchorStatus) bool { return v.DiscussionID == transientThread.ID })]
+		if status.Status != "UNAVAILABLE" {
+			t.Fatalf("original node removed before freeze is %s against %s, want UNAVAILABLE", status.Status, revisionID)
+		}
 	}
 	laterFinding := e.importFixture(t).IDs["findings"]["F-1"]
 	_, err := e.svc.CreateDecision(e.ctx, e.review.ID, review.CreateDecisionRequest{RevisionID: &e.revision.ID, Decision: "REQUEST_CHANGES", FindingIDs: []string{laterFinding}}, reviewer)

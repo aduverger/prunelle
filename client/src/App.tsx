@@ -424,10 +424,8 @@ function ReviewPage({
       setInspector({ type: 'finding', id: d.anchor.id });
     else if ((d.anchor.type === 'INTENT' || d.anchor.type === 'CHANGE') && d.anchor.id)
       setInspector({ type: d.anchor.type, id: d.anchor.id });
-    else if (d.anchor.type === 'EVIDENCE') {
-      const e = data.evidence.find((e) => e.id === d.anchor.id);
-      if (e) setInspector({ type: 'evidence', id: e.id });
-    }
+    else if (d.anchor.type === 'EVIDENCE' && d.anchor.id)
+      setInspector({ type: 'evidence', id: d.anchor.id });
     if (d.anchor.type !== 'CODE_RANGE') {
       setFocusedDiscussionID(d.id || null);
       setDiscussionNavigation((value) => value + 1);
