@@ -1,6 +1,6 @@
 # M3b — Pierre-native code review and inline discussions
 
-**Status: implemented locally on `m3b-client`; not yet published or merged.**
+**Status: published in [PR #7](https://github.com/aduverger/prunelle/pull/7); not yet merged.**
 
 Ticket: [M3b #6](https://github.com/aduverger/prunelle/issues/6). M2b [#5](https://github.com/aduverger/prunelle/issues/5) remains the workspace/CLI milestone required before M3. This plan uses the requested M3b name; it does not rename M2b or add a new ordering dependency between M3 and M3b.
 
@@ -265,3 +265,11 @@ R1 and R2 are confined to the existing source-navigation and in-memory draft flo
 - R1: select `long.ts`, scroll to a distant file without changing tree selection, then activate the still-selected entry by click, keyboard or search Enter. Each must return the original file to view. The click failed before the fix; search Enter also failed when only native-click activation was handled. The test tolerates different virtualization/cache/controller implementations and does not assert item versions or scroll counters.
 - R2: start a real fixture diagram-element draft, navigate to another topic and Files, then return through Comments. Require the original topic/diagram/selected node and text, then verify the persisted original revision/representation/element and server-derived topic. The original implementation failed to restore the topic. The test tolerates different draft/portal/query ownership without weakening the immutable-anchor contract.
 - Validation passed: both focused regressions, all 21 real-server browser scenarios, native Linux MyGo/WebKit smoke (including real external SSE), formatting/lint, both model tests, TypeScript/production build, frozen install/peer checks and unchanged generated API types. Client Go formatting/vet/race and darwin-arm64 cross-build also passed. No commit was made; native Mac/live-tailnet and the previously documented warnings remain separate verification gaps.
+
+## CI fixture identity correction
+
+The first PR run failed all 12 code-review cases during setup: the extra long-file Git commit inherited the runner's missing identity. Earlier local passes could use local configuration or OS identity inference; they did not establish clean-runner independence.
+
+**Decision:** mirror the existing Go fixture's process-local author/committer, fixed timestamps and disabled global/system Git configuration for the extra fixture commands. Do not configure the user's Git identity, add a CI-wide identity workaround, change review authorship or weaken assertions.
+
+Reproduced `Author identity unknown` with user identity variables unset, global/system configuration disabled and `user.useConfigOnly=true` to prohibit local OS inference. After correction, all 21 real-server browser scenarios and native Linux MyGo/WebKit smoke passed in that environment; formatting/lint, both model tests and typechecked production build also passed.

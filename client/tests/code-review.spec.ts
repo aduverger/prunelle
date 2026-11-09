@@ -1,6 +1,7 @@
 import { test, expect, type Page } from '@playwright/test';
 import { execFileSync } from 'node:child_process';
 import { writeFileSync } from 'node:fs';
+import { devNull } from 'node:os';
 import { Fixture, buildServer, server } from './fixture';
 import type { Model } from '../src/api/client';
 
@@ -25,7 +26,20 @@ test.beforeEach(async () => {
     ['commit', '-m', 'Add long review fixture'],
     ['update-ref', 'refs/heads/main', 'HEAD'],
   ]) {
-    execFileSync('git', ['-C', repository, ...args], { stdio: 'pipe' });
+    execFileSync('git', ['-C', repository, ...args], {
+      stdio: 'pipe',
+      env: {
+        ...process.env,
+        GIT_AUTHOR_NAME: 'Prunelle Fixture',
+        GIT_AUTHOR_EMAIL: 'fixture@prunelle.invalid',
+        GIT_AUTHOR_DATE: '2026-11-01T10:00:00Z',
+        GIT_COMMITTER_NAME: 'Prunelle Fixture',
+        GIT_COMMITTER_EMAIL: 'fixture@prunelle.invalid',
+        GIT_COMMITTER_DATE: '2026-11-01T10:00:00Z',
+        GIT_CONFIG_GLOBAL: devNull,
+        GIT_CONFIG_NOSYSTEM: '1',
+      },
+    });
   }
   writeFileSync(`${repository}/src/long.ts`, contents(1000));
   writeFileSync(
