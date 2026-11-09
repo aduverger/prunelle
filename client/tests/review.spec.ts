@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { writeFileSync } from 'node:fs';
+import { mkdirSync, rmSync, unlinkSync, writeFileSync } from 'node:fs';
 import { Fixture, buildServer, server } from './fixture';
 import type { Model } from '../src/api/client';
 
@@ -62,17 +62,144 @@ test('topics, grounding, exhaustive source and persistent perspectives', async (
   await expect(page.getByRole('heading', { name: /Unassigned Changes/ })).toBeVisible();
   await expect(page.locator('.source-tree')).toContainText('api');
   await expect(page.locator('.source-tree')).toContainText('worker');
+  await expect(
+    page
+      .getByRole('region', { name: 'Unassigned Changes', exact: true })
+      .getByRole('region', { name: 'api', exact: true })
+      .getByRole('treeitem', { name: 'package.json', exact: true }),
+  ).toBeInViewport({ ratio: 1 });
   const unassigned = await fixture.get<Model['SourceChanges']>(
     '/v1/revisions/' + fixture.revision.id + '/source-changes',
   );
   const f = unassigned.repositories
     .flatMap((r) => r.files.map((f) => ({ ...f, label: r.repository_label })))
     .find((f) => f.unassigned)!;
-  await page.getByRole('button', { name: f.label + '/' + f.path, exact: true }).click();
+  await page
+    .getByRole('region', { name: 'Unassigned Changes', exact: true })
+    .getByRole('region', { name: f.label, exact: true })
+    .getByRole('treeitem', { name: f.path.split('/').at(-1)!, exact: true })
+    .click();
   await expect(page.getByTestId('file-diff')).toContainText(f.path);
   await page.getByRole('button', { name: 'Runtime sessions', exact: false }).click();
   await expect(page.getByRole('region', { name: 'Runtime sessions' })).toContainText('UNREACHABLE');
   expect(errors).toEqual([]);
+});
+
+test('Pierre source trees keep repository and revision identity through navigation and failed refresh', async ({
+  page,
+}) => {
+  for (const label of ['api', 'worker']) {
+    const dir = `${fixture.dir}/repos/${label}/shared`;
+    mkdirSync(dir);
+    writeFileSync(dir + '/review.txt', `Stored ${label} source\n`);
+  }
+  const replacement = `${fixture.dir}/repos/worker/README.md`;
+  unlinkSync(replacement);
+  mkdirSync(replacement);
+  writeFileSync(replacement + '/replacement.txt', 'A directory replaced this file\n');
+  const routes = `${fixture.dir}/repos/api/src/routes`;
+  rmSync(routes, { recursive: true });
+  writeFileSync(routes, 'A file replaced this directory\n');
+  mkdirSync(`${fixture.dir}/repos/api/assets`);
+  writeFileSync(`${fixture.dir}/repos/api/assets/review.bin`, Buffer.from([0, 1, 2]));
+  await page.goto('/');
+  await expect(page.getByLabel('Revision', { exact: true })).toHaveValue(fixture.revision.id);
+  await page.getByRole('button', { name: 'Capture', exact: true }).click();
+  await expect(page.getByLabel('Revision', { exact: true })).not.toHaveValue(fixture.revision.id);
+  const revisionID = await page.getByLabel('Revision', { exact: true }).inputValue();
+  await page.getByLabel('Perspective', { exact: true }).selectOption('Source');
+  const all = page.getByRole('region', { name: 'All repositories', exact: true });
+  const api = all.getByRole('region', { name: 'api', exact: true });
+  const worker = all.getByRole('region', { name: 'worker', exact: true });
+  const shared = api.getByRole('treeitem', { name: 'shared', exact: true });
+  const apiFile = api.getByRole('treeitem', { name: 'review.txt', exact: true });
+  const workerFile = worker.getByRole('treeitem', { name: 'review.txt', exact: true });
+  const diff = page.getByTestId('file-diff');
+  await worker
+    .getByRole('region', { name: 'Deleted files', exact: true })
+    .getByRole('treeitem', { name: 'README.md', exact: true })
+    .click();
+  await expect(diff).toContainText('DELETED');
+  await expect(diff.locator('[data-content]')).toContainText('Background jobs');
+  await worker
+    .getByRole('region', { name: 'Changed files', exact: true })
+    .getByRole('treeitem', { name: 'replacement.txt', exact: true })
+    .click();
+  await expect(diff.locator('[data-content]')).toContainText('A directory replaced this file');
+  await api
+    .getByRole('region', { name: 'Deleted files', exact: true })
+    .getByRole('treeitem', { name: 'upload.ts', exact: true })
+    .click();
+  await expect(diff).toContainText('DELETED');
+  await expect(diff.locator('[data-content]')).toContainText('processDocument');
+  await api
+    .getByRole('region', { name: 'Changed files', exact: true })
+    .getByRole('treeitem', { name: 'routes', exact: true })
+    .click();
+  await expect(diff.locator('[data-content]')).toContainText('A file replaced this directory');
+  await expect(shared).toHaveAttribute('aria-expanded', 'true');
+  await shared.click();
+  await expect(shared).toHaveAttribute('aria-expanded', 'false');
+  await expect(apiFile).toHaveCount(0);
+  await shared.press('ArrowRight');
+  await expect(shared).toHaveAttribute('aria-expanded', 'true');
+  await shared.press('ArrowDown');
+  await expect(apiFile).toBeFocused();
+  await apiFile.press('Enter');
+  await expect(apiFile).toHaveAttribute('aria-selected', 'true');
+  await expect(apiFile.getByText('U', { exact: true })).toBeVisible();
+  await expect(diff.locator('[data-content]')).toContainText('Stored api source');
+  await apiFile.press('Control+f');
+  const search = api
+    .getByRole('region', { name: 'Changed files', exact: true })
+    .getByPlaceholder('Search…', { exact: true });
+  await search.fill('review.txt');
+  await expect(api.getByRole('treeitem', { name: 'package.json', exact: true })).toHaveCount(0);
+  await search.press('Escape');
+  await expect(api.getByRole('treeitem', { name: 'package.json', exact: true })).toBeVisible();
+  await workerFile.click();
+  await expect(workerFile).toHaveAttribute('aria-selected', 'true');
+  await expect(apiFile).toHaveAttribute('aria-selected', 'false');
+  await expect(diff.locator('[data-content]')).toContainText('Stored worker source');
+  await expect(diff).toContainText(revisionID);
+  await expect(
+    page
+      .getByRole('region', { name: 'Unassigned Changes', exact: true })
+      .getByRole('region', { name: 'worker', exact: true })
+      .getByRole('treeitem', { name: 'review.txt', exact: true }),
+  ).toHaveAttribute('aria-selected', 'true');
+
+  await shared.click();
+  await expect(shared).toHaveAttribute('aria-expanded', 'false');
+  await page.route('**/source-changes', (route) => route.abort('failed'));
+  await page.getByRole('button', { name: 'Refresh', exact: true }).click();
+  await expect(page.getByRole('alert')).toBeVisible();
+  await expect(shared).toHaveAttribute('aria-expanded', 'false');
+  await expect(workerFile).toHaveAttribute('aria-selected', 'true');
+  await expect(diff.locator('[data-content]')).toContainText('Stored worker source');
+  await page.unroute('**/source-changes');
+  const refreshed = page.waitForResponse((r) => r.url().endsWith('/source-changes') && r.ok());
+  await page.getByRole('button', { name: 'Refresh', exact: true }).click();
+  await refreshed;
+  await expect(page.getByRole('alert')).toHaveCount(0);
+  await expect(shared).toHaveAttribute('aria-expanded', 'false');
+  await expect(workerFile).toHaveAttribute('aria-selected', 'true');
+
+  await api.getByRole('treeitem', { name: 'review.bin', exact: true }).click();
+  await expect(diff).toContainText('api/assets/review.bin');
+  await expect(diff).toContainText('BINARY');
+  await expect(diff.locator('diffs-container')).toHaveCount(0);
+  await page.getByLabel('Revision', { exact: true }).selectOption(fixture.revision.id);
+  await expect(all.getByRole('treeitem', { name: 'review.txt', exact: true })).toHaveCount(0);
+  await expect(all.getByRole('treeitem', { selected: true })).toHaveCount(0);
+  writeFileSync(`${fixture.dir}/repos/worker/shared/review.txt`, 'Uncaptured working copy\n');
+  await page.getByLabel('Revision', { exact: true }).selectOption(revisionID);
+  await workerFile.click();
+  await expect(diff.locator('[data-content]')).toContainText('Stored worker source');
+  await expect(diff.locator('[data-content]')).not.toContainText('Uncaptured working copy');
+  expect(
+    await fixture.get<Model['Discussion'][]>(`/v1/reviews/${fixture.review.id}/discussions`),
+  ).toHaveLength(0);
 });
 
 test('exact code discussion is shared across views, replies and resolution persist', async ({
@@ -190,6 +317,14 @@ test('evidence-loaded and reopened ranges keep their original revision when disc
     })
     .click();
 
+  await page.getByRole('button', { name: 'All Source Changes', exact: true }).click();
+  const source = page.getByRole('region', { name: 'All repositories', exact: true });
+  await expect(
+    source
+      .getByRole('region', { name: 'api', exact: true })
+      .getByRole('treeitem', { name: 'upload.ts', exact: true }),
+  ).toHaveAttribute('aria-selected', 'true');
+
   for (const origin of ['linked evidence', 'existing discussion']) {
     if (origin === 'existing discussion') {
       writeFileSync(fixture.dir + '/repos/api/src/routes/upload.ts', 'DIFFERENT_REVISION\n');
@@ -202,6 +337,8 @@ test('evidence-loaded and reopened ranges keep their original revision when disc
         .getByRole('button', { name: /src\/routes\/upload.ts:/ })
         .click();
     }
+    if (origin === 'existing discussion')
+      await expect(source.getByRole('treeitem', { selected: true })).toHaveCount(0);
     await page.getByRole('button', { name: 'Discuss selected lines', exact: true }).click();
     await page
       .getByRole('textbox', { name: 'New discussion', exact: true })
@@ -214,6 +351,7 @@ test('evidence-loaded and reopened ranges keep their original revision when disc
     await expect(
       page
         .getByRole('region', { name: 'Discussions', exact: true })
+        .getByRole('article')
         .getByText('Comment from ' + origin, { exact: true }),
     ).toBeVisible();
   }

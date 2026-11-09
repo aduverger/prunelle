@@ -35,6 +35,7 @@ import {
 import { Decisions, DiscussionPanel } from './Discussions';
 import { Sessions } from './Sessions';
 import { IntentCard, ChangeCard } from './Records';
+import { SourceTree } from './SourceTree';
 
 function hasTextDrafts() {
   return Array.from(document.querySelectorAll('textarea')).some((t) => t.value.trim());
@@ -461,6 +462,7 @@ function ReviewPage({
               <ErrorNotice error={source.error} />
               {source.data ? (
                 <SourceTree
+                  key={source.data.revision_id}
                   source={source.data}
                   file={file}
                   choose={(f) => {
@@ -815,65 +817,5 @@ function TopicTree({
         </li>
       ))}
     </ul>
-  );
-}
-function SourceTree({
-  source,
-  file,
-  choose,
-}: {
-  source: Model['SourceChanges'];
-  file: FileSelection | null;
-  choose: (f: FileSelection) => void;
-}) {
-  const entries = source.repositories.flatMap((r) =>
-    r.files.map((f) => ({ ...f, repositoryID: r.repository_id, label: r.repository_label })),
-  );
-  return (
-    <div className="source-tree">
-      <h3>
-        Unassigned Changes <span className="count">{source.unassigned_count}</span>
-      </h3>
-      {!source.unassigned_count && <p className="muted">Every file is linked to a topic.</p>}
-      {entries
-        .filter((f) => f.unassigned)
-        .map((f) => (
-          <button
-            key={f.repositoryID + f.path}
-            onClick={() =>
-              choose({ revisionID: source.revision_id, repositoryID: f.repositoryID, path: f.path })
-            }
-          >
-            {f.label}/{f.path}
-          </button>
-        ))}
-      {source.repositories.map((r) => (
-        <section key={r.repository_id}>
-          <h3>
-            {r.repository_label} <span className="count">{r.files.length}</span>
-          </h3>
-          {r.files.map((f) => (
-            <button
-              key={f.path}
-              aria-pressed={file?.repositoryID === r.repository_id && file.path === f.path}
-              onClick={() =>
-                choose({
-                  revisionID: source.revision_id,
-                  repositoryID: r.repository_id,
-                  path: f.path,
-                })
-              }
-            >
-              <span>{f.path}</span>
-              <small>
-                {f.status}
-                {f.unassigned ? ' · Unassigned' : ''}
-              </small>
-            </button>
-          ))}
-          {!r.files.length && <p className="muted">No changed files.</p>}
-        </section>
-      ))}
-    </div>
   );
 }

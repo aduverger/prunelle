@@ -419,8 +419,7 @@ summary {
 .source-tree {
   padding: 17px 14px;
 }
-.nav-list > button,
-.source-tree button {
+.nav-list > button {
   display: flex;
   flex-direction: column;
   text-align: left;
@@ -432,16 +431,14 @@ summary {
   overflow-wrap: anywhere;
   font-size: 11px;
 }
-.nav-list > button:hover,
-.source-tree button:hover {
+.nav-list > button:hover {
   background: #eaf0e4;
 }
 .nav-list > button strong {
   font-weight: 500;
   font-size: 12px;
 }
-.nav-list small,
-.source-tree small {
+.nav-list small {
   color: var(--muted);
   font-size: 9px;
 }
@@ -449,6 +446,23 @@ summary {
   margin: 18px 0 8px;
   color: #697361;
   font-size: 11px;
+}
+.source-tree h4 {
+  margin: 12px 0 6px;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 500;
+}
+.repository-files {
+  display: block;
+  color-scheme: light;
+  --trees-font-family-override: inherit;
+  --trees-font-size-override: 11px;
+  --trees-bg-override: #f6f8f3;
+  --trees-fg-override: #25312d;
+  --trees-accent-override: var(--green);
+  --trees-selected-bg-override: #e6ede1;
+  --trees-border-color-override: var(--border);
 }
 .severity {
   font-size: 9px;

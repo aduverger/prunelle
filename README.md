@@ -85,7 +85,7 @@ pnpm desktop
 
 Use **Server** in the app to connect to `http://127.0.0.1:7390` locally or `https://<machine>.<tailnet>.ts.net` through Tailscale Serve. The desktop fetches through Go; it adds no identity headers or credentials. The API server remains API-only, with no CORS exception.
 
-- Navigate Topics, Findings, or All Source Changes (including Unassigned Changes).
+- Navigate Topics, Findings, or All Source Changes (including Unassigned Changes). Source navigation uses Pierre Trees: arrow keys to navigate, Enter to open, and Ctrl/Cmd+F to search the focused tree. Deleted files have a separate tree so file/directory replacements remain inspectable.
 - Switch Text / Diagram / Code / Evidence, or show two views. Evidence links and diagram nodes trace back to canonical records and stored source. Select line numbers to discuss an exact range.
 - Discussions, replies, resolution and decisions are shared across views. Decisions name an exact revision; request changes selects actionable findings or threads. Comments never start an agent or change code.
 - Perspectives and layout are local preferences. Capture is manual; source can be inspected at older revisions, while topic/representation metadata is the current graph (revision-aware comparison is M3).

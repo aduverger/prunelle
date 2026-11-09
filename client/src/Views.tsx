@@ -313,24 +313,30 @@ export function FileDiff({
     );
   return (
     <section className="file-diff" data-testid="file-diff">
-      <div className="file-heading">
-        <strong>
-          {repositoryLabel || file.repositoryID}/{file.path}
-        </strong>
-        <span className="badge">{content.status}</span>
-      </div>
       <small className="muted">
         Immutable snapshot · {file.revisionID}
         {content.old_path && ' · renamed from ' + content.old_path}
       </small>
       {content.binary || content.content_omitted ? (
-        <Notice>{content.content_omitted || 'Binary file: no text preview.'}</Notice>
+        <>
+          <div className="file-heading">
+            <strong>
+              {repositoryLabel || file.repositoryID}/{file.path}
+            </strong>
+            <span className="badge">{content.status}</span>
+          </div>
+          <Notice>{content.content_omitted || 'Binary file: no text preview.'}</Notice>
+        </>
       ) : (
         <>
           <p className="muted">Select line numbers to discuss a range on one side.</p>
           <MultiFileDiff
             {...(oldFile ? { oldFile, newFile } : { oldFile: null, newFile: newFile! })}
             selectedLines={selected}
+            renderHeaderPrefix={() => (
+              <span className="badge">{repositoryLabel || file.repositoryID}</span>
+            )}
+            renderHeaderFilenameSuffix={() => <span className="badge">{content.status}</span>}
             options={{
               theme: 'github-light',
               diffStyle: 'unified',

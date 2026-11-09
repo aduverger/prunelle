@@ -119,10 +119,22 @@ try {
   await waitFor(
     "!!Array.from(document.querySelectorAll('.message')).find(e=>e.textContent.includes('Native WebKit comment'))",
   );
+  await evaluate(
+    "Array.from(document.querySelectorAll('button')).find(b=>b.textContent==='All Source Changes').click(); true",
+  );
+  await waitFor(
+    `!!document.querySelector('file-tree-container')?.shadowRoot?.querySelector('[role="treeitem"][data-item-path="docs/async-upload.md"]')`,
+  );
+  await evaluate(
+    `document.querySelector('file-tree-container').shadowRoot.querySelector('[role="treeitem"][data-item-path="docs/async-upload.md"]').click(); true`,
+  );
+  await waitFor(
+    `!!document.querySelector('diffs-container')?.shadowRoot?.querySelector('[data-content]')?.textContent.includes('Uploads return 202 Accepted')`,
+  );
   const png = await call('capture');
   if (png.png) writeFileSync(resolve('native-smoke.png'), Buffer.from(png.png, 'base64'));
   console.log(
-    'Native MyGo/WebKit: bundled UI, Go-backed REST, streamed events, stored diff and persisted comment passed.',
+    'Native MyGo/WebKit: bundled UI, Go-backed REST, streamed events, Pierre tree navigation, stored diff and persisted comment passed.',
   );
   lines.close();
 } finally {
