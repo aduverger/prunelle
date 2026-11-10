@@ -38,6 +38,12 @@ export function useAgentState(api: API, reviewID: string, poll: boolean) {
 
 type AgentQuery = ReturnType<typeof useAgentState>;
 
+const requestLabels: Record<AgentAction['intent'], string> = {
+  DISCUSS: 'Ask Pi',
+  PREPARE_REVIEW: 'Prepare review',
+  IMPLEMENT: 'Send implementation request',
+};
+
 export function AgentPanel({
   api,
   reviewID,
@@ -72,6 +78,14 @@ export function AgentPanel({
     );
   }
   const binding = query.data?.binding;
+  let attachmentNotice = 'No Pi is attached. Connect the extension or select a conversation.';
+  if (binding?.mode === 'DISCONNECTED') {
+    attachmentNotice =
+      'Intentionally disconnected. Automatic attachment stays off until you enable it.';
+  } else if (binding && binding.candidates.length > 1) {
+    attachmentNotice =
+      'Several Pi conversations match this review. Select one; no work has been sent.';
+  }
   return (
     <section className="agents" aria-label="Pi integration">
       <h2>Pi conversation</h2>
@@ -87,15 +101,7 @@ export function AgentPanel({
             Selection: {binding.mode.toLowerCase()}. {binding.candidates.length} connected cwd
             matches.
           </p>
-          {!binding.agent_session_id && (
-            <Notice>
-              {binding.mode === 'DISCONNECTED'
-                ? 'Intentionally disconnected. Automatic attachment stays off until you enable it.'
-                : binding.candidates.length > 1
-                  ? 'Several Pi conversations match this review. Select one; no work has been sent.'
-                  : 'No Pi is attached. Connect the extension or select a conversation.'}
-            </Notice>
-          )}
+          {!binding.agent_session_id && <Notice>{attachmentNotice}</Notice>}
           <label>
             Attached Pi
             <select
@@ -226,27 +232,31 @@ export function AgentRequestForm({
   const target = query.data?.sessions.find((session) => session.id === targetID);
   const selectionChanged = query.data?.binding.agent_session_id !== targetID;
   const current = invocation.data || submitted;
-  const requestLabel =
-    preview.action.intent === 'IMPLEMENT'
-      ? 'Send implementation request'
-      : preview.action.intent === 'PREPARE_REVIEW'
-        ? 'Prepare review'
-        : 'Ask Pi';
+  const requestLabel = requestLabels[preview.action.intent];
+  let sendLabel = requestLabel;
+  if (action.busy) sendLabel = 'Sending…';
+  else if (uncertain) sendLabel = 'Retry original request';
   async function send() {
     if (!targetID) return;
     const input = preview.action;
     const base = { agent_session_id: targetID, revision_id: preview.revisionID };
-    const request: Model['CreateAgentInvocationRequest'] =
-      input.intent === 'DISCUSS'
-        ? {
-            ...base,
-            intent: input.intent,
-            discussion_id: input.discussion.id,
-            message_id: input.message.id,
-          }
-        : input.intent === 'IMPLEMENT'
-          ? { ...base, intent: input.intent, decision_id: input.decision.id }
-          : { ...base, intent: input.intent };
+    let request: Model['CreateAgentInvocationRequest'];
+    switch (input.intent) {
+      case 'DISCUSS':
+        request = {
+          ...base,
+          intent: input.intent,
+          discussion_id: input.discussion.id,
+          message_id: input.message.id,
+        };
+        break;
+      case 'IMPLEMENT':
+        request = { ...base, intent: input.intent, decision_id: input.decision.id };
+        break;
+      case 'PREPARE_REVIEW':
+        request = { ...base, intent: input.intent };
+        break;
+    }
     await action.submit([reviewID, request], async (key) => {
       try {
         const created = await result(
@@ -390,7 +400,7 @@ export function AgentRequestForm({
           void send();
         }}
       >
-        {action.busy ? 'Sending…' : uncertain ? 'Retry original request' : requestLabel}
+        {sendLabel}
       </button>
       {action.error && (
         <p className="error" role="alert">

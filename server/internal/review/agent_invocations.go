@@ -109,7 +109,7 @@ func scanInvocation(scan func(...any) error) (AgentInvocation, error) {
 	}
 	invocation.DiscussionID, invocation.MessageID, invocation.DecisionID, invocation.Error = stringPtr(discussion), stringPtr(message), stringPtr(decision), stringPtr(failure)
 	invocation.CreatedAt, invocation.UpdatedAt = store.ParseTime(created), store.ParseTime(updated)
-	if err == nil && result.Valid {
+	if result.Valid {
 		err = json.Unmarshal([]byte(result.String), &invocation.Result)
 	}
 	return invocation, err
@@ -152,6 +152,10 @@ func invocationFingerprint(view RevisionView, invocation AgentInvocation) string
 	return hex.EncodeToString(hash[:])
 }
 
+func eligibleForGeneration(file SourceFile) bool {
+	return file.Unassigned && file.AssignmentMode == "DERIVED" && !file.Binary && file.ContentOmitted == nil
+}
+
 func eligibleGenerationFiles(view RevisionView) []SourceFileRef {
 	files := []SourceFileRef{}
 	if view.Graph == nil || view.Graph.SourceChanges == nil {
@@ -159,7 +163,7 @@ func eligibleGenerationFiles(view RevisionView) []SourceFileRef {
 	}
 	for _, repo := range view.Graph.SourceChanges.Repositories {
 		for _, file := range repo.Files {
-			if file.Unassigned && file.AssignmentMode == "DERIVED" && !file.Binary && file.ContentOmitted == nil {
+			if eligibleForGeneration(file) {
 				files = append(files, SourceFileRef{RevisionID: *view.RevisionID, RepositoryID: repo.RepositoryID, Path: file.Path})
 			}
 		}

@@ -22,7 +22,7 @@ func (s *Service) publishGeneratedReview(ctx context.Context, tx *sql.Tx, invoca
 	}
 	plan := &importPlan{
 		importID: store.NewID("imp"), reviewID: invocation.ReviewID, revisionID: invocation.RevisionID, author: actor.Author,
-		ids: map[string]map[string]string{"intents": {}, "evidence": {}, "changes": {}, "findings": {}, "topics": {}, "attention": {}},
+		ids: map[string]map[string]string{"topics": {}},
 	}
 	topics := []ManifestTopic{}
 	for i, topic := range generated.Topics {
@@ -34,14 +34,12 @@ func (s *Service) publishGeneratedReview(ctx context.Context, tx *sql.Tx, invoca
 		topics = append(topics, ManifestTopic{Key: topic.Key, Title: topic.Title, Summary: topic.Summary,
 			Representations: []ManifestRepresentation{{Type: "TEXT", Text: &ManifestText{Sections: []ManifestSection{{Heading: "Explanation", Body: topic.Explanation}}}}}})
 	}
-	eligible := map[fileKey]bool{}
-	for _, file := range eligibleGenerationFiles(view) {
-		eligible[fileKey{file.RepositoryID, file.Path}] = true
-	}
-	versions := map[fileKey]int{}
+	eligibleVersions := map[fileKey]int{}
 	for _, repo := range view.Graph.SourceChanges.Repositories {
 		for _, file := range repo.Files {
-			versions[fileKey{repo.RepositoryID, file.Path}] = file.AssignmentVersion
+			if eligibleForGeneration(file) {
+				eligibleVersions[fileKey{repo.RepositoryID, file.Path}] = file.AssignmentVersion
+			}
 		}
 	}
 	active := map[string]bool{}
@@ -54,7 +52,7 @@ func (s *Service) publishGeneratedReview(ctx context.Context, tx *sql.Tx, invoca
 	for i, file := range generated.Files {
 		path := fmt.Sprintf("files[%d]", i)
 		key := fileKey{file.RepositoryID, file.Path}
-		if !eligible[key] || seen[key] {
+		if _, eligible := eligibleVersions[key]; !eligible || seen[key] {
 			plan.add(path, "must name a distinct eligible unassigned file of the captured revision")
 		}
 		seen[key] = true
@@ -98,7 +96,7 @@ func (s *Service) publishGeneratedReview(ctx context.Context, tx *sql.Tx, invoca
 		return nil, err
 	}
 	for _, assignment := range assignments {
-		if err := s.writeSourceTopics(ctx, tx, invocation.ReviewID, invocation.RevisionID, versions[fileKey{assignment.RepositoryID, assignment.Path}], assignment, actor); err != nil {
+		if err := s.writeSourceTopics(ctx, tx, invocation.ReviewID, invocation.RevisionID, eligibleVersions[fileKey{assignment.RepositoryID, assignment.Path}], assignment, actor); err != nil {
 			return nil, err
 		}
 	}

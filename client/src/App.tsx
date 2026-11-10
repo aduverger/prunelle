@@ -344,22 +344,27 @@ function ReviewPage({
   const attachedPi = agents.data?.sessions.find(
     (session) => session.id === agents.data?.binding.agent_session_id,
   );
+  let attachmentLabel = 'Pi · Unattached';
+  if (agents.isPending) attachmentLabel = 'Pi · Loading';
+  else if (attachedPi)
+    attachmentLabel = `Pi ${attachedPi.external_id.slice(0, 12)} · ${attachedPi.state}`;
   function requestAgent(action: AgentAction) {
-    const requestedRevisionID =
-      action.intent === 'IMPLEMENT'
-        ? action.decision.revision_id
-        : effectiveRevisionID ||
-          (action.intent === 'DISCUSS' ? action.discussion.revision_id : null);
+    let requestedRevisionID = effectiveRevisionID;
+    let savedInput: string | string[] | null = null;
+    switch (action.intent) {
+      case 'DISCUSS':
+        requestedRevisionID = effectiveRevisionID || action.discussion.revision_id;
+        savedInput = [action.discussion.id, action.message.id];
+        break;
+      case 'IMPLEMENT':
+        requestedRevisionID = action.decision.revision_id;
+        savedInput = action.decision.id;
+        break;
+      case 'PREPARE_REVIEW':
+        break;
+    }
     if (!requestedRevisionID) return;
-    const key = JSON.stringify([
-      action.intent,
-      requestedRevisionID,
-      action.intent === 'DISCUSS'
-        ? [action.discussion.id, action.message.id]
-        : action.intent === 'IMPLEMENT'
-          ? action.decision.id
-          : null,
-    ]);
+    const key = JSON.stringify([action.intent, requestedRevisionID, savedInput]);
     if (agentPreview?.key !== key) {
       if (
         agentDirty &&
@@ -822,11 +827,7 @@ function ReviewPage({
           className="badge"
           title={attachedPi?.external_id || 'Choose a Pi conversation in Settings'}
         >
-          {agents.isPending
-            ? 'Pi · Loading'
-            : attachedPi
-              ? `Pi ${attachedPi.external_id.slice(0, 12)} · ${attachedPi.state}`
-              : 'Pi · Unattached'}
+          {attachmentLabel}
         </span>
         {agentPreview && (
           <button onClick={() => setPanel('agent-request')}>Resume Pi request</button>
