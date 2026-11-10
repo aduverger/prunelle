@@ -533,8 +533,7 @@ test('an empty CodeView retains its context and footer; integrations only poll w
   await page.clock.install();
   const sessionRequests: string[] = [];
   page.on('request', (request) => {
-    if (/\/(session-backends|runtime-sessions)$/.test(request.url()))
-      sessionRequests.push(request.url());
+    if (/\/agent-sessions$/.test(request.url())) sessionRequests.push(request.url());
   });
   await page.goto('/');
   await page.getByLabel('Feature review', { exact: true }).selectOption(empty.id);
@@ -543,11 +542,14 @@ test('an empty CodeView retains its context and footer; integrations only poll w
   ).toBeVisible();
   await expect(page.getByText('End of stored source · 0 files', { exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Review decision', exact: true })).toBeDisabled();
-  expect(sessionRequests).toEqual([]);
+  await expect(page.getByText('Pi · Unattached', { exact: true })).toBeVisible();
+  const closedRequests = sessionRequests.length;
+  await page.clock.fastForward(60_000);
+  expect(sessionRequests).toHaveLength(closedRequests);
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
   await expect(
     page.getByRole('dialog', { name: 'Settings · Integrations', exact: true }),
-  ).toContainText('UNREACHABLE');
+  ).toContainText('No Pi is attached');
   const initialRequests = sessionRequests.length;
   await page.clock.fastForward(60_000);
   await expect.poll(() => sessionRequests.length).toBeGreaterThan(initialRequests);

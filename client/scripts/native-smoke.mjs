@@ -6,6 +6,7 @@ import { join, resolve } from 'node:path';
 import { spawn, execFileSync } from 'node:child_process';
 import assert from 'node:assert/strict';
 import { Fixture, buildServer, server as target } from '../tests/fixture.ts';
+import { PiFixture } from '../tests/pi-fixture.ts';
 
 const serverBuild = buildServer();
 const fixture = new Fixture(serverBuild.binary);
@@ -14,12 +15,17 @@ const socketPath = join(scratch, 'automation.sock');
 const binary = join(scratch, 'prunelle');
 execFileSync('go', ['build', '-tags', 'e2e', '-o', binary, '.'], { stdio: 'inherit' });
 let app;
+let pi;
 let log = '';
 let socket;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 try {
   await fixture.start();
   await fixture.seed();
+  pi = new PiFixture();
+  await pi.connect(
+    fixture.review.repositories.find((repository) => repository.label === 'api').root_path,
+  );
   app = spawn('xvfb-run', ['-a', '-s', '-screen 0 1600x1100x24', binary], {
     detached: true,
     env: {
@@ -121,6 +127,29 @@ try {
     "!!Array.from(document.querySelectorAll('.message')).find(e=>e.textContent.includes('Native WebKit comment'))",
   );
   await evaluate(
+    "Array.from(document.querySelectorAll('.message')).find(message => message.textContent.includes('Native WebKit comment')).querySelector('button').click(); true",
+  );
+  await waitFor('document.querySelector(\'dialog[aria-label="Pi request"]\')?.open');
+  assert.equal(pi.requests.length, 0, 'Opening the native preview must not dispatch');
+  await evaluate(
+    'Array.from(document.querySelector(\'dialog[aria-label="Pi request"]\').querySelectorAll("button")).find(button => button.textContent === "Ask Pi").click(); true',
+  );
+  for (let i = 0; i < 100 && !pi.requests.length; i++) await sleep(100);
+  assert.equal(pi.requests.length, 1);
+  assert.equal(pi.requests[0].intent, 'DISCUSS');
+  await pi.complete(pi.requests[0], {
+    invocation_id: pi.requests[0].id,
+    discussion_id: pi.requests[0].discussion_id,
+    body: 'Native Pi reply on the original saved thread.',
+  });
+  await waitFor(
+    'document.querySelector(\'[aria-label="Pi request status"]\')?.textContent.includes("SUCCEEDED")',
+  );
+  await evaluate('document.querySelector(\'[aria-label="Close Pi request"]\').click(); true');
+  await waitFor(
+    "Array.from(document.querySelectorAll('.message')).some(message => message.textContent.includes('Native Pi reply on the original saved thread.'))",
+  );
+  await evaluate(
     "Array.from(document.querySelectorAll('.nav-tabs button')).find(button => button.textContent === 'Files').click(); true",
   );
   await waitFor(
@@ -179,10 +208,19 @@ try {
   );
   await waitFor('!!document.querySelector(\'dialog[aria-label="Review decision"]\').open');
   await evaluate('document.querySelector(\'[aria-label="Close Review decision"]\').click(); true');
+  await evaluate(
+    "Array.from(document.querySelectorAll('button')).find(button => button.textContent === 'Settings').click(); true",
+  );
+  await waitFor(
+    `document.querySelector('[aria-label="Pi integration"]')?.textContent.includes(${JSON.stringify(pi.externalID)})`,
+  );
+  await evaluate(
+    'document.querySelector(\'[aria-label="Close Settings · Integrations"]\').click(); true',
+  );
   const png = await call('capture');
   if (png.png) writeFileSync(resolve('native-smoke.png'), Buffer.from(png.png, 'base64'));
   console.log(
-    'Native MyGo/WebKit: bundled UI, Go-backed REST/SSE, Highlights, Pierre tree navigation, inline stored-code comments and decision dialog passed.',
+    'Native MyGo/WebKit: bundled UI, Go-backed REST/SSE, explicit Pi preview/correlated reply/integration panel, Highlights, Pierre tree navigation, inline stored-code comments and decision dialog passed.',
   );
   lines.close();
 } finally {
@@ -194,6 +232,7 @@ try {
       /* Already exited. */
     }
   }
+  await pi?.close();
   await fixture.close();
   serverBuild.close();
   rmSync(scratch, { recursive: true, force: true });

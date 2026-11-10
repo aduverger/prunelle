@@ -92,7 +92,9 @@ test('topics, grounding, exhaustive source and persistent perspectives', async (
     .click();
   await expect(page.getByTestId('file-diff')).toContainText(f.path);
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
-  await expect(page.getByRole('region', { name: 'Runtime sessions' })).toContainText('UNREACHABLE');
+  await expect(page.getByRole('region', { name: 'Pi integration' })).toContainText(
+    'No Pi is attached',
+  );
   expect(errors).toEqual([]);
 });
 

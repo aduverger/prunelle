@@ -82,7 +82,7 @@ func TestReviewOwnershipMigrationPreservesSharedReferences(t *testing.T) {
 		`INSERT INTO idempotency_keys VALUES ('caller', 'comment', 'hash', 201, '{}', CAST('{"id":"d_original","messages":[{"body":"Keep this message"}]}' AS BLOB), 'now', 'ws_shared')`,
 		`INSERT INTO idempotency_keys VALUES ('caller', 'workspace', 'hash', 201, '{}', CAST('{"id":"ws_shared"}' AS BLOB), 'now', 'ws_shared')`,
 		`INSERT INTO idempotency_keys VALUES ('caller', 'pending', 'hash', NULL, NULL, NULL, 'now', NULL)`,
-		`INSERT INTO idempotency_keys VALUES ('caller', 'global', 'global-hash', 201, '{"ETag":"original"}', CAST('{"id":"rts_unowned","label":"Still running"}' AS BLOB), 'now', NULL)`,
+		`INSERT INTO idempotency_keys VALUES ('caller', 'global', 'global-hash', 201, '{"ETag":"original"}', CAST('{"id":"unrelated-global","label":"Keep this receipt"}' AS BLOB), 'now', NULL)`,
 		`PRAGMA user_version = 4`,
 	} {
 		if _, err := legacy.ExecContext(ctx, statement); err != nil {
@@ -99,18 +99,8 @@ func TestReviewOwnershipMigrationPreservesSharedReferences(t *testing.T) {
 	if err := db.Reader().QueryRowContext(ctx, `SELECT COUNT(*) FROM review_repositories WHERE repository_id = 'repo_original' AND label = 'api' AND include_untracked = 0`).Scan(&count); err != nil || count != 2 {
 		t.Fatalf("shared identities/settings: %d %v", count, err)
 	}
-	if err := db.Reader().QueryRowContext(ctx, `SELECT COUNT(*) FROM review_runtime_sessions WHERE runtime_session_id = 'rts_original'`).Scan(&count); err != nil || count != 2 {
-		t.Fatalf("association fan-out: %d %v", count, err)
-	}
-	var runtimeState string
-	if err := db.Reader().QueryRowContext(ctx, "SELECT state FROM runtime_sessions WHERE id = 'rts_unowned'").Scan(&runtimeState); err != nil || runtimeState != "ONLINE" {
-		t.Fatalf("unowned runtime changed: %q %v", runtimeState, err)
-	}
-	if err := db.Reader().QueryRowContext(ctx, "SELECT COUNT(*) FROM review_runtime_sessions WHERE runtime_session_id = 'rts_unowned'").Scan(&count); err != nil || count != 0 {
-		t.Fatalf("runtime gained an invented review association: %d %v", count, err)
-	}
 	var hash, headers, body string
-	if err := db.Reader().QueryRowContext(ctx, "SELECT request_hash, headers, CAST(body AS TEXT) FROM idempotency_keys WHERE key = 'global'").Scan(&hash, &headers, &body); err != nil || hash != "global-hash" || headers != `{"ETag":"original"}` || body != `{"id":"rts_unowned","label":"Still running"}` {
+	if err := db.Reader().QueryRowContext(ctx, "SELECT request_hash, headers, CAST(body AS TEXT) FROM idempotency_keys WHERE key = 'global'").Scan(&hash, &headers, &body); err != nil || hash != "global-hash" || headers != `{"ETag":"original"}` || body != `{"id":"unrelated-global","label":"Keep this receipt"}` {
 		t.Fatalf("unrelated completed receipt changed: %q %q %q %v", hash, headers, body, err)
 	}
 	var repoID, text string

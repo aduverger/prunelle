@@ -18,7 +18,8 @@ M3+ (revision-aware review, analysis, Pi adapter) get separate plans.
 - **M2b:** [workspace/CLI usability #5](https://github.com/aduverger/prunelle/issues/5), including automatic discovery, context inference and workspace deletion. [Implementation plan and ledger](plans/m2b.md); merged in [PR #8](https://github.com/aduverger/prunelle/pull/8).
 - **Review-owned repositories:** [model revision plan and ledger](plans/review-owned-repositories.md), following M2b: review-owned source/lifecycle, capture-time defaults and no mandatory path allowlist. Merged in [PR #9](https://github.com/aduverger/prunelle/pull/9); production deployment remains separate.
 - **M3b:** [Pierre-native code review UI #6](https://github.com/aduverger/prunelle/issues/6): inline comments, stable code scrolling, Highlights, left comment navigation and on-demand decision/integration surfaces. [Implementation plan and ledger](plans/m3b.md); merged in [PR #7](https://github.com/aduverger/prunelle/pull/7). Separate from M2b and M3's revision-aware domain changes.
-- **M3:** [revision-aware review plan and ledger](plans/m3.md): historical semantic views, revision comparison, conservative anchor validity, finding lifecycle and reviewer file-topic corrections. Implemented and locally validated. Not published/deployed; separate from M3b.
+- **M3:** [revision-aware review plan and ledger](plans/m3.md): historical semantic views, revision comparison, conservative anchor validity, finding lifecycle and reviewer file-topic corrections. Merged in [PR #10](https://github.com/aduverger/prunelle/pull/10); deployment remains separate from merge and from M3b.
+- **M4:** [direct Pi integration and generated feature reviews](plans/m4.md): existing Pi conversation, canonical discussion lookup/correlation, unique-cwd automatic attachment, direct topic/explanation generation, deliberate implementation handoff and complete Rex/runtime-backend retirement. Implementation follows D12 on the M4 branch; its ledger records verification and remaining release prerequisites. Not yet merged or deployed.
 
 ## Server
 
@@ -44,13 +45,13 @@ M3+ (revision-aware review, analysis, Pi adapter) get separate plans.
 
 - A review owns its canonical repository membership and optional cwd context. There is no named workspace lifecycle or required discovery/path allowlist. All authenticated callers are trusted with server-readable Git sources (D10).
 - Review content (topics, intents, changes, findings, evidence, representations, attention) enters through a JSON review manifest: `prunelle review import` or the API, `origin=IMPORTED`. Every record carries its author (actor) and the provenance the author declares (`MEASURED`/`OBSERVED`/`INFERRED`/`UNKNOWN`).
-- Until M4 the coding agent pushes manifests to Prunelle; from M4 Prunelle also calls the agent through `PiAgentAdapter`.
+- Through M3 the coding agent pushes manifests to Prunelle. M4 adds explicit requests to the existing Pi conversation through a companion extension, including direct generation through canonical content/source validation. Existing imported-manifest semantics remain unchanged.
 
-### Rex
+### Agent integration transition
 
-- Through the `rex` CLI (`rex api call`, `rex events --json`), always `--autostart=false`; record Rex API revision.
-- One Rex block = one `RuntimeSession`. `pwd` inside review source suggests an association; association is always explicit.
-- The server starts and serves reviews without Rex.
+- The released M0b–M3 implementation observes Rex through its CLI, without process control or autostart. This historical runtime integration is retired by M4/D12, including its generic backend scaffolding, configuration, API/CLI/UI and stored associations.
+- M4's Pi extension registers its actual conversation and cwd through the existing API. A unique matching connected conversation attaches automatically; ambiguity requires selection and explicit user choices take precedence. No extra listener or terminal host dependency.
+- Reviews remain usable without an agent. Rex itself may continue hosting Pi; Prunelle will not discover or manage it.
 
 ## Client
 
@@ -68,4 +69,4 @@ M3+ (revision-aware review, analysis, Pi adapter) get separate plans.
 ## Open questions
 
 - M2 transport/maturity check completed: MyGo v0.8.3 Go-backed streaming fetch; Vite proxy for browser development, no server CORS change (D9). Native macOS launch and signing remain to verify.
-- Deferred by the spec: live vs forked agent conversations (M4), analyzer/grouping strategy, collaboration/permissions, external PR sync.
+- M4 direction is decided: existing Pi conversation, topic/explanation generation first, automatic unique-cwd attachment and no Rex integration. Future fork-per-review setting, regeneration of existing explanations, collaboration/permissions and external PR sync remain outside this slice.

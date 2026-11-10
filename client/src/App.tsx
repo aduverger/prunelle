@@ -40,7 +40,13 @@ import {
   useDiscussionComposer,
 } from './Discussions';
 import { CodeReview, sourceFileID } from './CodeReview';
-import { Sessions } from './Sessions';
+import {
+  AgentPanel,
+  AgentRequestForm,
+  useAgentState,
+  type AgentAction,
+  type AgentPreview,
+} from './Agents';
 import { IntentCard, ChangeCard } from './Records';
 import { SourceTree } from './SourceTree';
 import {
@@ -319,9 +325,10 @@ function ReviewPage({
   const [sourceDraft, setSourceDraft] = useState<SourceTopicDraft | null>(null);
   const [discussionDirty, setDiscussionDirty] = useState(false);
   const [decisionDirty, setDecisionDirty] = useState(false);
+  const [agentDirty, setAgentDirty] = useState(false);
   useEffect(() => {
-    onDraftChange(discussionDirty || decisionDirty || !!sourceDraft?.dirty);
-  }, [discussionDirty, decisionDirty, sourceDraft?.dirty, onDraftChange]);
+    onDraftChange(discussionDirty || decisionDirty || agentDirty || !!sourceDraft?.dirty);
+  }, [discussionDirty, decisionDirty, agentDirty, sourceDraft?.dirty, onDraftChange]);
   useEffect(() => () => onDraftChange(false), [onDraftChange]);
   const [tab, setTab] = useState<Navigation>(presets[pref.perspective].tab);
   const [order, setOrder] = useState(presets[pref.perspective].order);
@@ -329,7 +336,47 @@ function ReviewPage({
   const [inspector, setInspector] = useState<Inspector>(null);
   if (inspector?.type === 'node' && inspector.revisionID !== effectiveRevisionID)
     setInspector(null);
-  const [panel, setPanel] = useState<'decision' | 'sessions' | 'source-topics' | null>(null);
+  const [panel, setPanel] = useState<
+    'decision' | 'agents' | 'agent-request' | 'source-topics' | null
+  >(null);
+  const [agentPreview, setAgentPreview] = useState<AgentPreview | null>(null);
+  const agents = useAgentState(api, data.review.id, panel === 'agents');
+  const attachedPi = agents.data?.sessions.find(
+    (session) => session.id === agents.data?.binding.agent_session_id,
+  );
+  function requestAgent(action: AgentAction) {
+    const requestedRevisionID =
+      action.intent === 'IMPLEMENT'
+        ? action.decision.revision_id
+        : effectiveRevisionID ||
+          (action.intent === 'DISCUSS' ? action.discussion.revision_id : null);
+    if (!requestedRevisionID) return;
+    const key = JSON.stringify([
+      action.intent,
+      requestedRevisionID,
+      action.intent === 'DISCUSS'
+        ? [action.discussion.id, action.message.id]
+        : action.intent === 'IMPLEMENT'
+          ? action.decision.id
+          : null,
+    ]);
+    if (agentPreview?.key !== key) {
+      if (
+        agentDirty &&
+        !window.confirm(
+          'Discard the unresolved Pi request preview? Inspect existing requests before starting another.',
+        )
+      )
+        return;
+      setAgentPreview({
+        key,
+        action,
+        revisionID: requestedRevisionID,
+        agentSessionID: agents.data?.binding.agent_session_id || null,
+      });
+    }
+    setPanel('agent-request');
+  }
   const [navigation, setNavigation] = useState(0);
   const [focusedDiscussionID, setFocusedDiscussionID] = useState<string | null>(null);
   const [discussionNavigation, setDiscussionNavigation] = useState(0);
@@ -713,6 +760,7 @@ function ReviewPage({
       openAnchor={openAnchor}
       onDraftChange={setDiscussionDirty}
       anchorStatuses={anchorStatuses.data || []}
+      requestAgent={requestAgent}
     >
       <div className="review-bar">
         <div>
@@ -770,6 +818,25 @@ function ReviewPage({
             </select>
           </label>
         )}
+        <span
+          className="badge"
+          title={attachedPi?.external_id || 'Choose a Pi conversation in Settings'}
+        >
+          {agents.isPending
+            ? 'Pi · Loading'
+            : attachedPi
+              ? `Pi ${attachedPi.external_id.slice(0, 12)} · ${attachedPi.state}`
+              : 'Pi · Unattached'}
+        </span>
+        {agentPreview && (
+          <button onClick={() => setPanel('agent-request')}>Resume Pi request</button>
+        )}
+        <button
+          disabled={!view.data?.editable || !revision}
+          onClick={() => requestAgent({ intent: 'PREPARE_REVIEW' })}
+        >
+          Prepare review
+        </button>
         {sourceDraft && (
           <button onClick={() => setPanel('source-topics')}>Resume file-topic correction</button>
         )}
@@ -841,7 +908,10 @@ function ReviewPage({
                   changes={comparison.data?.topics || []}
                 />
                 {!data.topics.length && view.data?.graph && (
-                  <Notice>No topics imported yet. All Source Changes remains exhaustive.</Notice>
+                  <Notice>
+                    No topics yet. Prepare a review with Pi or import a manifest. All Source Changes
+                    remains exhaustive.
+                  </Notice>
                 )}
               </>
             )}
@@ -905,7 +975,7 @@ function ReviewPage({
             </div>
           </div>
           <footer>
-            <button className="quiet" onClick={() => setPanel('sessions')}>
+            <button className="quiet" onClick={() => setPanel('agents')}>
               Settings
             </button>
             <small>Review works without an agent.</small>
@@ -1139,11 +1209,29 @@ function ReviewPage({
         )}
       </ReviewDialog>
       <ReviewDialog
-        open={panel === 'sessions'}
+        open={panel === 'agents'}
         title="Settings · Integrations"
         close={() => setPanel(null)}
       >
-        {panel === 'sessions' && <Sessions api={api} reviewID={data.review.id} />}
+        {panel === 'agents' && <AgentPanel api={api} reviewID={data.review.id} query={agents} />}
+      </ReviewDialog>
+      <ReviewDialog
+        open={panel === 'agent-request'}
+        title="Pi request"
+        close={() => setPanel(null)}
+      >
+        {agentPreview && (
+          <AgentRequestForm
+            key={agentPreview.key}
+            api={api}
+            reviewID={data.review.id}
+            preview={agentPreview}
+            query={agents}
+            open={panel === 'agent-request'}
+            onDraftChange={setAgentDirty}
+            settings={() => setPanel('agents')}
+          />
+        )}
       </ReviewDialog>
     </DiscussionProvider>
   );
@@ -1166,7 +1254,14 @@ function ReviewDialog({
     else if (!open && dialog.current?.open) dialog.current.close();
   }, [open]);
   return (
-    <dialog ref={dialog} aria-label={title} onClose={close} onCancel={close}>
+    <dialog
+      ref={dialog}
+      aria-label={title}
+      onClose={() => {
+        if (open) close();
+      }}
+      onCancel={close}
+    >
       <div className="section-heading">
         <h2>{title}</h2>
         <button aria-label={'Close ' + title} onClick={close}>

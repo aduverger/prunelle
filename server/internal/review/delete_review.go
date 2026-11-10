@@ -24,6 +24,8 @@ func (s *Service) DeleteReview(ctx context.Context, id string, actor Actor) erro
 		}
 		for _, query := range []string{
 			`DELETE FROM events WHERE review_id = ?1 OR entity_id = ?1`,
+			`DELETE FROM agent_invocation_replies WHERE invocation_id IN (SELECT id FROM agent_invocations WHERE review_id = ?1)`,
+			`DELETE FROM agent_invocations WHERE review_id = ?1`,
 			`DELETE FROM revision_review_states WHERE revision_id IN (SELECT id FROM owned_revisions)`,
 			`DELETE FROM source_topic_assignments WHERE snapshot_id IN (SELECT id FROM repo_snapshots WHERE revision_id IN (SELECT id FROM owned_revisions))`,
 			`DELETE FROM decision_findings WHERE decision_id IN (SELECT id FROM owned_decisions)`,
@@ -53,7 +55,6 @@ func (s *Service) DeleteReview(ctx context.Context, id string, actor Actor) erro
 			`DELETE FROM snapshot_files WHERE snapshot_id IN (SELECT id FROM repo_snapshots WHERE revision_id IN (SELECT id FROM owned_revisions))`,
 			`DELETE FROM repo_snapshots WHERE revision_id IN (SELECT id FROM owned_revisions)`,
 			`DELETE FROM revisions WHERE review_id = ?1`,
-			`DELETE FROM review_runtime_sessions WHERE review_id = ?1`,
 			`DELETE FROM review_repositories WHERE review_id = ?1`,
 			`DELETE FROM reviews WHERE id = ?1`,
 		} {

@@ -27,7 +27,7 @@ tags:
   - name: content
   - name: discussions
   - name: events
-  - name: sessions
+  - name: agents
 paths:
   /v1/health:
     get:
@@ -709,71 +709,202 @@ paths:
               schema: { type: string }
         default: { $ref: "#/components/responses/Error" }
 
-  /v1/session-backends:
+
+  /v1/agent-sessions:
     get:
-      tags: [sessions]
-      operationId: listSessionBackends
-      description: Session backends from the server configuration, with their current health. Backends are configured in the server config file, never through the API.
+      tags: [agents]
+      operationId: listAgentSessions
       responses:
         "200":
-          description: Session backends.
+          description: Registered logical Pi conversations and current connection readiness.
           content:
             application/json:
-              schema: { type: array, items: { $ref: "#/components/schemas/SessionBackend" } }
+              schema: { type: array, items: { $ref: "#/components/schemas/AgentSession" } }
         default: { $ref: "#/components/responses/Error" }
-  /v1/runtime-sessions:
-    get:
-      tags: [sessions]
-      operationId: listRuntimeSessions
+    post:
+      tags: [agents]
+      operationId: registerAgentSession
+      description: Pi self-registration; actor must be pi:<external_id>. Direct loopback registrations may participate in canonical cwd matching; proxied/remote paths do not.
       parameters:
-        - name: review_id
-          in: query
-          required: false
-          description: Only runtime sessions explicitly associated with this review.
-          schema: { type: string }
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RegisterAgentSessionRequest" }
       responses:
         "200":
-          description: Runtime sessions discovered by session backends.
+          description: Registered Pi identity, not an execution authorization.
           content:
             application/json:
-              schema: { type: array, items: { $ref: "#/components/schemas/RuntimeSession" } }
+              schema: { $ref: "#/components/schemas/AgentSession" }
         default: { $ref: "#/components/responses/Error" }
-  /v1/runtime-sessions/{runtimeSessionId}:
+  /v1/agent-sessions/{agentSessionId}/connect:
     parameters:
-      - $ref: "#/components/parameters/RuntimeSessionId"
+      - $ref: "#/components/parameters/AgentSessionId"
     get:
-      tags: [sessions]
-      operationId: getRuntimeSession
+      tags: [agents]
+      operationId: connectAgentSession
+      description: Pi-only live SSE dispatch connection. Opens with ready/connection_id, then request frames containing AgentInvocation. No event IDs or execution replay; reconnect does not resend commands.
       responses:
         "200":
-          description: The runtime session.
+          description: Cancellable live command stream, not the durable review event log.
+          content:
+            text/event-stream:
+              schema: { type: string }
+        default: { $ref: "#/components/responses/Error" }
+  /v1/agent-sessions/{agentSessionId}/state:
+    parameters:
+      - $ref: "#/components/parameters/AgentSessionId"
+    put:
+      tags: [agents]
+      operationId: updateAgentSessionState
+      description: The connected Pi reports actual readiness/model/checkpoint for its current connection ID.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AgentSessionStateRequest" }
+      responses:
+        "200":
+          description: Current Pi state.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/RuntimeSession" }
+              schema: { $ref: "#/components/schemas/AgentSession" }
         default: { $ref: "#/components/responses/Error" }
-  /v1/reviews/{reviewId}/runtime-sessions/{runtimeSessionId}:
+  /v1/reviews/{reviewId}/agent-binding:
     parameters:
       - $ref: "#/components/parameters/ReviewId"
-      - $ref: "#/components/parameters/RuntimeSessionId"
-    put:
-      tags: [sessions]
-      operationId: associateRuntimeSession
-      description: Explicitly associate a runtime session with a review. Idempotent.
+    get:
+      tags: [agents]
+      operationId: getAgentBinding
       responses:
         "200":
-          description: The associated runtime session.
+          description: Authoritative selection and currently matching candidates. Version 1 when no choice exists.
+          headers:
+            ETag: { $ref: "#/components/headers/ETag" }
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/RuntimeSession" }
+              schema: { $ref: "#/components/schemas/AgentBinding" }
         default: { $ref: "#/components/responses/Error" }
-    delete:
-      tags: [sessions]
-      operationId: dissociateRuntimeSession
-      description: Remove an association. Idempotent.
+    put:
+      tags: [agents]
+      operationId: setAgentBinding
+      parameters:
+        - $ref: "#/components/parameters/IfMatch"
+      description: Select a Pi, deliberately disconnect, or explicitly restore automatic matching. No request is dispatched.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AgentBindingRequest" }
       responses:
-        "204":
-          description: Association removed.
+        "200":
+          description: Updated selection.
+          headers:
+            ETag: { $ref: "#/components/headers/ETag" }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AgentBinding" }
         default: { $ref: "#/components/responses/Error" }
+  /v1/reviews/{reviewId}/agent-invocations:
+    parameters:
+      - $ref: "#/components/parameters/ReviewId"
+    get:
+      tags: [agents]
+      operationId: listAgentInvocations
+      responses:
+        "200":
+          description: Review-owned requests/results, oldest first.
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/AgentInvocation" } }
+        default: { $ref: "#/components/responses/Error" }
+    post:
+      tags: [agents]
+      operationId: createAgentInvocation
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      description: Explicit human action only. Resolve a unique unbound candidate, reject busy/unavailable, persist and send once over the live Pi connection. Committed replay never dispatches again.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateAgentInvocationRequest" }
+      responses:
+        "202":
+          description: Persisted request; acceptance is not proof of execution/completion.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AgentInvocation" }
+        default: { $ref: "#/components/responses/Error" }
+  /v1/agent-invocations/{invocationId}:
+    parameters:
+      - $ref: "#/components/parameters/InvocationId"
+    get:
+      tags: [agents]
+      operationId: getAgentInvocation
+      responses:
+        "200":
+          description: Current request state, including explicit uncertainty if its original connection is gone.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AgentInvocation" }
+        default: { $ref: "#/components/responses/Error" }
+  /v1/agent-invocations/{invocationId}/context:
+    parameters:
+      - $ref: "#/components/parameters/InvocationId"
+    get:
+      tags: [agents]
+      operationId: getAgentInvocationContext
+      responses:
+        "200":
+          description: Captured revision context and eligible files; generation rejects changed semantic inputs.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AgentInvocationContext" }
+        default: { $ref: "#/components/responses/Error" }
+  /v1/agent-invocations/{invocationId}/state:
+    parameters:
+      - $ref: "#/components/parameters/InvocationId"
+    post:
+      tags: [agents]
+      operationId: updateAgentInvocation
+      description: Target Pi only; report running, definite failure or uncertainty without overwriting a committed result.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateAgentInvocationRequest" }
+      responses:
+        "200":
+          description: Updated request.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AgentInvocation" }
+        default: { $ref: "#/components/responses/Error" }
+  /v1/agent-invocations/{invocationId}/complete:
+    parameters:
+      - $ref: "#/components/parameters/InvocationId"
+    post:
+      tags: [agents]
+      operationId: completeAgentInvocation
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      description: Target Pi publishes one structured result atomically. Domain deduplication also protects independent keys, restart, and receipt expiry. Conflicting results reject.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CompleteAgentInvocationRequest" }
+      responses:
+        "200":
+          description: Committed reply, generation or implementation summary.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AgentInvocation" }
+        default: { $ref: "#/components/responses/Error" }
+
 
 components:
   parameters:
@@ -792,8 +923,13 @@ components:
       in: path
       required: true
       schema: { type: string }
-    RuntimeSessionId:
-      name: runtimeSessionId
+    AgentSessionId:
+      name: agentSessionId
+      in: path
+      required: true
+      schema: { type: string }
+    InvocationId:
+      name: invocationId
       in: path
       required: true
       schema: { type: string }
@@ -1663,7 +1799,8 @@ components:
         A change to refetch. Types: review.created, review.deleted, revision.created, import.created,
         topic.created, topic.updated (edit or move; refetch the topic list, sibling positions may change),
         representation.created, representation.updated, discussion.created, discussion.updated
-        (status change or reply), decision.created, finding.updated, source.topics.updated.
+        (status change or reply), decision.created, finding.updated, source.topics.updated,
+        agent.session.updated, agent.binding.updated, agent.invocation.created, agent.invocation.updated.
       type: object
       required: [sequence, type, entity_id, review_id, actor, login, occurred_at]
       additionalProperties: false
@@ -1899,70 +2036,196 @@ components:
       type: array
       items: { type: string }
 
-    SessionBackend:
-      x-go-type: sessions.SessionBackend
-      x-go-type-import: { path: github.com/aduverger/prunelle/server/internal/sessions }
+    AgentSession:
+      x-go-type: agents.Session
+      x-go-type-import: { path: github.com/aduverger/prunelle/server/internal/agents }
       type: object
-      required: [id, name, kind, enabled, capabilities, config, health]
+      required: [id, external_id, cwd, version, local, state, model, created_at, updated_at]
       additionalProperties: false
       properties:
         id: { type: string }
-        name: { type: string }
-        kind: { type: string, enum: [REX, HERDR, MANAGED] }
-        enabled: { type: boolean, description: False when the backend is no longer in the server configuration. }
-        capabilities: { type: array, items: { $ref: "#/components/schemas/SessionCapability" } }
-        config: { type: object, description: Non-secret backend configuration. }
-        health: { $ref: "#/components/schemas/BackendHealth" }
-
-    SessionCapability:
-      type: string
-      enum: [DISCOVER, INSPECT, SUBSCRIBE]
-
-    BackendHealth:
-      x-go-type: sessions.BackendHealth
-      x-go-type-import: { path: github.com/aduverger/prunelle/server/internal/sessions }
+        external_id: { type: string, description: Logical Pi conversation ID; not a terminal or runtime ID. }
+        cwd: { type: string }
+        version: { type: string }
+        local: { type: boolean }
+        state: { type: string, enum: [READY, BUSY, UNAVAILABLE] }
+        model: { type: string }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+    RegisterAgentSessionRequest:
+      x-go-type: agents.RegisterRequest
+      x-go-type-import: { path: github.com/aduverger/prunelle/server/internal/agents }
       type: object
-      required: [state, error, checked_at, info]
+      required: [external_id, cwd, version]
       additionalProperties: false
       properties:
-        state:
-          type: string
-          enum: [CONNECTING, REACHABLE, UNREACHABLE, DISABLED]
+        external_id: { type: string, minLength: 1, maxLength: 197 }
+        cwd: { type: string, minLength: 1 }
+        version: { type: string, minLength: 1 }
+    AgentSessionStateRequest:
+      x-go-type: agents.StateRequest
+      x-go-type-import: { path: github.com/aduverger/prunelle/server/internal/agents }
+      type: object
+      required: [connection_id, ready, model, context_id]
+      additionalProperties: false
+      properties:
+        connection_id: { type: string, minLength: 1 }
+        ready: { type: boolean }
+        model: { type: string }
+        context_id: { type: string }
+    AgentBinding:
+      x-go-type: agents.Binding
+      x-go-type-import: { path: github.com/aduverger/prunelle/server/internal/agents }
+      type: object
+      required: [review_id, agent_session_id, mode, version, candidates]
+      additionalProperties: false
+      properties:
+        review_id: { type: string }
+        agent_session_id: { type: [string, "null"] }
+        mode: { type: string, enum: [AUTO, MANUAL, DISCONNECTED] }
+        version: { type: integer, minimum: 1 }
+        candidates: { $ref: "#/components/schemas/IDList" }
+    AgentBindingRequest:
+      x-go-type: agents.BindingRequest
+      x-go-type-import: { path: github.com/aduverger/prunelle/server/internal/agents }
+      type: object
+      required: [mode]
+      additionalProperties: false
+      oneOf:
+        - required: [agent_session_id]
+          properties:
+            mode: { enum: [MANUAL] }
+        - properties:
+            mode: { enum: [AUTO, DISCONNECTED] }
+            agent_session_id: { type: "null" }
+      properties:
+        mode: { type: string, enum: [AUTO, MANUAL, DISCONNECTED] }
+        agent_session_id: { type: string }
+    AgentInvocation:
+      x-go-type: review.AgentInvocation
+      x-go-type-import: { path: github.com/aduverger/prunelle/server/internal/review }
+      type: object
+      required: [id, review_id, revision_id, agent_session_id, connection_id, intent, status, discussion_id, message_id, decision_id, prompt, author, model, context_id, input_fingerprint, result, error, created_at, updated_at]
+      additionalProperties: false
+      properties:
+        id: { type: string }
+        review_id: { type: string }
+        revision_id: { type: string }
+        agent_session_id: { type: string }
+        connection_id: { type: string, description: Original dispatch connection identity; not an authentication credential. }
+        intent: { type: string, enum: [DISCUSS, PREPARE_REVIEW, IMPLEMENT] }
+        status: { type: string, enum: [PENDING, RUNNING, SUCCEEDED, FAILED, UNKNOWN] }
+        discussion_id: { type: [string, "null"] }
+        message_id: { type: [string, "null"] }
+        decision_id: { type: [string, "null"] }
+        prompt: { type: string }
+        author: { $ref: "#/components/schemas/Author" }
+        model: { type: string }
+        context_id: { type: string }
+        input_fingerprint: { type: string }
+        result:
+          oneOf:
+            - type: "null"
+            - $ref: "#/components/schemas/AgentInvocationResult"
         error: { type: [string, "null"] }
-        checked_at: { type: [string, "null"], format: date-time }
-        info:
-          type: object
-          description: Endpoint details such as rex_version and api_revision.
-          additionalProperties: { type: string }
-
-    RuntimeSession:
-      x-go-type: sessions.RuntimeSession
-      x-go-type-import: { path: github.com/aduverger/prunelle/server/internal/sessions }
-      description: |
-        A process or terminal hosted by a session backend (for Rex, one terminal block). Not an
-        agent conversation. UNKNOWN means the backend cannot currently be observed; it does not
-        mean the process stopped.
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+    CreateAgentInvocationRequest:
+      x-go-type: review.CreateAgentInvocationRequest
+      x-go-type-import: { path: github.com/aduverger/prunelle/server/internal/review }
       type: object
-      required: [id, backend_id, backend_kind, external_id, state, label, cwd, process, local, harness_hint, capabilities, metadata, review_ids, suggested_review_ids, first_seen_at, last_seen_at, state_changed_at]
+      required: [intent, revision_id, agent_session_id]
+      additionalProperties: false
+      oneOf:
+        - required: [discussion_id, message_id]
+          properties:
+            intent: { enum: [DISCUSS] }
+            decision_id: { type: "null" }
+        - required: [decision_id]
+          properties:
+            intent: { enum: [IMPLEMENT] }
+            discussion_id: { type: "null" }
+            message_id: { type: "null" }
+        - properties:
+            intent: { enum: [PREPARE_REVIEW] }
+            discussion_id: { type: "null" }
+            message_id: { type: "null" }
+            decision_id: { type: "null" }
+      properties:
+        revision_id: { type: string, minLength: 1 }
+        intent: { type: string, enum: [DISCUSS, PREPARE_REVIEW, IMPLEMENT] }
+        agent_session_id: { type: string, minLength: 1, description: Exact Pi target shown in the request preview; binding changes reject rather than retarget. }
+        discussion_id: { type: string }
+        message_id: { type: string }
+        decision_id: { type: string }
+    AgentInvocationContext:
+      x-go-type: review.AgentInvocationContext
+      x-go-type-import: { path: github.com/aduverger/prunelle/server/internal/review }
+      type: object
+      required: [invocation_id, view, eligible_files]
       additionalProperties: false
       properties:
-        id: { type: string, description: Prunelle-owned ID. }
-        backend_id: { type: string }
-        backend_kind: { type: string, enum: [REX, HERDR, MANAGED] }
-        external_id: { type: string, description: Opaque backend identifier, informational only. }
-        state: { type: string, enum: [ONLINE, OFFLINE, STOPPED, UNKNOWN] }
-        label: { type: string }
-        cwd: { type: [string, "null"] }
-        process: { type: [string, "null"], description: Foreground program name. }
-        local: { type: boolean, description: Runs on the backend's host, so cwd is a path on that machine. }
-        harness_hint: { type: [string, "null"], description: "Coding harness the runtime appears to run, e.g. pi. A hint, not an agent identity." }
-        capabilities: { type: array, items: { $ref: "#/components/schemas/SessionCapability" } }
-        metadata: { type: object, description: Backend-specific details. }
-        review_ids: { type: array, items: { type: string }, description: Explicit associations. }
-        suggested_review_ids:
-          type: array
-          items: { type: string }
-          description: Reviews whose source contains the runtime's local cwd. Never applied automatically.
-        first_seen_at: { type: string, format: date-time }
-        last_seen_at: { type: string, format: date-time }
-        state_changed_at: { type: string, format: date-time }
+        invocation_id: { type: string }
+        view: { $ref: "#/components/schemas/RevisionView" }
+        eligible_files: { type: array, items: { $ref: "#/components/schemas/SourceFileRef" } }
+    AgentInvocationResult:
+      x-go-type: review.AgentInvocationResult
+      x-go-type-import: { path: github.com/aduverger/prunelle/server/internal/review }
+      type: object
+      required: [message_id, topic_ids, summary]
+      additionalProperties: false
+      properties:
+        message_id: { type: [string, "null"] }
+        topic_ids: { type: object, additionalProperties: { type: string } }
+        summary: { type: string }
+    UpdateAgentInvocationRequest:
+      x-go-type: review.UpdateAgentInvocationRequest
+      x-go-type-import: { path: github.com/aduverger/prunelle/server/internal/review }
+      type: object
+      required: [status]
+      additionalProperties: false
+      properties:
+        status: { type: string, enum: [RUNNING, FAILED, UNKNOWN] }
+        error: { type: string }
+    CompleteAgentInvocationRequest:
+      x-go-type: review.CompleteAgentInvocationRequest
+      x-go-type-import: { path: github.com/aduverger/prunelle/server/internal/review }
+      type: object
+      required: []
+      additionalProperties: false
+      properties:
+        invocation_id: { type: string }
+        discussion_id: { type: string }
+        body: { type: string, minLength: 1 }
+        generation: { $ref: "#/components/schemas/GeneratedReview" }
+    GeneratedReview:
+      x-go-type: review.GeneratedReview
+      x-go-type-import: { path: github.com/aduverger/prunelle/server/internal/review }
+      type: object
+      required: [topics, files]
+      additionalProperties: false
+      properties:
+        topics: { type: array, items: { $ref: "#/components/schemas/GeneratedTopic" } }
+        files: { type: array, minItems: 1, items: { $ref: "#/components/schemas/GeneratedFileTopics" } }
+    GeneratedTopic:
+      x-go-type: review.GeneratedTopic
+      x-go-type-import: { path: github.com/aduverger/prunelle/server/internal/review }
+      type: object
+      required: [key, title, summary, explanation]
+      additionalProperties: false
+      properties:
+        key: { type: string, minLength: 1 }
+        title: { type: string, minLength: 1 }
+        summary: { type: string, minLength: 1 }
+        explanation: { type: string, minLength: 1, description: Inferred Markdown explanation; never fabricated measured evidence. }
+    GeneratedFileTopics:
+      x-go-type: review.GeneratedFileTopics
+      x-go-type-import: { path: github.com/aduverger/prunelle/server/internal/review }
+      type: object
+      required: [repository_id, path, topic_keys, topic_ids]
+      additionalProperties: false
+      properties:
+        repository_id: { type: string }
+        path: { type: string }
+        topic_keys: { $ref: "#/components/schemas/KeyList" }
+        topic_ids: { $ref: "#/components/schemas/IDList" }

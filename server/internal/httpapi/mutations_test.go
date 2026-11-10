@@ -143,13 +143,22 @@ type sseStream struct {
 // openEvents connects to the event stream, optionally resuming after lastEventID.
 func (s *testServer) openEvents(t *testing.T, lastEventID string) *sseStream {
 	t.Helper()
+	headers := map[string]string{}
+	if lastEventID != "" {
+		headers["Last-Event-ID"] = lastEventID
+	}
+	return s.openSSE(t, "/v1/events", headers)
+}
+
+func (s *testServer) openSSE(t *testing.T, path string, headers map[string]string) *sseStream {
+	t.Helper()
 	ctx, cancel := context.WithCancel(context.Background())
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, s.url+"/v1/events", nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, s.url+path, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if lastEventID != "" {
-		req.Header.Set("Last-Event-ID", lastEventID)
+	for name, value := range headers {
+		req.Header.Set(name, value)
 	}
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {

@@ -32,6 +32,8 @@ No LLM runs inside Prunelle before M4. Topics, intents, changes, findings, evide
 
 Rex documents its API methods but not a wire protocol. The Rex backend runs `rex api call` and `rex events --json` without a shell, always with `--autostart=false`.
 
+**Supersession:** D12 retires this integration in M4. The paragraph above records the released M0b–M3 behavior, not a future dependency.
+
 ## D7. Git capture lands in M0a
 
 **Plan:** `docs/plan.md` placed capture in M1.
@@ -69,3 +71,15 @@ Rex documents its API methods but not a wire protocol. The Rex backend runs `rex
 **Source scope:** revision/file-scoped explicit topic sets override evidence-derived grouping, including an explicit empty set and an explicit reset. One domain rule supplies Files, topic code selection and original-thread context. Only evidence from that source revision derives ownership there. Copy manual corrections only for exact surviving repository/path identities; a disappearing path's correction is historical, not resurrected if the name returns later.
 
 **Safety/tradeoff:** migration 0006 is additive with FK enforcement on. Unrecoverable pre-M3 semantic state is unavailable, never backfilled from today's graph; source/messages/decisions survive. Code anchor validity compares stored blobs on the same path/side without relocation. Semantic anchors open their original revision's recorded state; missing elements/context are flagged rather than replaced with a current node. No per-edit semantic reconstruction, background mapper or analyzer is introduced.
+
+## D12. M4 connects directly to existing Pi and retires runtime backends
+
+**Status:** implemented on the M4 branch; validation and implementation ledger are in [the M4 plan](plans/m4.md). Merge, deployment and live-provider qualification remain separate.
+
+**Decision:** a companion extension in the existing Pi conversation connects outward to Prunelle's existing authenticated API. Reuse canonical `discussion_id` for continuing threads and an explicit invocation ID for each request/result. Pi retrieves discussion history by ID when needed instead of receiving every earlier message again. No RPC child, new listener, terminal scraping or second credential is required. A fork-per-review option is future work, not a current setting or per-discussion fork mechanism.
+
+**Attachment:** a unique matching connected Pi conversation attaches to the review automatically; zero candidates leaves it unattached and multiple candidates require selection. Match canonical review cwd scope only in a common filesystem namespace. Manual choices take precedence; existing bindings and in-flight targets are never silently replaced. Attachment does not dispatch work.
+
+**Content/actions:** first generate topics and explanations, not attention-only analysis or automatic findings. Explicit Prepare review publishes validated generated content directly; a topic-acceptance queue is not required. Preserve existing human content/grouping and canonical IDs under D11. Questions, generation and implementation are distinct explicit actions; merely saving a comment or decision invokes nothing. Use normal Pi permissions in the same conversation, not an asserted read-only sandbox. Only a deliberate human action sends a saved REQUEST_CHANGES decision as implementation work; replies/completion do not approve, resolve, capture or publish automatically.
+
+**Retirement/tradeoff:** remove Rex and the otherwise-unused runtime-backend layer, including configuration, CLI/API/UI, observers and runtime records. This supersedes the original specification's Rex-first infrastructure requirement and D6. We lose independent terminal/process visibility when Pi disconnects; report unavailable/unknown rather than infer process death. Pi may still be hosted by Rex; Prunelle neither requires nor controls that host. Retire old runtime links through a new migration, never guess Pi identities from Rex IDs or rewrite released migrations. Stop/back up and coordinate upgrades as before; no user's actual Rex process or installation is removed.

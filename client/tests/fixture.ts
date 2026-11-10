@@ -20,10 +20,6 @@ export class Fixture {
       this.config,
       `listen = "127.0.0.1:17391"
 data_dir = "${this.dir}/data"
-[[session_backends]]
-name = "Disconnected Rex fixture"
-kind = "REX"
-rex_path = "${this.dir}/rex-not-installed"
 `,
     );
   }

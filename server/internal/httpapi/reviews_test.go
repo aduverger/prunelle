@@ -2,7 +2,6 @@ package httpapi_test
 
 import (
 	"context"
-	"encoding/json"
 	"net/http"
 	"path/filepath"
 	"strconv"
@@ -12,8 +11,6 @@ import (
 	"github.com/aduverger/prunelle/server/api"
 	"github.com/aduverger/prunelle/server/internal/fixture"
 	"github.com/aduverger/prunelle/server/internal/review"
-	"github.com/aduverger/prunelle/server/internal/sessions"
-	"github.com/aduverger/prunelle/server/internal/sessions/sessionstest"
 )
 
 func TestReviewSourcesCaptureAndHardDeleteOverHTTP(t *testing.T) {
@@ -167,31 +164,4 @@ func TestCaptureReplayKeepsOriginalDefaultAfterRestart(t *testing.T) {
 	expectStatus(t, failed.StatusCode(), http.StatusUnprocessableEntity, failed.Body)
 	recovered := must(restarted.client.CaptureRevisionWithResponse(ctx, r.ID, nil, review.CaptureRequest{BaseRef: "main"}))
 	expectStatus(t, recovered.StatusCode(), http.StatusCreated, recovered.Body)
-}
-
-func TestReviewDeleteUnlinksButDoesNotStopRuntime(t *testing.T) {
-	ctx := context.Background()
-	fake := sessionstest.NewFake()
-	s := newTestServer(t, nil, sessions.Registration{Name: "rex", Config: json.RawMessage(`{}`), Backend: fake})
-	r, _, _ := s.seed(t)
-	fake.Set(sessions.Observed{ExternalID: "session:a/block:a1", State: sessions.StateOnline, Label: "Running fixture", Local: true, Metadata: json.RawMessage(`{}`)})
-	backends := must(s.client.ListSessionBackendsWithResponse(ctx))
-	if err := s.sessions.Sync(ctx, (*backends.JSON200)[0].ID); err != nil {
-		t.Fatal(err)
-	}
-	listed := must(s.client.ListRuntimeSessionsWithResponse(ctx, &api.ListRuntimeSessionsParams{}))
-	runtime := (*listed.JSON200)[0]
-	linked := must(s.client.AssociateRuntimeSessionWithResponse(ctx, r.ID, runtime.ID))
-	expectStatus(t, linked.StatusCode(), 200, linked.Body)
-	other := must(s.client.CreateReviewWithResponse(ctx, nil, review.CreateReviewRequest{Path: s.reposDir}))
-	expectStatus(t, other.StatusCode(), 201, other.Body)
-	otherLink := must(s.client.AssociateRuntimeSessionWithResponse(ctx, other.JSON201.ID, runtime.ID))
-	expectStatus(t, otherLink.StatusCode(), 200, otherLink.Body)
-	deleted := must(s.client.DeleteReviewWithResponse(ctx, r.ID))
-	expectStatus(t, deleted.StatusCode(), 204, deleted.Body)
-	remaining := must(s.client.GetRuntimeSessionWithResponse(ctx, runtime.ID))
-	expectStatus(t, remaining.StatusCode(), 200, remaining.Body)
-	if remaining.JSON200.State != sessions.StateOnline || len(remaining.JSON200.ReviewIDs) != 1 || remaining.JSON200.ReviewIDs[0] != other.JSON201.ID {
-		t.Fatal("runtime stopped or link retained")
-	}
 }

@@ -13,7 +13,6 @@ import (
 	"github.com/aduverger/prunelle/server/internal/fixture"
 	"github.com/aduverger/prunelle/server/internal/httpapi"
 	"github.com/aduverger/prunelle/server/internal/review"
-	"github.com/aduverger/prunelle/server/internal/sessions"
 	"github.com/aduverger/prunelle/server/internal/store"
 )
 
@@ -33,11 +32,7 @@ func TestCLIInfersActualInvocationDirectoryAndPreservesExplicitOverrides(t *test
 	}
 	defer db.Close()
 	svc := review.NewService(db, "origin/main")
-	sessionSvc, err := sessions.NewService(ctx, db, svc, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	handler, err := httpapi.NewHandler(ctx, db, svc, sessionSvc, httpapi.NewAuthorizer(nil, func(context.Context) (string, error) { return "fixture@example.com", nil }), "test")
+	handler, err := httpapi.NewHandler(ctx, db, svc, httpapi.NewAuthorizer(nil, func(context.Context) (string, error) { return "fixture@example.com", nil }), "test")
 	if err != nil {
 		t.Fatal(err)
 	}

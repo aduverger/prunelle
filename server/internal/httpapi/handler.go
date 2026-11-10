@@ -15,8 +15,8 @@ import (
 	middleware "github.com/oapi-codegen/nethttp-middleware"
 
 	"github.com/aduverger/prunelle/server/api"
+	"github.com/aduverger/prunelle/server/internal/agents"
 	"github.com/aduverger/prunelle/server/internal/review"
-	"github.com/aduverger/prunelle/server/internal/sessions"
 	"github.com/aduverger/prunelle/server/internal/store"
 )
 
@@ -39,13 +39,13 @@ const codePreconditionRequired = "PRECONDITION_REQUIRED"
 // NewHandler returns the API handler: access check, request validation against the OpenAPI
 // document, idempotent replay, then the generated router. Event streams end when lifetime is done,
 // so that shutdown does not wait for them; other requests are left to finish.
-func NewHandler(lifetime context.Context, db *store.DB, reviews *review.Service, sessionSvc *sessions.Service, auth *Authorizer, version string) (http.Handler, error) {
+func NewHandler(lifetime context.Context, db *store.DB, reviews *review.Service, auth *Authorizer, version string) (http.Handler, error) {
 	spec, err := api.GetSwagger()
 	if err != nil {
 		return nil, err
 	}
 	spec.Servers = nil // validate paths regardless of the host the server is reached through
-	strict := api.NewStrictHandlerWithOptions(&handlers{lifetime: lifetime, db: db, svc: reviews, sessions: sessionSvc, version: version}, nil, api.StrictHTTPServerOptions{
+	strict := api.NewStrictHandlerWithOptions(&handlers{lifetime: lifetime, db: db, svc: reviews, agents: agents.NewService(db, reviews), version: version}, nil, api.StrictHTTPServerOptions{
 		RequestErrorHandlerFunc:  writeRequestError,
 		ResponseErrorHandlerFunc: writeResponseError,
 	})
@@ -100,7 +100,7 @@ type handlers struct {
 	lifetime context.Context
 	db       *store.DB
 	svc      *review.Service
-	sessions *sessions.Service
+	agents   *agents.Service
 	version  string
 }
 
@@ -126,6 +126,11 @@ func (h *handlers) ListReviews(ctx context.Context, _ api.ListReviewsRequestObje
 
 func (h *handlers) CreateReview(ctx context.Context, req api.CreateReviewRequestObject) (api.CreateReviewResponseObject, error) {
 	rv, err := h.svc.CreateReview(ctx, *req.Body, callerFrom(ctx))
+	if err == nil {
+		if selectionErr := h.agents.ResolveReview(ctx, rv.ID, callerFrom(ctx)); selectionErr != nil {
+			slog.Warn("automatic Pi selection unavailable; review was created", "review_id", rv.ID, "err", selectionErr)
+		}
+	}
 	return api.CreateReview201JSONResponse(rv), err
 }
 
@@ -310,28 +315,4 @@ func (h *handlers) GetEvidence(ctx context.Context, req api.GetEvidenceRequestOb
 func (h *handlers) ListAttention(ctx context.Context, req api.ListAttentionRequestObject) (api.ListAttentionResponseObject, error) {
 	signals, err := h.svc.ListAttention(ctx, req.ReviewId)
 	return api.ListAttention200JSONResponse(signals), err
-}
-
-func (h *handlers) ListSessionBackends(ctx context.Context, _ api.ListSessionBackendsRequestObject) (api.ListSessionBackendsResponseObject, error) {
-	backends, err := h.sessions.ListBackends(ctx)
-	return api.ListSessionBackends200JSONResponse(backends), err
-}
-
-func (h *handlers) ListRuntimeSessions(ctx context.Context, req api.ListRuntimeSessionsRequestObject) (api.ListRuntimeSessionsResponseObject, error) {
-	runtimes, err := h.sessions.ListRuntimeSessions(ctx, req.Params.ReviewId)
-	return api.ListRuntimeSessions200JSONResponse(runtimes), err
-}
-
-func (h *handlers) GetRuntimeSession(ctx context.Context, req api.GetRuntimeSessionRequestObject) (api.GetRuntimeSessionResponseObject, error) {
-	runtime, err := h.sessions.GetRuntimeSession(ctx, req.RuntimeSessionId)
-	return api.GetRuntimeSession200JSONResponse(runtime), err
-}
-
-func (h *handlers) AssociateRuntimeSession(ctx context.Context, req api.AssociateRuntimeSessionRequestObject) (api.AssociateRuntimeSessionResponseObject, error) {
-	runtime, err := h.sessions.Associate(ctx, req.ReviewId, req.RuntimeSessionId)
-	return api.AssociateRuntimeSession200JSONResponse(runtime), err
-}
-
-func (h *handlers) DissociateRuntimeSession(ctx context.Context, req api.DissociateRuntimeSessionRequestObject) (api.DissociateRuntimeSessionResponseObject, error) {
-	return api.DissociateRuntimeSession204Response{}, h.sessions.Dissociate(ctx, req.ReviewId, req.RuntimeSessionId)
 }

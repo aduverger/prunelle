@@ -22,16 +22,22 @@ Commands:
   review capture [REVIEW_ID]               capture source (--base-ref REF, --repo-base-ref ID=REF; default: cwd's sole review)
   review delete --yes REVIEW_ID           permanently delete review data, never project files
   review import REVIEW_ID MANIFEST.json   import a review manifest ("-" reads stdin; --revision)
-  sessions backends                       list session backends and their health
-  sessions ls                             list runtime sessions (--review ID)
-  sessions link RUNTIME_ID REVIEW_ID      associate a runtime session with a review
-  sessions unlink RUNTIME_ID REVIEW_ID    remove that association
+  agent ls                                list connected/known Pi conversations
+  agent binding                           inspect review attachment (--review ID; default cwd's sole review)
+  agent select PI_ID                      explicitly attach Pi (--review ID)
+  agent auto|disconnect                   enable unique-cwd attachment or intentionally detach (--review ID)
+  agent prepare                           generate topics/explanations for captured changes (--review ID, --revision ID)
+  agent ask DISCUSSION_ID MESSAGE_ID       ask Pi about a saved question (--review ID, --revision ID)
+  agent implement DECISION_ID              preview a saved REQUEST_CHANGES handoff; --yes --agent-session ID sends it
+  agent requests                          list review requests (--review ID)
+  agent get INVOCATION_ID                  inspect a request; no execution is replayed
   events                                  print review changes as they happen (--after SEQUENCE)
   fixture DIR                             build the demo repositories in DIR and seed a review
   fixture --print-manifest                print the demo review manifest
 
 Client commands reach the server at --server (default: the configured listen address).
 An agent sets PRUNELLE_AGENT (e.g. pi:<session-id>) so its changes are attributed to it.
+Only humans dispatch Pi work. Dispatch prints a --key for an explicit unchanged retry; never repost the saved question.
 `
 
 func main() {
@@ -68,8 +74,8 @@ func run(ctx context.Context, args []string) error {
 		return errors.New("workspace commands were retired; use review create, capture or delete with a review ID")
 	case "review":
 		return reviewCommand(ctx, cfg, rest[1:])
-	case "sessions":
-		return sessionsCommand(ctx, cfg, rest[1:])
+	case "agent":
+		return agentCommand(ctx, cfg, rest[1:])
 	case "events":
 		return eventsCommand(ctx, cfg, rest[1:])
 	case "fixture":

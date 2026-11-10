@@ -6,6 +6,7 @@ import { result, type API, type Model } from './api/client';
 import { useSubmit } from './hooks';
 import type { DiscussionTarget } from './model';
 import { Attribution, Notice } from './Views';
+import type { AgentAction } from './Agents';
 
 export function anchorLabel(anchor: DiscussionTarget['anchor'] | Model['Anchor']) {
   const range = anchor.code_range;
@@ -75,6 +76,7 @@ const DiscussionContext = createContext<{
   discussions: Model['Discussion'][];
   revisions: Model['Revision'][];
   anchorStatuses: Model['DiscussionAnchorStatus'][];
+  requestAgent: (action: AgentAction) => void;
   register: (key: string, id: string, node: HTMLElement | null, reveal?: number) => void;
 } | null>(null);
 
@@ -102,6 +104,7 @@ export function DiscussionProvider({
   openAnchor,
   onDraftChange,
   anchorStatuses,
+  requestAgent,
   children,
 }: {
   api: API;
@@ -111,6 +114,7 @@ export function DiscussionProvider({
   openAnchor: (d: Model['Discussion']) => void;
   onDraftChange: (dirty: boolean) => void;
   anchorStatuses: Model['DiscussionAnchorStatus'][];
+  requestAgent: (action: AgentAction) => void;
   children: React.ReactNode;
 }) {
   const [hosts, setHosts] = useState<Record<string, Host>>({});
@@ -146,7 +150,7 @@ export function DiscussionProvider({
   useEffect(() => () => onDraftChange(false), [onDraftChange]);
   return (
     <DiscussionContext.Provider
-      value={{ composer, discussions, revisions, anchorStatuses, register }}
+      value={{ composer, discussions, revisions, anchorStatuses, requestAgent, register }}
     >
       {children}
       {Object.entries(hosts)
@@ -336,6 +340,7 @@ function ThreadController({
   open: () => void;
   reportDraft: (id: string, dirty: boolean) => void;
 }) {
+  const { requestAgent } = useDiscussions();
   const [reply, setReply] = useState('');
   const revealed = useRef<number>(undefined);
   const reveal = hosts.find(([, host]) => host.reveal !== undefined)?.[1].reveal;
@@ -399,8 +404,19 @@ function ThreadController({
       )}
       {d.messages.map((m) => (
         <div className="message" key={m.id}>
-          <Attribution author={m.author} />
-          <time>{new Date(m.created_at).toLocaleString()}</time>
+          <div className="row">
+            <Attribution author={m.author} />
+            <time>{new Date(m.created_at).toLocaleString()}</time>
+            {m.author.kind === 'HUMAN' && (
+              <button
+                className="link"
+                type="button"
+                onClick={() => requestAgent({ intent: 'DISCUSS', discussion: d, message: m })}
+              >
+                Ask Pi
+              </button>
+            )}
+          </div>
           <Markdown>{m.body}</Markdown>
         </div>
       ))}
@@ -465,7 +481,7 @@ export function Decisions({
   const [findingIDs, setFindingIDs] = useState<string[]>([]);
   const [discussionIDs, setDiscussionIDs] = useState<string[]>([]);
   const action = useSubmit();
-  const { revisions } = useDiscussions();
+  const { revisions, requestAgent } = useDiscussions();
   const draftView = useQuery({
     queryKey: ['revision-view', reviewID, draftRevision.id],
     enabled: draftRevision.id !== revision.id,
@@ -639,6 +655,11 @@ export function Decisions({
               {new Date(d.created_at).toLocaleString()} · {d.finding_ids.length} findings ·{' '}
               {d.discussion_ids.length} discussions
             </small>
+            {d.decision === 'REQUEST_CHANGES' && (
+              <button onClick={() => requestAgent({ intent: 'IMPLEMENT', decision: d })}>
+                Preview implementation request
+              </button>
+            )}
           </article>
         ))}
     </section>
