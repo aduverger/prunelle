@@ -38,6 +38,20 @@ export function useAgentState(api: API, reviewID: string, poll: boolean) {
 
 type AgentQuery = ReturnType<typeof useAgentState>;
 
+function useAgentInvocations(api: API, reviewID: string, poll: boolean) {
+  return useQuery({
+    queryKey: ['agent-invocations', reviewID],
+    queryFn: ({ signal }) =>
+      result(
+        api.GET('/v1/reviews/{reviewId}/agent-invocations', {
+          params: { path: { reviewId: reviewID } },
+          signal,
+        }),
+      ),
+    refetchInterval: poll ? 5000 : false,
+  });
+}
+
 type CommentDelivery = {
   key: string;
   request: Model['CreateAgentInvocationRequest'];
@@ -49,21 +63,13 @@ type CommentDelivery = {
 
 export function useCommentDelivery(api: API, reviewID: string, agents: AgentQuery) {
   const cache = useQueryClient();
-  const attempts = useRef(new Map<string, CommentDelivery>());
   const [deliveries, setDeliveries] = useState(new Map<string, CommentDelivery>());
-  const invocations = useQuery({
-    queryKey: ['agent-invocations', reviewID],
-    queryFn: ({ signal }) =>
-      result(
-        api.GET('/v1/reviews/{reviewId}/agent-invocations', {
-          params: { path: { reviewId: reviewID } },
-          signal,
-        }),
-      ),
-  });
+  const attempts = useRef(deliveries);
+  const invocations = useAgentInvocations(api, reviewID, false);
   function update(messageID: string, delivery: CommentDelivery) {
-    attempts.current.set(messageID, delivery);
-    setDeliveries(new Map(attempts.current));
+    const updatedDeliveries = new Map(attempts.current).set(messageID, delivery);
+    attempts.current = updatedDeliveries;
+    setDeliveries(updatedDeliveries);
   }
   async function send(messageID: string, delivery: CommentDelivery) {
     update(messageID, { ...delivery, busy: true, error: undefined });
@@ -158,17 +164,7 @@ export function AgentPanel({
   query: AgentQuery;
 }) {
   const action = useSubmit();
-  const invocations = useQuery({
-    queryKey: ['agent-invocations', reviewID],
-    queryFn: ({ signal }) =>
-      result(
-        api.GET('/v1/reviews/{reviewId}/agent-invocations', {
-          params: { path: { reviewId: reviewID } },
-          signal,
-        }),
-      ),
-    refetchInterval: 5000,
-  });
+  const invocations = useAgentInvocations(api, reviewID, true);
   function choose(request: Model['AgentBindingRequest']) {
     const binding = query.data?.binding;
     if (!binding) return;

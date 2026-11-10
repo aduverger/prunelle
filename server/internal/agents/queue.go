@@ -17,7 +17,7 @@ func (s *Service) dispatchNext(ctx context.Context, sessionID string) error {
 	for {
 		s.mu.Lock()
 		connection := s.connections[sessionID]
-		if connection == nil || !connection.ready || connection.activeID != "" || connection.reserved {
+		if !connection.readyForDispatch() {
 			s.mu.Unlock()
 			return nil
 		}

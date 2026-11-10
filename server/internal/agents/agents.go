@@ -71,6 +71,10 @@ type Connection struct {
 	reserved  bool
 }
 
+func (c *Connection) readyForDispatch() bool {
+	return c != nil && c.ready && c.activeID == "" && !c.reserved
+}
+
 type Service struct {
 	db          *store.DB
 	reviews     *review.Service
@@ -138,7 +142,7 @@ func (s *Service) state(session Session) Session {
 	if connection := s.connections[session.ID]; connection != nil {
 		session.State = "BUSY"
 		session.Model = connection.model
-		if connection.ready && !connection.reserved && connection.activeID == "" {
+		if connection.readyForDispatch() {
 			session.State = "READY"
 		}
 	}
@@ -421,7 +425,7 @@ func (s *Service) CreateInvocation(ctx context.Context, reviewID string, req rev
 	}
 	s.mu.Lock()
 	connection := s.connections[*binding.AgentSessionID]
-	if connection == nil || !connection.ready || connection.activeID != "" || connection.reserved {
+	if !connection.readyForDispatch() {
 		s.mu.Unlock()
 		return review.AgentInvocation{}, failure(review.CodeConflict, "Pi is unavailable or busy; no work was queued")
 	}
