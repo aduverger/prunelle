@@ -21,11 +21,12 @@ import (
 	"github.com/aduverger/prunelle/server/internal/fixture"
 	"github.com/aduverger/prunelle/server/internal/httpapi"
 	"github.com/aduverger/prunelle/server/internal/review"
-	"github.com/aduverger/prunelle/server/internal/sessions"
 	"github.com/aduverger/prunelle/server/internal/store"
 )
 
 const ownerLogin = "owner@example.com"
+
+func ptr(s string) *string { return &s }
 
 func ownerLookup(context.Context) (string, error) { return ownerLogin, nil }
 
@@ -34,27 +35,26 @@ type testServer struct {
 	url      string
 	root     string
 	reposDir string
-	sessions *sessions.Service
 	stop     func()
 }
 
 // newTestServer serves the API and returns a client whose responses are validated against openapi.yaml.
-func newTestServer(t *testing.T, allowedLogins []string, backends ...sessions.Registration) *testServer {
+func newTestServer(t *testing.T, allowedLogins []string) *testServer {
 	t.Helper()
 	root, err := filepath.EvalSymlinks(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
-	return startTestServer(t, root, allowedLogins, backends...)
+	return startTestServer(t, root, allowedLogins)
 }
 
 // startTestServer serves the API from the database in root; stop shuts the server and database down.
-func startTestServer(t *testing.T, root string, allowedLogins []string, backends ...sessions.Registration) *testServer {
+func startTestServer(t *testing.T, root string, allowedLogins []string) *testServer {
 	t.Helper()
-	return startTestServerWithDefault(t, root, "main", allowedLogins, backends...)
+	return startTestServerWithDefault(t, root, "main", allowedLogins)
 }
 
-func startTestServerWithDefault(t *testing.T, root, baseRef string, allowedLogins []string, backends ...sessions.Registration) *testServer {
+func startTestServerWithDefault(t *testing.T, root, baseRef string, allowedLogins []string) *testServer {
 	t.Helper()
 	ctx := context.Background()
 	db, err := store.Open(ctx, root)
@@ -63,11 +63,7 @@ func startTestServerWithDefault(t *testing.T, root, baseRef string, allowedLogin
 	}
 	reposDir := filepath.Join(root, "repos")
 	reviews := review.NewService(db, baseRef)
-	sessionSvc, err := sessions.NewService(ctx, db, reviews, backends)
-	if err != nil {
-		t.Fatal(err)
-	}
-	handler, err := httpapi.NewHandler(context.Background(), db, reviews, sessionSvc, httpapi.NewAuthorizer(allowedLogins, ownerLookup), "test")
+	handler, err := httpapi.NewHandler(context.Background(), db, reviews, httpapi.NewAuthorizer(allowedLogins, ownerLookup), "test")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -90,7 +86,7 @@ func startTestServerWithDefault(t *testing.T, root, baseRef string, allowedLogin
 	if err != nil {
 		t.Fatal(err)
 	}
-	return &testServer{client: client, url: srv.URL, root: root, reposDir: reposDir, sessions: sessionSvc, stop: stop}
+	return &testServer{client: client, url: srv.URL, root: root, reposDir: reposDir, stop: stop}
 }
 
 type validatingTransport struct {

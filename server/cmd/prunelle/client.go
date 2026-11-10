@@ -146,16 +146,10 @@ func reviewCommand(ctx context.Context, cfg config.Config, args []string) error 
 		reviewID := ""
 		if len(rest) == 1 {
 			reviewID = rest[0]
-		} else {
-			cwd, err := os.Getwd()
-			if err != nil {
-				return err
-			}
-			resolved, err := c.ResolveReviewWithResponse(ctx, &api.ResolveReviewParams{Path: cwd})
-			if err := checked(resolved, err); err != nil {
-				return err
-			}
-			reviewID = resolved.JSON200.ID
+		}
+		reviewID, err = resolveReviewID(ctx, c, reviewID)
+		if err != nil {
+			return err
 		}
 		req := review.CaptureRequest{BaseRef: *baseRef}
 		for _, spec := range refSpecs {
@@ -184,6 +178,21 @@ func reviewCommand(ctx context.Context, cfg config.Config, args []string) error 
 		return output(c.ImportManifestWithResponse(ctx, rest[0], nil, req))
 	}
 	return fmt.Errorf("unknown or incomplete review command %q; review create takes only an optional title, not a workspace ID", strings.Join(args, " "))
+}
+
+func resolveReviewID(ctx context.Context, client *api.ClientWithResponses, explicit string) (string, error) {
+	if explicit != "" {
+		return explicit, nil
+	}
+	cwd, err := os.Getwd()
+	if err != nil {
+		return "", err
+	}
+	resolved, err := client.ResolveReviewWithResponse(ctx, &api.ResolveReviewParams{Path: cwd})
+	if err := checked(resolved, err); err != nil {
+		return "", err
+	}
+	return resolved.JSON200.ID, nil
 }
 
 func readManifest(path string) (review.Manifest, error) {
@@ -241,41 +250,6 @@ func fixtureCommand(ctx context.Context, cfg config.Config, args []string) error
 		return err
 	}
 	return output(c.ImportManifestWithResponse(ctx, rv.JSON201.ID, nil, review.ImportRequest{Manifest: fixture.Manifest()}))
-}
-
-func sessionsCommand(ctx context.Context, cfg config.Config, args []string) error {
-	if len(args) == 0 {
-		return errors.New("usage: prunelle sessions backends|ls|link|unlink")
-	}
-	flags, client := clientFlags("sessions "+args[0], cfg)
-	reviewID := flags.String("review", "", "only sessions associated with this review (ls)")
-	if err := flags.Parse(args[1:]); err != nil {
-		return err
-	}
-	c, err := client()
-	if err != nil {
-		return err
-	}
-	rest := flags.Args()
-	switch {
-	case args[0] == "backends":
-		return output(c.ListSessionBackendsWithResponse(ctx))
-	case args[0] == "ls":
-		params := &api.ListRuntimeSessionsParams{}
-		if *reviewID != "" {
-			params.ReviewId = reviewID
-		}
-		return output(c.ListRuntimeSessionsWithResponse(ctx, params))
-	case args[0] == "link" && len(rest) == 2:
-		return output(c.AssociateRuntimeSessionWithResponse(ctx, rest[1], rest[0]))
-	case args[0] == "unlink" && len(rest) == 2:
-		resp, err := c.DissociateRuntimeSessionWithResponse(ctx, rest[1], rest[0])
-		if err != nil {
-			return err
-		}
-		return apiError(resp)
-	}
-	return fmt.Errorf("unknown or incomplete sessions command %q", strings.Join(args, " "))
 }
 
 // eventsCommand prints the event stream, one JSON event per line, until interrupted.

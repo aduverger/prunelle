@@ -143,9 +143,8 @@ func (i *idempotency) complete(caller, key string, response storedResponse) erro
 		_, err := tx.ExecContext(context.Background(), `UPDATE idempotency_keys SET status = ?, headers = ?, body = ?,
 			review_id = (SELECT review_id FROM resource_reviews WHERE id = ?)
 			WHERE caller = ? AND key = ? AND (? = ''
-				OR EXISTS (SELECT 1 FROM resource_reviews WHERE id = ?)
-				OR EXISTS (SELECT 1 FROM runtime_sessions WHERE id = ?))`,
-			response.status, string(headers), response.body, id, caller, key, id, id, id)
+				OR EXISTS (SELECT 1 FROM resource_reviews WHERE id = ?))`,
+			response.status, string(headers), response.body, id, caller, key, id, id)
 		return err
 	})
 }

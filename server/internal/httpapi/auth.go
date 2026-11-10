@@ -78,7 +78,9 @@ func (a *Authorizer) Middleware(next http.Handler, publicPaths ...string) http.H
 			}
 			actor.Author = review.Author{Kind: "AGENT", ID: agent}
 		}
-		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), callerKey{}, actor)))
+		authenticated := context.WithValue(r.Context(), callerKey{}, actor)
+		authenticated = context.WithValue(authenticated, localConnectionKey{}, !proxied(r))
+		next.ServeHTTP(w, r.WithContext(authenticated))
 	})
 }
 
@@ -115,6 +117,12 @@ func (a *Authorizer) check(r *http.Request) (caller, code, message string) {
 const localCaller = "local"
 
 type callerKey struct{}
+type localConnectionKey struct{}
+
+func localConnection(ctx context.Context) bool {
+	local, _ := ctx.Value(localConnectionKey{}).(bool)
+	return local
+}
 
 // callerFrom returns who makes the request's changes: the human the access check admitted, or the
 // agent named by Prunelle-Agent acting through that human's login. Tailscale authenticates the login;

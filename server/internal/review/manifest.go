@@ -262,7 +262,7 @@ func (s *Service) Import(ctx context.Context, reviewID string, req ImportRequest
 		if err := requireCurrentRevision(ctx, tx, reviewID, &revision.ID); err != nil {
 			return err
 		}
-		w := &importWriter{ctx: ctx, tx: tx, plan: plan, now: store.FormatTime(now)}
+		w := &importWriter{ctx: ctx, tx: tx, plan: plan, now: store.FormatTime(now), origin: "IMPORTED"}
 		w.exec(`INSERT INTO imports (id, review_id, revision_id, author_kind, author_id, imported_at) VALUES (?, ?, ?, ?, ?, ?)`,
 			plan.importID, reviewID, revision.ID, m.Author.Kind, m.Author.ID, w.now)
 		w.evidence(m.Evidence)
@@ -379,11 +379,12 @@ func splitLines(content string) []string {
 // importWriter inserts a planned manifest, accumulating validation problems in the plan and
 // the first database error in err.
 type importWriter struct {
-	ctx  context.Context
-	tx   *sql.Tx
-	plan *importPlan
-	now  string
-	err  error
+	ctx    context.Context
+	tx     *sql.Tx
+	plan   *importPlan
+	now    string
+	origin string
+	err    error
 }
 
 func (w *importWriter) exec(query string, args ...any) {
@@ -495,7 +496,7 @@ func (w *importWriter) topics(topics []ManifestTopic) error {
 			nextRootPosition++
 		}
 		w.exec(`INSERT INTO topics (id, review_id, parent_id, title, summary, origin, state, position, author_kind, author_id, import_id, created_at, updated_at)
-			VALUES (?, ?, ?, ?, ?, 'IMPORTED', 'ACTIVE', ?, ?, ?, ?, ?, ?)`, id, p.reviewID, parentID, t.Title, t.Summary, position,
+			VALUES (?, ?, ?, ?, ?, ?, 'ACTIVE', ?, ?, ?, ?, ?, ?)`, id, p.reviewID, parentID, t.Title, t.Summary, w.origin, position,
 			p.author.Kind, p.author.ID, p.importID, w.now, w.now)
 		w.link("topic_intents", "topic_id", id, "intent_id", p.refs("intents", path+".intents", t.Intents))
 		w.link("topic_changes", "topic_id", id, "change_id", p.refs("changes", path+".changes", t.Changes))
@@ -530,7 +531,7 @@ func (w *importWriter) representations(topicID, topicPath string, reps []Manifes
 			title = defaultRepresentationTitles[rep.Type]
 		}
 		w.exec(`INSERT INTO representations (id, topic_id, revision_id, type, title, config, origin, position, author_kind, author_id, import_id, created_at, updated_at)
-			VALUES (?, ?, ?, ?, ?, ?, 'IMPORTED', ?, ?, ?, ?, ?, ?)`, store.NewID("rep"), topicID, p.revisionID, rep.Type, title, string(encoded), i,
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, store.NewID("rep"), topicID, p.revisionID, rep.Type, title, string(encoded), w.origin, i,
 			p.author.Kind, p.author.ID, p.importID, w.now, w.now)
 	}
 }

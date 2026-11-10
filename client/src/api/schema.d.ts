@@ -570,49 +570,34 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/v1/session-backends": {
+    "/v1/agent-sessions": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        /** @description Session backends from the server configuration, with their current health. Backends are configured in the server config file, never through the API. */
-        get: operations["listSessionBackends"];
+        get: operations["listAgentSessions"];
         put?: never;
-        post?: never;
+        /** @description Pi self-registration; actor must be pi:<external_id>. Direct loopback registrations may participate in canonical cwd matching; proxied/remote paths do not. */
+        post: operations["registerAgentSession"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/v1/runtime-sessions": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get: operations["listRuntimeSessions"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/runtime-sessions/{runtimeSessionId}": {
+    "/v1/agent-sessions/{agentSessionId}/connect": {
         parameters: {
             query?: never;
             header?: never;
             path: {
-                runtimeSessionId: components["parameters"]["RuntimeSessionId"];
+                agentSessionId: components["parameters"]["AgentSessionId"];
             };
             cookie?: never;
         };
-        get: operations["getRuntimeSession"];
+        /** @description Pi-only live SSE dispatch connection. Opens with ready/connection_id, then request frames containing AgentInvocation. No event IDs or execution replay; reconnect does not resend commands. */
+        get: operations["connectAgentSession"];
         put?: never;
         post?: never;
         delete?: never;
@@ -621,22 +606,132 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/v1/reviews/{reviewId}/runtime-sessions/{runtimeSessionId}": {
+    "/v1/agent-sessions/{agentSessionId}/state": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                agentSessionId: components["parameters"]["AgentSessionId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        /** @description The connected Pi reports actual readiness/model/checkpoint for its current connection ID. */
+        put: operations["updateAgentSessionState"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/reviews/{reviewId}/agent-binding": {
         parameters: {
             query?: never;
             header?: never;
             path: {
                 reviewId: components["parameters"]["ReviewId"];
-                runtimeSessionId: components["parameters"]["RuntimeSessionId"];
+            };
+            cookie?: never;
+        };
+        get: operations["getAgentBinding"];
+        /** @description Select a Pi, deliberately disconnect, or explicitly restore automatic matching. No request is dispatched. */
+        put: operations["setAgentBinding"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/reviews/{reviewId}/agent-invocations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                reviewId: components["parameters"]["ReviewId"];
+            };
+            cookie?: never;
+        };
+        get: operations["listAgentInvocations"];
+        put?: never;
+        /** @description Explicit human action only. Resolve a unique unbound candidate, reject busy/unavailable, persist and send once over the live Pi connection. Committed replay never dispatches again. */
+        post: operations["createAgentInvocation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/agent-invocations/{invocationId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                invocationId: components["parameters"]["InvocationId"];
+            };
+            cookie?: never;
+        };
+        get: operations["getAgentInvocation"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/agent-invocations/{invocationId}/context": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                invocationId: components["parameters"]["InvocationId"];
+            };
+            cookie?: never;
+        };
+        get: operations["getAgentInvocationContext"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/agent-invocations/{invocationId}/state": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                invocationId: components["parameters"]["InvocationId"];
             };
             cookie?: never;
         };
         get?: never;
-        /** @description Explicitly associate a runtime session with a review. Idempotent. */
-        put: operations["associateRuntimeSession"];
-        post?: never;
-        /** @description Remove an association. Idempotent. */
-        delete: operations["dissociateRuntimeSession"];
+        put?: never;
+        /** @description Target Pi only; report running, definite failure or uncertainty without overwriting a committed result. */
+        post: operations["updateAgentInvocation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/agent-invocations/{invocationId}/complete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                invocationId: components["parameters"]["InvocationId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Target Pi publishes one structured result atomically. Domain deduplication also protects independent keys, restart, and receipt expiry. Conflicting results reject. */
+        post: operations["completeAgentInvocation"];
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -1194,7 +1289,8 @@ export interface components {
          * @description A change to refetch. Types: review.created, review.deleted, revision.created, import.created,
          *     topic.created, topic.updated (edit or move; refetch the topic list, sibling positions may change),
          *     representation.created, representation.updated, discussion.created, discussion.updated
-         *     (status change or reply), decision.created, finding.updated, source.topics.updated.
+         *     (status change or reply), decision.created, finding.updated, source.topics.updated,
+         *     agent.session.updated, agent.binding.updated, agent.invocation.created, agent.invocation.updated.
          */
         Event: {
             /** Format: int64 */
@@ -1350,67 +1446,142 @@ export interface components {
             key: string;
         };
         KeyList: string[];
-        SessionBackend: {
+        AgentSession: {
             id: string;
-            name: string;
+            /** @description Logical Pi conversation ID; not a terminal or runtime ID. */
+            external_id: string;
+            cwd: string;
+            version: string;
+            local: boolean;
             /** @enum {string} */
-            kind: "REX" | "HERDR" | "MANAGED";
-            /** @description False when the backend is no longer in the server configuration. */
-            enabled: boolean;
-            capabilities: components["schemas"]["SessionCapability"][];
-            /** @description Non-secret backend configuration. */
-            config: Record<string, never>;
-            health: components["schemas"]["BackendHealth"];
+            state: "READY" | "BUSY" | "UNAVAILABLE";
+            model: string;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
         };
-        /** @enum {string} */
-        SessionCapability: "DISCOVER" | "INSPECT" | "SUBSCRIBE";
-        BackendHealth: {
+        RegisterAgentSessionRequest: {
+            external_id: string;
+            cwd: string;
+            version: string;
+        };
+        AgentSessionStateRequest: {
+            connection_id: string;
+            ready: boolean;
+            model: string;
+            context_id: string;
+        };
+        AgentBinding: {
+            review_id: string;
+            agent_session_id: string | null;
             /** @enum {string} */
-            state: "CONNECTING" | "REACHABLE" | "UNREACHABLE" | "DISABLED";
+            mode: "AUTO" | "MANUAL" | "DISCONNECTED";
+            version: number;
+            candidates: components["schemas"]["IDList"];
+        };
+        AgentBindingRequest: {
+            /** @enum {string} */
+            mode: "AUTO" | "MANUAL" | "DISCONNECTED";
+            agent_session_id?: string;
+        } & ({
+            /** @enum {unknown} */
+            mode?: "MANUAL";
+        } | {
+            /** @enum {unknown} */
+            mode?: "AUTO" | "DISCONNECTED";
+            agent_session_id?: null;
+        });
+        AgentInvocation: {
+            id: string;
+            review_id: string;
+            revision_id: string;
+            agent_session_id: string;
+            /** @description Original dispatch connection identity; not an authentication credential. */
+            connection_id: string;
+            /** @enum {string} */
+            intent: "DISCUSS" | "PREPARE_REVIEW" | "IMPLEMENT";
+            /** @enum {string} */
+            status: "PENDING" | "RUNNING" | "SUCCEEDED" | "FAILED" | "UNKNOWN";
+            discussion_id: string | null;
+            message_id: string | null;
+            decision_id: string | null;
+            prompt: string;
+            author: components["schemas"]["Author"];
+            model: string;
+            context_id: string;
+            input_fingerprint: string;
+            result: null | components["schemas"]["AgentInvocationResult"];
             error: string | null;
             /** Format: date-time */
-            checked_at: string | null;
-            /** @description Endpoint details such as rex_version and api_revision. */
-            info: {
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+        };
+        CreateAgentInvocationRequest: {
+            revision_id: string;
+            /** @enum {string} */
+            intent: "DISCUSS" | "PREPARE_REVIEW" | "IMPLEMENT";
+            /** @description Exact Pi target shown in the request preview; binding changes reject rather than retarget. */
+            agent_session_id: string;
+            discussion_id?: string;
+            message_id?: string;
+            decision_id?: string;
+        } & ({
+            /** @enum {unknown} */
+            intent?: "DISCUSS";
+            decision_id?: null;
+        } | {
+            /** @enum {unknown} */
+            intent?: "IMPLEMENT";
+            discussion_id?: null;
+            message_id?: null;
+        } | {
+            /** @enum {unknown} */
+            intent?: "PREPARE_REVIEW";
+            discussion_id?: null;
+            message_id?: null;
+            decision_id?: null;
+        });
+        AgentInvocationContext: {
+            invocation_id: string;
+            view: components["schemas"]["RevisionView"];
+            eligible_files: components["schemas"]["SourceFileRef"][];
+        };
+        AgentInvocationResult: {
+            message_id: string | null;
+            topic_ids: {
                 [key: string]: string;
             };
+            summary: string;
         };
-        /**
-         * @description A process or terminal hosted by a session backend (for Rex, one terminal block). Not an
-         *     agent conversation. UNKNOWN means the backend cannot currently be observed; it does not
-         *     mean the process stopped.
-         */
-        RuntimeSession: {
-            /** @description Prunelle-owned ID. */
-            id: string;
-            backend_id: string;
+        UpdateAgentInvocationRequest: {
             /** @enum {string} */
-            backend_kind: "REX" | "HERDR" | "MANAGED";
-            /** @description Opaque backend identifier */
-            external_id: string;
-            /** @enum {string} */
-            state: "ONLINE" | "OFFLINE" | "STOPPED" | "UNKNOWN";
-            label: string;
-            cwd: string | null;
-            /** @description Foreground program name. */
-            process: string | null;
-            /** @description Runs on the backend's host */
-            local: boolean;
-            /** @description Coding harness the runtime appears to run, e.g. pi. A hint, not an agent identity. */
-            harness_hint: string | null;
-            capabilities: components["schemas"]["SessionCapability"][];
-            /** @description Backend-specific details. */
-            metadata: Record<string, never>;
-            /** @description Explicit associations. */
-            review_ids: string[];
-            /** @description Reviews whose source contains the runtime's local cwd. Never applied automatically. */
-            suggested_review_ids: string[];
-            /** Format: date-time */
-            first_seen_at: string;
-            /** Format: date-time */
-            last_seen_at: string;
-            /** Format: date-time */
-            state_changed_at: string;
+            status: "RUNNING" | "FAILED" | "UNKNOWN";
+            error?: string;
+        };
+        CompleteAgentInvocationRequest: {
+            invocation_id?: string;
+            discussion_id?: string;
+            body?: string;
+            generation?: components["schemas"]["GeneratedReview"];
+        };
+        GeneratedReview: {
+            topics: components["schemas"]["GeneratedTopic"][];
+            files: components["schemas"]["GeneratedFileTopics"][];
+        };
+        GeneratedTopic: {
+            key: string;
+            title: string;
+            summary: string;
+            /** @description Inferred Markdown explanation; never fabricated measured evidence. */
+            explanation: string;
+        };
+        GeneratedFileTopics: {
+            repository_id: string;
+            path: string;
+            topic_keys: components["schemas"]["KeyList"];
+            topic_ids: components["schemas"]["IDList"];
         };
     };
     responses: {
@@ -1428,7 +1599,8 @@ export interface components {
         ReviewId: string;
         RevisionId: string;
         TopicId: string;
-        RuntimeSessionId: string;
+        AgentSessionId: string;
+        InvocationId: string;
         DiscussionId: string;
         /** @description Client-chosen unique key that makes a retried request safe. */
         IdempotencyKey: string;
@@ -2475,7 +2647,7 @@ export interface operations {
             default: components["responses"]["Error"];
         };
     };
-    listSessionBackends: {
+    listAgentSessions: {
         parameters: {
             query?: never;
             header?: never;
@@ -2484,107 +2656,303 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Session backends. */
+            /** @description Registered logical Pi conversations and current connection readiness. */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["SessionBackend"][];
+                    "application/json": components["schemas"]["AgentSession"][];
                 };
             };
             default: components["responses"]["Error"];
         };
     };
-    listRuntimeSessions: {
+    registerAgentSession: {
         parameters: {
-            query?: {
-                /** @description Only runtime sessions explicitly associated with this review. */
-                review_id?: string;
+            query?: never;
+            header?: {
+                /** @description Client-chosen unique key that makes a retried request safe. */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
             };
-            header?: never;
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RegisterAgentSessionRequest"];
+            };
+        };
         responses: {
-            /** @description Runtime sessions discovered by session backends. */
+            /** @description Registered Pi identity, not an execution authorization. */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["RuntimeSession"][];
+                    "application/json": components["schemas"]["AgentSession"];
                 };
             };
             default: components["responses"]["Error"];
         };
     };
-    getRuntimeSession: {
+    connectAgentSession: {
         parameters: {
             query?: never;
             header?: never;
             path: {
-                runtimeSessionId: components["parameters"]["RuntimeSessionId"];
+                agentSessionId: components["parameters"]["AgentSessionId"];
             };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description The runtime session. */
+            /** @description Cancellable live command stream, not the durable review event log. */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["RuntimeSession"];
+                    "text/event-stream": string;
                 };
             };
             default: components["responses"]["Error"];
         };
     };
-    associateRuntimeSession: {
+    updateAgentSessionState: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                agentSessionId: components["parameters"]["AgentSessionId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AgentSessionStateRequest"];
+            };
+        };
+        responses: {
+            /** @description Current Pi state. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentSession"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    getAgentBinding: {
         parameters: {
             query?: never;
             header?: never;
             path: {
                 reviewId: components["parameters"]["ReviewId"];
-                runtimeSessionId: components["parameters"]["RuntimeSessionId"];
             };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description The associated runtime session. */
+            /** @description Authoritative selection and currently matching candidates. Version 1 when no choice exists. */
             200: {
                 headers: {
+                    ETag: components["headers"]["ETag"];
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["RuntimeSession"];
+                    "application/json": components["schemas"]["AgentBinding"];
                 };
             };
             default: components["responses"]["Error"];
         };
     };
-    dissociateRuntimeSession: {
+    setAgentBinding: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description ETag of the version the change is based on. Required; omitting it returns 428. */
+                "If-Match"?: components["parameters"]["IfMatch"];
+            };
+            path: {
+                reviewId: components["parameters"]["ReviewId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AgentBindingRequest"];
+            };
+        };
+        responses: {
+            /** @description Updated selection. */
+            200: {
+                headers: {
+                    ETag: components["headers"]["ETag"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentBinding"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    listAgentInvocations: {
         parameters: {
             query?: never;
             header?: never;
             path: {
                 reviewId: components["parameters"]["ReviewId"];
-                runtimeSessionId: components["parameters"]["RuntimeSessionId"];
             };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description Association removed. */
-            204: {
+            /** @description Review-owned requests/results, oldest first. */
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["AgentInvocation"][];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    createAgentInvocation: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Client-chosen unique key that makes a retried request safe. */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
+            };
+            path: {
+                reviewId: components["parameters"]["ReviewId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateAgentInvocationRequest"];
+            };
+        };
+        responses: {
+            /** @description Persisted request; acceptance is not proof of execution/completion. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentInvocation"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    getAgentInvocation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                invocationId: components["parameters"]["InvocationId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Current request state, including explicit uncertainty if its original connection is gone. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentInvocation"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    getAgentInvocationContext: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                invocationId: components["parameters"]["InvocationId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Captured revision context and eligible files; generation rejects changed semantic inputs. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentInvocationContext"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    updateAgentInvocation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                invocationId: components["parameters"]["InvocationId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateAgentInvocationRequest"];
+            };
+        };
+        responses: {
+            /** @description Updated request. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentInvocation"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    completeAgentInvocation: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Client-chosen unique key that makes a retried request safe. */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
+            };
+            path: {
+                invocationId: components["parameters"]["InvocationId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CompleteAgentInvocationRequest"];
+            };
+        };
+        responses: {
+            /** @description Committed reply, generation or implementation summary. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentInvocation"];
+                };
             };
             default: components["responses"]["Error"];
         };

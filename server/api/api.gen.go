@@ -19,8 +19,8 @@ import (
 	"path"
 	"strings"
 
+	"github.com/aduverger/prunelle/server/internal/agents"
 	"github.com/aduverger/prunelle/server/internal/review"
-	"github.com/aduverger/prunelle/server/internal/sessions"
 	"github.com/getkin/kin-openapi/openapi3"
 	"github.com/oapi-codegen/runtime"
 )
@@ -253,26 +253,26 @@ func (e Provenance) Valid() bool {
 	}
 }
 
-// Defines values for SessionCapability.
-const (
-	DISCOVER  SessionCapability = "DISCOVER"
-	INSPECT   SessionCapability = "INSPECT"
-	SUBSCRIBE SessionCapability = "SUBSCRIBE"
-)
+// AgentBinding defines model for AgentBinding.
+type AgentBinding = agents.Binding
 
-// Valid indicates whether the value is a known member of the SessionCapability enum.
-func (e SessionCapability) Valid() bool {
-	switch e {
-	case DISCOVER:
-		return true
-	case INSPECT:
-		return true
-	case SUBSCRIBE:
-		return true
-	default:
-		return false
-	}
-}
+// AgentBindingRequest defines model for AgentBindingRequest.
+type AgentBindingRequest = agents.BindingRequest
+
+// AgentInvocation defines model for AgentInvocation.
+type AgentInvocation = review.AgentInvocation
+
+// AgentInvocationContext defines model for AgentInvocationContext.
+type AgentInvocationContext = review.AgentInvocationContext
+
+// AgentInvocationResult defines model for AgentInvocationResult.
+type AgentInvocationResult = review.AgentInvocationResult
+
+// AgentSession defines model for AgentSession.
+type AgentSession = agents.Session
+
+// AgentSessionStateRequest defines model for AgentSessionStateRequest.
+type AgentSessionStateRequest = agents.StateRequest
 
 // Anchor defines model for Anchor.
 type Anchor struct {
@@ -295,17 +295,20 @@ type AttentionSignal = review.AttentionSignal
 // Author defines model for Author.
 type Author = review.Author
 
-// BackendHealth defines model for BackendHealth.
-type BackendHealth = sessions.BackendHealth
-
 // CaptureRequest defines model for CaptureRequest.
 type CaptureRequest = review.CaptureRequest
 
 // CodeRange defines model for CodeRange.
 type CodeRange = review.CodeRange
 
+// CompleteAgentInvocationRequest defines model for CompleteAgentInvocationRequest.
+type CompleteAgentInvocationRequest = review.CompleteAgentInvocationRequest
+
 // ContentOmitted Why the file is listed without contents.
 type ContentOmitted string
+
+// CreateAgentInvocationRequest defines model for CreateAgentInvocationRequest.
+type CreateAgentInvocationRequest = review.CreateAgentInvocationRequest
 
 // CreateDecisionRequest defines model for CreateDecisionRequest.
 type CreateDecisionRequest = review.CreateDecisionRequest
@@ -396,6 +399,15 @@ type FileStatus string
 // Finding defines model for Finding.
 type Finding = review.Finding
 
+// GeneratedFileTopics defines model for GeneratedFileTopics.
+type GeneratedFileTopics = review.GeneratedFileTopics
+
+// GeneratedReview defines model for GeneratedReview.
+type GeneratedReview = review.GeneratedReview
+
+// GeneratedTopic defines model for GeneratedTopic.
+type GeneratedTopic = review.GeneratedTopic
+
 // Health defines model for Health.
 type Health struct {
 	Status  HealthStatus `json:"status"`
@@ -445,6 +457,9 @@ type ObservedChange = review.ObservedChange
 // Provenance How the author knows: MEASURED (tool output such as a test run), OBSERVED (seen directly in code or artifacts), INFERRED (reasoning or judgment), UNKNOWN. Stored as the author declares it.
 type Provenance string
 
+// RegisterAgentSessionRequest defines model for RegisterAgentSessionRequest.
+type RegisterAgentSessionRequest = agents.RegisterRequest
+
 // RepoSnapshot defines model for RepoSnapshot.
 type RepoSnapshot = review.RepoSnapshot
 
@@ -472,17 +487,6 @@ type RevisionComparison = review.RevisionComparison
 // RevisionView defines model for RevisionView.
 type RevisionView = review.RevisionView
 
-// RuntimeSession A process or terminal hosted by a session backend (for Rex, one terminal block). Not an
-// agent conversation. UNKNOWN means the backend cannot currently be observed; it does not
-// mean the process stopped.
-type RuntimeSession = sessions.RuntimeSession
-
-// SessionBackend defines model for SessionBackend.
-type SessionBackend = sessions.SessionBackend
-
-// SessionCapability defines model for SessionCapability.
-type SessionCapability string
-
 // SourceChanges defines model for SourceChanges.
 type SourceChanges = review.SourceChanges
 
@@ -505,6 +509,9 @@ type TextConfigInput struct {
 // Topic defines model for Topic.
 type Topic = review.Topic
 
+// UpdateAgentInvocationRequest defines model for UpdateAgentInvocationRequest.
+type UpdateAgentInvocationRequest = review.UpdateAgentInvocationRequest
+
 // UpdateDiscussionRequest defines model for UpdateDiscussionRequest.
 type UpdateDiscussionRequest = review.UpdateDiscussionRequest
 
@@ -520,6 +527,9 @@ type UpdateSourceTopicsRequest = review.UpdateSourceTopicsRequest
 // UpdateTopicRequest defines model for UpdateTopicRequest.
 type UpdateTopicRequest = review.UpdateTopicRequest
 
+// AgentSessionId defines model for AgentSessionId.
+type AgentSessionId = string
+
 // DiscussionId defines model for DiscussionId.
 type DiscussionId = string
 
@@ -529,17 +539,29 @@ type IdempotencyKey = string
 // IfMatch defines model for IfMatch.
 type IfMatch = string
 
+// InvocationId defines model for InvocationId.
+type InvocationId = string
+
 // ReviewId defines model for ReviewId.
 type ReviewId = string
 
 // RevisionId defines model for RevisionId.
 type RevisionId = string
 
-// RuntimeSessionId defines model for RuntimeSessionId.
-type RuntimeSessionId = string
-
 // TopicId defines model for TopicId.
 type TopicId = string
+
+// CompleteAgentInvocationParams defines parameters for CompleteAgentInvocation.
+type CompleteAgentInvocationParams struct {
+	// IdempotencyKey Client-chosen unique key that makes a retried request safe.
+	IdempotencyKey *IdempotencyKey `json:"Idempotency-Key,omitempty"`
+}
+
+// RegisterAgentSessionParams defines parameters for RegisterAgentSession.
+type RegisterAgentSessionParams struct {
+	// IdempotencyKey Client-chosen unique key that makes a retried request safe.
+	IdempotencyKey *IdempotencyKey `json:"Idempotency-Key,omitempty"`
+}
 
 // UpdateDiscussionParams defines parameters for UpdateDiscussion.
 type UpdateDiscussionParams struct {
@@ -580,6 +602,18 @@ type CreateReviewParams struct {
 // ResolveReviewParams defines parameters for ResolveReview.
 type ResolveReviewParams struct {
 	Path string `form:"path" json:"path"`
+}
+
+// SetAgentBindingParams defines parameters for SetAgentBinding.
+type SetAgentBindingParams struct {
+	// IfMatch ETag of the version the change is based on. Required; omitting it returns 428.
+	IfMatch *IfMatch `json:"If-Match,omitempty"`
+}
+
+// CreateAgentInvocationParams defines parameters for CreateAgentInvocation.
+type CreateAgentInvocationParams struct {
+	// IdempotencyKey Client-chosen unique key that makes a retried request safe.
+	IdempotencyKey *IdempotencyKey `json:"Idempotency-Key,omitempty"`
 }
 
 // GetDiscussionAnchorStatusesParams defines parameters for GetDiscussionAnchorStatuses.
@@ -645,12 +679,6 @@ type UpdateSourceTopicsParams struct {
 	IfMatch *IfMatch `json:"If-Match,omitempty"`
 }
 
-// ListRuntimeSessionsParams defines parameters for ListRuntimeSessions.
-type ListRuntimeSessionsParams struct {
-	// ReviewId Only runtime sessions explicitly associated with this review.
-	ReviewId *string `form:"review_id,omitempty" json:"review_id,omitempty"`
-}
-
 // UpdateTopicParams defines parameters for UpdateTopic.
 type UpdateTopicParams struct {
 	// IfMatch ETag of the version the change is based on. Required; omitting it returns 428.
@@ -669,6 +697,18 @@ type CreateRepresentationParams struct {
 	IdempotencyKey *IdempotencyKey `json:"Idempotency-Key,omitempty"`
 }
 
+// CompleteAgentInvocationJSONRequestBody defines body for CompleteAgentInvocation for application/json ContentType.
+type CompleteAgentInvocationJSONRequestBody = CompleteAgentInvocationRequest
+
+// UpdateAgentInvocationJSONRequestBody defines body for UpdateAgentInvocation for application/json ContentType.
+type UpdateAgentInvocationJSONRequestBody = UpdateAgentInvocationRequest
+
+// RegisterAgentSessionJSONRequestBody defines body for RegisterAgentSession for application/json ContentType.
+type RegisterAgentSessionJSONRequestBody = RegisterAgentSessionRequest
+
+// UpdateAgentSessionStateJSONRequestBody defines body for UpdateAgentSessionState for application/json ContentType.
+type UpdateAgentSessionStateJSONRequestBody = AgentSessionStateRequest
+
 // UpdateDiscussionJSONRequestBody defines body for UpdateDiscussion for application/json ContentType.
 type UpdateDiscussionJSONRequestBody = UpdateDiscussionRequest
 
@@ -683,6 +723,12 @@ type UpdateRepresentationJSONRequestBody = UpdateRepresentationRequest
 
 // CreateReviewJSONRequestBody defines body for CreateReview for application/json ContentType.
 type CreateReviewJSONRequestBody = CreateReviewRequest
+
+// SetAgentBindingJSONRequestBody defines body for SetAgentBinding for application/json ContentType.
+type SetAgentBindingJSONRequestBody = AgentBindingRequest
+
+// CreateAgentInvocationJSONRequestBody defines body for CreateAgentInvocation for application/json ContentType.
+type CreateAgentInvocationJSONRequestBody = CreateAgentInvocationRequest
 
 // CreateDecisionJSONRequestBody defines body for CreateDecision for application/json ContentType.
 type CreateDecisionJSONRequestBody = CreateDecisionRequest
@@ -785,6 +831,68 @@ func WithRequestEditorFn(fn RequestEditorFn) ClientOption {
 // The interface specification for the client above.
 type ClientInterface interface {
 
+	// GetAgentInvocation performs a GET /v1/agent-invocations/{invocationId} (the `GetAgentInvocation` operationId) request.
+	GetAgentInvocation(ctx context.Context, invocationId InvocationId, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CompleteAgentInvocationWithBody performs a POST /v1/agent-invocations/{invocationId}/complete (the `CompleteAgentInvocation` operationId) request,
+	// with any type of body and a specified content type.
+	//
+	// Target Pi publishes one structured result atomically. Domain deduplication also protects independent keys, restart, and receipt expiry. Conflicting results reject.
+	CompleteAgentInvocationWithBody(ctx context.Context, invocationId InvocationId, params *CompleteAgentInvocationParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CompleteAgentInvocation performs a POST /v1/agent-invocations/{invocationId}/complete (the `CompleteAgentInvocation` operationId) request.
+	// Takes a body of the `application/json` content type.
+	//
+	// Target Pi publishes one structured result atomically. Domain deduplication also protects independent keys, restart, and receipt expiry. Conflicting results reject.
+	CompleteAgentInvocation(ctx context.Context, invocationId InvocationId, params *CompleteAgentInvocationParams, body CompleteAgentInvocationJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetAgentInvocationContext performs a GET /v1/agent-invocations/{invocationId}/context (the `GetAgentInvocationContext` operationId) request.
+	GetAgentInvocationContext(ctx context.Context, invocationId InvocationId, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// UpdateAgentInvocationWithBody performs a POST /v1/agent-invocations/{invocationId}/state (the `UpdateAgentInvocation` operationId) request,
+	// with any type of body and a specified content type.
+	//
+	// Target Pi only; report running, definite failure or uncertainty without overwriting a committed result.
+	UpdateAgentInvocationWithBody(ctx context.Context, invocationId InvocationId, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// UpdateAgentInvocation performs a POST /v1/agent-invocations/{invocationId}/state (the `UpdateAgentInvocation` operationId) request.
+	// Takes a body of the `application/json` content type.
+	//
+	// Target Pi only; report running, definite failure or uncertainty without overwriting a committed result.
+	UpdateAgentInvocation(ctx context.Context, invocationId InvocationId, body UpdateAgentInvocationJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListAgentSessions performs a GET /v1/agent-sessions (the `ListAgentSessions` operationId) request.
+	ListAgentSessions(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// RegisterAgentSessionWithBody performs a POST /v1/agent-sessions (the `RegisterAgentSession` operationId) request,
+	// with any type of body and a specified content type.
+	//
+	// Pi self-registration; actor must be pi:<external_id>. Direct loopback registrations may participate in canonical cwd matching; proxied/remote paths do not.
+	RegisterAgentSessionWithBody(ctx context.Context, params *RegisterAgentSessionParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// RegisterAgentSession performs a POST /v1/agent-sessions (the `RegisterAgentSession` operationId) request.
+	// Takes a body of the `application/json` content type.
+	//
+	// Pi self-registration; actor must be pi:<external_id>. Direct loopback registrations may participate in canonical cwd matching; proxied/remote paths do not.
+	RegisterAgentSession(ctx context.Context, params *RegisterAgentSessionParams, body RegisterAgentSessionJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ConnectAgentSession performs a GET /v1/agent-sessions/{agentSessionId}/connect (the `ConnectAgentSession` operationId) request.
+	//
+	// Pi-only live SSE dispatch connection. Opens with ready/connection_id, then request frames containing AgentInvocation. No event IDs or execution replay; reconnect does not resend commands.
+	ConnectAgentSession(ctx context.Context, agentSessionId AgentSessionId, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// UpdateAgentSessionStateWithBody performs a PUT /v1/agent-sessions/{agentSessionId}/state (the `UpdateAgentSessionState` operationId) request,
+	// with any type of body and a specified content type.
+	//
+	// The connected Pi reports actual readiness/model/checkpoint for its current connection ID.
+	UpdateAgentSessionStateWithBody(ctx context.Context, agentSessionId AgentSessionId, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// UpdateAgentSessionState performs a PUT /v1/agent-sessions/{agentSessionId}/state (the `UpdateAgentSessionState` operationId) request.
+	// Takes a body of the `application/json` content type.
+	//
+	// The connected Pi reports actual readiness/model/checkpoint for its current connection ID.
+	UpdateAgentSessionState(ctx context.Context, agentSessionId AgentSessionId, body UpdateAgentSessionStateJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// GetDiscussion performs a GET /v1/discussions/{discussionId} (the `GetDiscussion` operationId) request.
 	GetDiscussion(ctx context.Context, discussionId DiscussionId, reqEditors ...RequestEditorFn) (*http.Response, error)
 
@@ -873,6 +981,36 @@ type ClientInterface interface {
 
 	// GetReview performs a GET /v1/reviews/{reviewId} (the `GetReview` operationId) request.
 	GetReview(ctx context.Context, reviewId ReviewId, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetAgentBinding performs a GET /v1/reviews/{reviewId}/agent-binding (the `GetAgentBinding` operationId) request.
+	GetAgentBinding(ctx context.Context, reviewId ReviewId, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// SetAgentBindingWithBody performs a PUT /v1/reviews/{reviewId}/agent-binding (the `SetAgentBinding` operationId) request,
+	// with any type of body and a specified content type.
+	//
+	// Select a Pi, deliberately disconnect, or explicitly restore automatic matching. No request is dispatched.
+	SetAgentBindingWithBody(ctx context.Context, reviewId ReviewId, params *SetAgentBindingParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// SetAgentBinding performs a PUT /v1/reviews/{reviewId}/agent-binding (the `SetAgentBinding` operationId) request.
+	// Takes a body of the `application/json` content type.
+	//
+	// Select a Pi, deliberately disconnect, or explicitly restore automatic matching. No request is dispatched.
+	SetAgentBinding(ctx context.Context, reviewId ReviewId, params *SetAgentBindingParams, body SetAgentBindingJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListAgentInvocations performs a GET /v1/reviews/{reviewId}/agent-invocations (the `ListAgentInvocations` operationId) request.
+	ListAgentInvocations(ctx context.Context, reviewId ReviewId, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateAgentInvocationWithBody performs a POST /v1/reviews/{reviewId}/agent-invocations (the `CreateAgentInvocation` operationId) request,
+	// with any type of body and a specified content type.
+	//
+	// Explicit human action only. Resolve a unique unbound candidate, reject busy/unavailable, persist and send once over the live Pi connection. Committed replay never dispatches again.
+	CreateAgentInvocationWithBody(ctx context.Context, reviewId ReviewId, params *CreateAgentInvocationParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateAgentInvocation performs a POST /v1/reviews/{reviewId}/agent-invocations (the `CreateAgentInvocation` operationId) request.
+	// Takes a body of the `application/json` content type.
+	//
+	// Explicit human action only. Resolve a unique unbound candidate, reject busy/unavailable, persist and send once over the live Pi connection. Committed replay never dispatches again.
+	CreateAgentInvocation(ctx context.Context, reviewId ReviewId, params *CreateAgentInvocationParams, body CreateAgentInvocationJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetDiscussionAnchorStatuses performs a GET /v1/reviews/{reviewId}/anchor-status (the `GetDiscussionAnchorStatuses` operationId) request.
 	GetDiscussionAnchorStatuses(ctx context.Context, reviewId ReviewId, params *GetDiscussionAnchorStatusesParams, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -964,16 +1102,6 @@ type ClientInterface interface {
 	// Capture the declared review repository set using per-repository overrides, then a capture-wide base ref, then the server snapshot default. No fetch or branch switch. A committed idempotent retry returns its original revision even if defaults change.
 	CaptureRevision(ctx context.Context, reviewId ReviewId, params *CaptureRevisionParams, body CaptureRevisionJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// DissociateRuntimeSession performs a DELETE /v1/reviews/{reviewId}/runtime-sessions/{runtimeSessionId} (the `DissociateRuntimeSession` operationId) request.
-	//
-	// Remove an association. Idempotent.
-	DissociateRuntimeSession(ctx context.Context, reviewId ReviewId, runtimeSessionId RuntimeSessionId, reqEditors ...RequestEditorFn) (*http.Response, error)
-
-	// AssociateRuntimeSession performs a PUT /v1/reviews/{reviewId}/runtime-sessions/{runtimeSessionId} (the `AssociateRuntimeSession` operationId) request.
-	//
-	// Explicitly associate a runtime session with a review. Idempotent.
-	AssociateRuntimeSession(ctx context.Context, reviewId ReviewId, runtimeSessionId RuntimeSessionId, reqEditors ...RequestEditorFn) (*http.Response, error)
-
 	// ListTopics performs a GET /v1/reviews/{reviewId}/topics (the `ListTopics` operationId) request.
 	//
 	// Topics ordered roots first, then children by parent and position. Build the tree from parent_id.
@@ -1015,17 +1143,6 @@ type ClientInterface interface {
 	//
 	// Set an explicit topic set (including empty), or reset to DERIVED. Only the current revision is writable; initial assignment version is 1.
 	UpdateSourceTopics(ctx context.Context, revisionId RevisionId, params *UpdateSourceTopicsParams, body UpdateSourceTopicsJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
-
-	// ListRuntimeSessions performs a GET /v1/runtime-sessions (the `ListRuntimeSessions` operationId) request.
-	ListRuntimeSessions(ctx context.Context, params *ListRuntimeSessionsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
-
-	// GetRuntimeSession performs a GET /v1/runtime-sessions/{runtimeSessionId} (the `GetRuntimeSession` operationId) request.
-	GetRuntimeSession(ctx context.Context, runtimeSessionId RuntimeSessionId, reqEditors ...RequestEditorFn) (*http.Response, error)
-
-	// ListSessionBackends performs a GET /v1/session-backends (the `ListSessionBackends` operationId) request.
-	//
-	// Session backends from the server configuration, with their current health. Backends are configured in the server config file, never through the API.
-	ListSessionBackends(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetTopic performs a GET /v1/topics/{topicId} (the `GetTopic` operationId) request.
 	GetTopic(ctx context.Context, topicId TopicId, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -1072,6 +1189,188 @@ type ClientInterface interface {
 	//
 	// Add a MANUAL representation authored against the review's current revision. Give the config matching the type; references are record IDs of the review.
 	CreateRepresentation(ctx context.Context, topicId TopicId, params *CreateRepresentationParams, body CreateRepresentationJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+}
+
+// GetAgentInvocation performs a GET /v1/agent-invocations/{invocationId} (the `GetAgentInvocation` operationId) request.
+func (c *Client) GetAgentInvocation(ctx context.Context, invocationId InvocationId, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetAgentInvocationRequest(c.Server, invocationId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// CompleteAgentInvocationWithBody performs a POST /v1/agent-invocations/{invocationId}/complete (the `CompleteAgentInvocation` operationId) request,
+// with any type of body and a specified content type.
+//
+// Target Pi publishes one structured result atomically. Domain deduplication also protects independent keys, restart, and receipt expiry. Conflicting results reject.
+func (c *Client) CompleteAgentInvocationWithBody(ctx context.Context, invocationId InvocationId, params *CompleteAgentInvocationParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCompleteAgentInvocationRequestWithBody(c.Server, invocationId, params, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// CompleteAgentInvocation performs a POST /v1/agent-invocations/{invocationId}/complete (the `CompleteAgentInvocation` operationId) request.
+// Takes a body of the `application/json` content type.
+//
+// Target Pi publishes one structured result atomically. Domain deduplication also protects independent keys, restart, and receipt expiry. Conflicting results reject.
+func (c *Client) CompleteAgentInvocation(ctx context.Context, invocationId InvocationId, params *CompleteAgentInvocationParams, body CompleteAgentInvocationJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCompleteAgentInvocationRequest(c.Server, invocationId, params, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetAgentInvocationContext performs a GET /v1/agent-invocations/{invocationId}/context (the `GetAgentInvocationContext` operationId) request.
+func (c *Client) GetAgentInvocationContext(ctx context.Context, invocationId InvocationId, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetAgentInvocationContextRequest(c.Server, invocationId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// UpdateAgentInvocationWithBody performs a POST /v1/agent-invocations/{invocationId}/state (the `UpdateAgentInvocation` operationId) request,
+// with any type of body and a specified content type.
+//
+// Target Pi only; report running, definite failure or uncertainty without overwriting a committed result.
+func (c *Client) UpdateAgentInvocationWithBody(ctx context.Context, invocationId InvocationId, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateAgentInvocationRequestWithBody(c.Server, invocationId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// UpdateAgentInvocation performs a POST /v1/agent-invocations/{invocationId}/state (the `UpdateAgentInvocation` operationId) request.
+// Takes a body of the `application/json` content type.
+//
+// Target Pi only; report running, definite failure or uncertainty without overwriting a committed result.
+func (c *Client) UpdateAgentInvocation(ctx context.Context, invocationId InvocationId, body UpdateAgentInvocationJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateAgentInvocationRequest(c.Server, invocationId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ListAgentSessions performs a GET /v1/agent-sessions (the `ListAgentSessions` operationId) request.
+func (c *Client) ListAgentSessions(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListAgentSessionsRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// RegisterAgentSessionWithBody performs a POST /v1/agent-sessions (the `RegisterAgentSession` operationId) request,
+// with any type of body and a specified content type.
+//
+// Pi self-registration; actor must be pi:<external_id>. Direct loopback registrations may participate in canonical cwd matching; proxied/remote paths do not.
+func (c *Client) RegisterAgentSessionWithBody(ctx context.Context, params *RegisterAgentSessionParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewRegisterAgentSessionRequestWithBody(c.Server, params, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// RegisterAgentSession performs a POST /v1/agent-sessions (the `RegisterAgentSession` operationId) request.
+// Takes a body of the `application/json` content type.
+//
+// Pi self-registration; actor must be pi:<external_id>. Direct loopback registrations may participate in canonical cwd matching; proxied/remote paths do not.
+func (c *Client) RegisterAgentSession(ctx context.Context, params *RegisterAgentSessionParams, body RegisterAgentSessionJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewRegisterAgentSessionRequest(c.Server, params, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ConnectAgentSession performs a GET /v1/agent-sessions/{agentSessionId}/connect (the `ConnectAgentSession` operationId) request.
+//
+// Pi-only live SSE dispatch connection. Opens with ready/connection_id, then request frames containing AgentInvocation. No event IDs or execution replay; reconnect does not resend commands.
+func (c *Client) ConnectAgentSession(ctx context.Context, agentSessionId AgentSessionId, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewConnectAgentSessionRequest(c.Server, agentSessionId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// UpdateAgentSessionStateWithBody performs a PUT /v1/agent-sessions/{agentSessionId}/state (the `UpdateAgentSessionState` operationId) request,
+// with any type of body and a specified content type.
+//
+// The connected Pi reports actual readiness/model/checkpoint for its current connection ID.
+func (c *Client) UpdateAgentSessionStateWithBody(ctx context.Context, agentSessionId AgentSessionId, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateAgentSessionStateRequestWithBody(c.Server, agentSessionId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// UpdateAgentSessionState performs a PUT /v1/agent-sessions/{agentSessionId}/state (the `UpdateAgentSessionState` operationId) request.
+// Takes a body of the `application/json` content type.
+//
+// The connected Pi reports actual readiness/model/checkpoint for its current connection ID.
+func (c *Client) UpdateAgentSessionState(ctx context.Context, agentSessionId AgentSessionId, body UpdateAgentSessionStateJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateAgentSessionStateRequest(c.Server, agentSessionId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
 }
 
 // GetDiscussion performs a GET /v1/discussions/{discussionId} (the `GetDiscussion` operationId) request.
@@ -1333,6 +1632,96 @@ func (c *Client) DeleteReview(ctx context.Context, reviewId ReviewId, reqEditors
 // GetReview performs a GET /v1/reviews/{reviewId} (the `GetReview` operationId) request.
 func (c *Client) GetReview(ctx context.Context, reviewId ReviewId, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewGetReviewRequest(c.Server, reviewId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetAgentBinding performs a GET /v1/reviews/{reviewId}/agent-binding (the `GetAgentBinding` operationId) request.
+func (c *Client) GetAgentBinding(ctx context.Context, reviewId ReviewId, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetAgentBindingRequest(c.Server, reviewId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// SetAgentBindingWithBody performs a PUT /v1/reviews/{reviewId}/agent-binding (the `SetAgentBinding` operationId) request,
+// with any type of body and a specified content type.
+//
+// Select a Pi, deliberately disconnect, or explicitly restore automatic matching. No request is dispatched.
+func (c *Client) SetAgentBindingWithBody(ctx context.Context, reviewId ReviewId, params *SetAgentBindingParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSetAgentBindingRequestWithBody(c.Server, reviewId, params, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// SetAgentBinding performs a PUT /v1/reviews/{reviewId}/agent-binding (the `SetAgentBinding` operationId) request.
+// Takes a body of the `application/json` content type.
+//
+// Select a Pi, deliberately disconnect, or explicitly restore automatic matching. No request is dispatched.
+func (c *Client) SetAgentBinding(ctx context.Context, reviewId ReviewId, params *SetAgentBindingParams, body SetAgentBindingJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSetAgentBindingRequest(c.Server, reviewId, params, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ListAgentInvocations performs a GET /v1/reviews/{reviewId}/agent-invocations (the `ListAgentInvocations` operationId) request.
+func (c *Client) ListAgentInvocations(ctx context.Context, reviewId ReviewId, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListAgentInvocationsRequest(c.Server, reviewId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// CreateAgentInvocationWithBody performs a POST /v1/reviews/{reviewId}/agent-invocations (the `CreateAgentInvocation` operationId) request,
+// with any type of body and a specified content type.
+//
+// Explicit human action only. Resolve a unique unbound candidate, reject busy/unavailable, persist and send once over the live Pi connection. Committed replay never dispatches again.
+func (c *Client) CreateAgentInvocationWithBody(ctx context.Context, reviewId ReviewId, params *CreateAgentInvocationParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateAgentInvocationRequestWithBody(c.Server, reviewId, params, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// CreateAgentInvocation performs a POST /v1/reviews/{reviewId}/agent-invocations (the `CreateAgentInvocation` operationId) request.
+// Takes a body of the `application/json` content type.
+//
+// Explicit human action only. Resolve a unique unbound candidate, reject busy/unavailable, persist and send once over the live Pi connection. Committed replay never dispatches again.
+func (c *Client) CreateAgentInvocation(ctx context.Context, reviewId ReviewId, params *CreateAgentInvocationParams, body CreateAgentInvocationJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateAgentInvocationRequest(c.Server, reviewId, params, body)
 	if err != nil {
 		return nil, err
 	}
@@ -1633,36 +2022,6 @@ func (c *Client) CaptureRevision(ctx context.Context, reviewId ReviewId, params 
 	return c.Client.Do(req)
 }
 
-// DissociateRuntimeSession performs a DELETE /v1/reviews/{reviewId}/runtime-sessions/{runtimeSessionId} (the `DissociateRuntimeSession` operationId) request.
-//
-// Remove an association. Idempotent.
-func (c *Client) DissociateRuntimeSession(ctx context.Context, reviewId ReviewId, runtimeSessionId RuntimeSessionId, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewDissociateRuntimeSessionRequest(c.Server, reviewId, runtimeSessionId)
-	if err != nil {
-		return nil, err
-	}
-	req = req.WithContext(ctx)
-	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
-		return nil, err
-	}
-	return c.Client.Do(req)
-}
-
-// AssociateRuntimeSession performs a PUT /v1/reviews/{reviewId}/runtime-sessions/{runtimeSessionId} (the `AssociateRuntimeSession` operationId) request.
-//
-// Explicitly associate a runtime session with a review. Idempotent.
-func (c *Client) AssociateRuntimeSession(ctx context.Context, reviewId ReviewId, runtimeSessionId RuntimeSessionId, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewAssociateRuntimeSessionRequest(c.Server, reviewId, runtimeSessionId)
-	if err != nil {
-		return nil, err
-	}
-	req = req.WithContext(ctx)
-	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
-		return nil, err
-	}
-	return c.Client.Do(req)
-}
-
 // ListTopics performs a GET /v1/reviews/{reviewId}/topics (the `ListTopics` operationId) request.
 //
 // Topics ordered roots first, then children by parent and position. Build the tree from parent_id.
@@ -1775,47 +2134,6 @@ func (c *Client) UpdateSourceTopicsWithBody(ctx context.Context, revisionId Revi
 // Set an explicit topic set (including empty), or reset to DERIVED. Only the current revision is writable; initial assignment version is 1.
 func (c *Client) UpdateSourceTopics(ctx context.Context, revisionId RevisionId, params *UpdateSourceTopicsParams, body UpdateSourceTopicsJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewUpdateSourceTopicsRequest(c.Server, revisionId, params, body)
-	if err != nil {
-		return nil, err
-	}
-	req = req.WithContext(ctx)
-	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
-		return nil, err
-	}
-	return c.Client.Do(req)
-}
-
-// ListRuntimeSessions performs a GET /v1/runtime-sessions (the `ListRuntimeSessions` operationId) request.
-func (c *Client) ListRuntimeSessions(ctx context.Context, params *ListRuntimeSessionsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewListRuntimeSessionsRequest(c.Server, params)
-	if err != nil {
-		return nil, err
-	}
-	req = req.WithContext(ctx)
-	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
-		return nil, err
-	}
-	return c.Client.Do(req)
-}
-
-// GetRuntimeSession performs a GET /v1/runtime-sessions/{runtimeSessionId} (the `GetRuntimeSession` operationId) request.
-func (c *Client) GetRuntimeSession(ctx context.Context, runtimeSessionId RuntimeSessionId, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewGetRuntimeSessionRequest(c.Server, runtimeSessionId)
-	if err != nil {
-		return nil, err
-	}
-	req = req.WithContext(ctx)
-	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
-		return nil, err
-	}
-	return c.Client.Do(req)
-}
-
-// ListSessionBackends performs a GET /v1/session-backends (the `ListSessionBackends` operationId) request.
-//
-// Session backends from the server configuration, with their current health. Backends are configured in the server config file, never through the API.
-func (c *Client) ListSessionBackends(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewListSessionBackendsRequest(c.Server)
 	if err != nil {
 		return nil, err
 	}
@@ -1950,6 +2268,346 @@ func (c *Client) CreateRepresentation(ctx context.Context, topicId TopicId, para
 		return nil, err
 	}
 	return c.Client.Do(req)
+}
+
+// NewGetAgentInvocationRequest constructs an http.Request for the GetAgentInvocation method
+func NewGetAgentInvocationRequest(server string, invocationId InvocationId) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "invocationId", invocationId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/agent-invocations/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewCompleteAgentInvocationRequest calls the generic CompleteAgentInvocation builder with application/json body
+func NewCompleteAgentInvocationRequest(server string, invocationId InvocationId, params *CompleteAgentInvocationParams, body CompleteAgentInvocationJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewCompleteAgentInvocationRequestWithBody(server, invocationId, params, "application/json", bodyReader)
+}
+
+// NewCompleteAgentInvocationRequestWithBody constructs an http.Request for the CompleteAgentInvocation method, with any body, and a specified content type
+func NewCompleteAgentInvocationRequestWithBody(server string, invocationId InvocationId, params *CompleteAgentInvocationParams, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "invocationId", invocationId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/agent-invocations/%s/complete", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	if params != nil {
+
+		if params.IdempotencyKey != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "Idempotency-Key", *params.IdempotencyKey, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("Idempotency-Key", headerParam0)
+		}
+
+	}
+
+	return req, nil
+}
+
+// NewGetAgentInvocationContextRequest constructs an http.Request for the GetAgentInvocationContext method
+func NewGetAgentInvocationContextRequest(server string, invocationId InvocationId) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "invocationId", invocationId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/agent-invocations/%s/context", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewUpdateAgentInvocationRequest calls the generic UpdateAgentInvocation builder with application/json body
+func NewUpdateAgentInvocationRequest(server string, invocationId InvocationId, body UpdateAgentInvocationJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewUpdateAgentInvocationRequestWithBody(server, invocationId, "application/json", bodyReader)
+}
+
+// NewUpdateAgentInvocationRequestWithBody constructs an http.Request for the UpdateAgentInvocation method, with any body, and a specified content type
+func NewUpdateAgentInvocationRequestWithBody(server string, invocationId InvocationId, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "invocationId", invocationId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/agent-invocations/%s/state", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewListAgentSessionsRequest constructs an http.Request for the ListAgentSessions method
+func NewListAgentSessionsRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/agent-sessions")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewRegisterAgentSessionRequest calls the generic RegisterAgentSession builder with application/json body
+func NewRegisterAgentSessionRequest(server string, params *RegisterAgentSessionParams, body RegisterAgentSessionJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewRegisterAgentSessionRequestWithBody(server, params, "application/json", bodyReader)
+}
+
+// NewRegisterAgentSessionRequestWithBody constructs an http.Request for the RegisterAgentSession method, with any body, and a specified content type
+func NewRegisterAgentSessionRequestWithBody(server string, params *RegisterAgentSessionParams, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/agent-sessions")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	if params != nil {
+
+		if params.IdempotencyKey != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "Idempotency-Key", *params.IdempotencyKey, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("Idempotency-Key", headerParam0)
+		}
+
+	}
+
+	return req, nil
+}
+
+// NewConnectAgentSessionRequest constructs an http.Request for the ConnectAgentSession method
+func NewConnectAgentSessionRequest(server string, agentSessionId AgentSessionId) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "agentSessionId", agentSessionId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/agent-sessions/%s/connect", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewUpdateAgentSessionStateRequest calls the generic UpdateAgentSessionState builder with application/json body
+func NewUpdateAgentSessionStateRequest(server string, agentSessionId AgentSessionId, body UpdateAgentSessionStateJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewUpdateAgentSessionStateRequestWithBody(server, agentSessionId, "application/json", bodyReader)
+}
+
+// NewUpdateAgentSessionStateRequestWithBody constructs an http.Request for the UpdateAgentSessionState method, with any body, and a specified content type
+func NewUpdateAgentSessionStateRequestWithBody(server string, agentSessionId AgentSessionId, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "agentSessionId", agentSessionId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/agent-sessions/%s/state", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPut, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
 }
 
 // NewGetDiscussionRequest constructs an http.Request for the GetDiscussion method
@@ -2559,6 +3217,198 @@ func NewGetReviewRequest(server string, reviewId ReviewId) (*http.Request, error
 	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
 	if err != nil {
 		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetAgentBindingRequest constructs an http.Request for the GetAgentBinding method
+func NewGetAgentBindingRequest(server string, reviewId ReviewId) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "reviewId", reviewId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/reviews/%s/agent-binding", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewSetAgentBindingRequest calls the generic SetAgentBinding builder with application/json body
+func NewSetAgentBindingRequest(server string, reviewId ReviewId, params *SetAgentBindingParams, body SetAgentBindingJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewSetAgentBindingRequestWithBody(server, reviewId, params, "application/json", bodyReader)
+}
+
+// NewSetAgentBindingRequestWithBody constructs an http.Request for the SetAgentBinding method, with any body, and a specified content type
+func NewSetAgentBindingRequestWithBody(server string, reviewId ReviewId, params *SetAgentBindingParams, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "reviewId", reviewId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/reviews/%s/agent-binding", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPut, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	if params != nil {
+
+		if params.IfMatch != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "If-Match", *params.IfMatch, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("If-Match", headerParam0)
+		}
+
+	}
+
+	return req, nil
+}
+
+// NewListAgentInvocationsRequest constructs an http.Request for the ListAgentInvocations method
+func NewListAgentInvocationsRequest(server string, reviewId ReviewId) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "reviewId", reviewId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/reviews/%s/agent-invocations", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewCreateAgentInvocationRequest calls the generic CreateAgentInvocation builder with application/json body
+func NewCreateAgentInvocationRequest(server string, reviewId ReviewId, params *CreateAgentInvocationParams, body CreateAgentInvocationJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewCreateAgentInvocationRequestWithBody(server, reviewId, params, "application/json", bodyReader)
+}
+
+// NewCreateAgentInvocationRequestWithBody constructs an http.Request for the CreateAgentInvocation method, with any body, and a specified content type
+func NewCreateAgentInvocationRequestWithBody(server string, reviewId ReviewId, params *CreateAgentInvocationParams, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "reviewId", reviewId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/reviews/%s/agent-invocations", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	if params != nil {
+
+		if params.IdempotencyKey != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "Idempotency-Key", *params.IdempotencyKey, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("Idempotency-Key", headerParam0)
+		}
+
 	}
 
 	return req, nil
@@ -3328,88 +4178,6 @@ func NewCaptureRevisionRequestWithBody(server string, reviewId ReviewId, params 
 	return req, nil
 }
 
-// NewDissociateRuntimeSessionRequest constructs an http.Request for the DissociateRuntimeSession method
-func NewDissociateRuntimeSessionRequest(server string, reviewId ReviewId, runtimeSessionId RuntimeSessionId) (*http.Request, error) {
-	var err error
-
-	var pathParam0 string
-
-	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "reviewId", reviewId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
-	if err != nil {
-		return nil, err
-	}
-
-	var pathParam1 string
-
-	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "runtimeSessionId", runtimeSessionId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
-	if err != nil {
-		return nil, err
-	}
-
-	serverURL, err := url.Parse(server)
-	if err != nil {
-		return nil, err
-	}
-
-	operationPath := fmt.Sprintf("/v1/reviews/%s/runtime-sessions/%s", pathParam0, pathParam1)
-	if operationPath[0] == '/' {
-		operationPath = "." + operationPath
-	}
-
-	queryURL, err := serverURL.Parse(operationPath)
-	if err != nil {
-		return nil, err
-	}
-
-	req, err := http.NewRequest(http.MethodDelete, queryURL.String(), nil)
-	if err != nil {
-		return nil, err
-	}
-
-	return req, nil
-}
-
-// NewAssociateRuntimeSessionRequest constructs an http.Request for the AssociateRuntimeSession method
-func NewAssociateRuntimeSessionRequest(server string, reviewId ReviewId, runtimeSessionId RuntimeSessionId) (*http.Request, error) {
-	var err error
-
-	var pathParam0 string
-
-	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "reviewId", reviewId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
-	if err != nil {
-		return nil, err
-	}
-
-	var pathParam1 string
-
-	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "runtimeSessionId", runtimeSessionId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
-	if err != nil {
-		return nil, err
-	}
-
-	serverURL, err := url.Parse(server)
-	if err != nil {
-		return nil, err
-	}
-
-	operationPath := fmt.Sprintf("/v1/reviews/%s/runtime-sessions/%s", pathParam0, pathParam1)
-	if operationPath[0] == '/' {
-		operationPath = "." + operationPath
-	}
-
-	queryURL, err := serverURL.Parse(operationPath)
-	if err != nil {
-		return nil, err
-	}
-
-	req, err := http.NewRequest(http.MethodPut, queryURL.String(), nil)
-	if err != nil {
-		return nil, err
-	}
-
-	return req, nil
-}
-
 // NewListTopicsRequest constructs an http.Request for the ListTopics method
 func NewListTopicsRequest(server string, reviewId ReviewId) (*http.Request, error) {
 	var err error
@@ -3696,121 +4464,6 @@ func NewUpdateSourceTopicsRequestWithBody(server string, revisionId RevisionId, 
 			req.Header.Set("If-Match", headerParam0)
 		}
 
-	}
-
-	return req, nil
-}
-
-// NewListRuntimeSessionsRequest constructs an http.Request for the ListRuntimeSessions method
-func NewListRuntimeSessionsRequest(server string, params *ListRuntimeSessionsParams) (*http.Request, error) {
-	var err error
-
-	serverURL, err := url.Parse(server)
-	if err != nil {
-		return nil, err
-	}
-
-	operationPath := fmt.Sprintf("/v1/runtime-sessions")
-	if operationPath[0] == '/' {
-		operationPath = "." + operationPath
-	}
-
-	queryURL, err := serverURL.Parse(operationPath)
-	if err != nil {
-		return nil, err
-	}
-
-	if params != nil {
-		// queryValues collects non-styled parameters (passthrough, JSON)
-		// that are safe to round-trip through url.Values.Encode().
-		queryValues := queryURL.Query()
-		// rawQueryFragments collects pre-encoded query fragments from
-		// styled parameters, preserving literal commas as delimiters
-		// per the OpenAPI spec (e.g. "color=blue,black,brown").
-		var rawQueryFragments []string
-
-		if params.ReviewId != nil {
-
-			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "review_id", *params.ReviewId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
-				return nil, err
-			} else {
-				for _, qp := range strings.Split(queryFrag, "&") {
-					rawQueryFragments = append(rawQueryFragments, qp)
-				}
-			}
-
-		}
-
-		if encoded := queryValues.Encode(); encoded != "" {
-			rawQueryFragments = append(rawQueryFragments, encoded)
-		}
-		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
-	}
-
-	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
-	if err != nil {
-		return nil, err
-	}
-
-	return req, nil
-}
-
-// NewGetRuntimeSessionRequest constructs an http.Request for the GetRuntimeSession method
-func NewGetRuntimeSessionRequest(server string, runtimeSessionId RuntimeSessionId) (*http.Request, error) {
-	var err error
-
-	var pathParam0 string
-
-	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "runtimeSessionId", runtimeSessionId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
-	if err != nil {
-		return nil, err
-	}
-
-	serverURL, err := url.Parse(server)
-	if err != nil {
-		return nil, err
-	}
-
-	operationPath := fmt.Sprintf("/v1/runtime-sessions/%s", pathParam0)
-	if operationPath[0] == '/' {
-		operationPath = "." + operationPath
-	}
-
-	queryURL, err := serverURL.Parse(operationPath)
-	if err != nil {
-		return nil, err
-	}
-
-	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
-	if err != nil {
-		return nil, err
-	}
-
-	return req, nil
-}
-
-// NewListSessionBackendsRequest constructs an http.Request for the ListSessionBackends method
-func NewListSessionBackendsRequest(server string) (*http.Request, error) {
-	var err error
-
-	serverURL, err := url.Parse(server)
-	if err != nil {
-		return nil, err
-	}
-
-	operationPath := fmt.Sprintf("/v1/session-backends")
-	if operationPath[0] == '/' {
-		operationPath = "." + operationPath
-	}
-
-	queryURL, err := serverURL.Parse(operationPath)
-	if err != nil {
-		return nil, err
-	}
-
-	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
-	if err != nil {
-		return nil, err
 	}
 
 	return req, nil
@@ -4114,6 +4767,84 @@ func WithBaseURL(baseURL string) ClientOption {
 // ClientWithResponsesInterface is the interface specification for the client with responses above.
 type ClientWithResponsesInterface interface {
 
+	// GetAgentInvocationWithResponse performs a GET /v1/agent-invocations/{invocationId} (the `GetAgentInvocation` operationId) request.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	GetAgentInvocationWithResponse(ctx context.Context, invocationId InvocationId, reqEditors ...RequestEditorFn) (*GetAgentInvocationResponse, error)
+
+	// CompleteAgentInvocationWithBodyWithResponse performs a POST /v1/agent-invocations/{invocationId}/complete (the `CompleteAgentInvocation` operationId) request,
+	// with any type of body and a specified content type.
+	//
+	// Target Pi publishes one structured result atomically. Domain deduplication also protects independent keys, restart, and receipt expiry. Conflicting results reject.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	CompleteAgentInvocationWithBodyWithResponse(ctx context.Context, invocationId InvocationId, params *CompleteAgentInvocationParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CompleteAgentInvocationResponse, error)
+
+	// CompleteAgentInvocationWithResponse performs a POST /v1/agent-invocations/{invocationId}/complete (the `CompleteAgentInvocation` operationId) request.
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Target Pi publishes one structured result atomically. Domain deduplication also protects independent keys, restart, and receipt expiry. Conflicting results reject.
+	CompleteAgentInvocationWithResponse(ctx context.Context, invocationId InvocationId, params *CompleteAgentInvocationParams, body CompleteAgentInvocationJSONRequestBody, reqEditors ...RequestEditorFn) (*CompleteAgentInvocationResponse, error)
+
+	// GetAgentInvocationContextWithResponse performs a GET /v1/agent-invocations/{invocationId}/context (the `GetAgentInvocationContext` operationId) request.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	GetAgentInvocationContextWithResponse(ctx context.Context, invocationId InvocationId, reqEditors ...RequestEditorFn) (*GetAgentInvocationContextResponse, error)
+
+	// UpdateAgentInvocationWithBodyWithResponse performs a POST /v1/agent-invocations/{invocationId}/state (the `UpdateAgentInvocation` operationId) request,
+	// with any type of body and a specified content type.
+	//
+	// Target Pi only; report running, definite failure or uncertainty without overwriting a committed result.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	UpdateAgentInvocationWithBodyWithResponse(ctx context.Context, invocationId InvocationId, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateAgentInvocationResponse, error)
+
+	// UpdateAgentInvocationWithResponse performs a POST /v1/agent-invocations/{invocationId}/state (the `UpdateAgentInvocation` operationId) request.
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Target Pi only; report running, definite failure or uncertainty without overwriting a committed result.
+	UpdateAgentInvocationWithResponse(ctx context.Context, invocationId InvocationId, body UpdateAgentInvocationJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateAgentInvocationResponse, error)
+
+	// ListAgentSessionsWithResponse performs a GET /v1/agent-sessions (the `ListAgentSessions` operationId) request.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	ListAgentSessionsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListAgentSessionsResponse, error)
+
+	// RegisterAgentSessionWithBodyWithResponse performs a POST /v1/agent-sessions (the `RegisterAgentSession` operationId) request,
+	// with any type of body and a specified content type.
+	//
+	// Pi self-registration; actor must be pi:<external_id>. Direct loopback registrations may participate in canonical cwd matching; proxied/remote paths do not.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	RegisterAgentSessionWithBodyWithResponse(ctx context.Context, params *RegisterAgentSessionParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*RegisterAgentSessionResponse, error)
+
+	// RegisterAgentSessionWithResponse performs a POST /v1/agent-sessions (the `RegisterAgentSession` operationId) request.
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Pi self-registration; actor must be pi:<external_id>. Direct loopback registrations may participate in canonical cwd matching; proxied/remote paths do not.
+	RegisterAgentSessionWithResponse(ctx context.Context, params *RegisterAgentSessionParams, body RegisterAgentSessionJSONRequestBody, reqEditors ...RequestEditorFn) (*RegisterAgentSessionResponse, error)
+
+	// ConnectAgentSessionWithResponse performs a GET /v1/agent-sessions/{agentSessionId}/connect (the `ConnectAgentSession` operationId) request.
+	//
+	// Pi-only live SSE dispatch connection. Opens with ready/connection_id, then request frames containing AgentInvocation. No event IDs or execution replay; reconnect does not resend commands.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	ConnectAgentSessionWithResponse(ctx context.Context, agentSessionId AgentSessionId, reqEditors ...RequestEditorFn) (*ConnectAgentSessionResponse, error)
+
+	// UpdateAgentSessionStateWithBodyWithResponse performs a PUT /v1/agent-sessions/{agentSessionId}/state (the `UpdateAgentSessionState` operationId) request,
+	// with any type of body and a specified content type.
+	//
+	// The connected Pi reports actual readiness/model/checkpoint for its current connection ID.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	UpdateAgentSessionStateWithBodyWithResponse(ctx context.Context, agentSessionId AgentSessionId, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateAgentSessionStateResponse, error)
+
+	// UpdateAgentSessionStateWithResponse performs a PUT /v1/agent-sessions/{agentSessionId}/state (the `UpdateAgentSessionState` operationId) request.
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// The connected Pi reports actual readiness/model/checkpoint for its current connection ID.
+	UpdateAgentSessionStateWithResponse(ctx context.Context, agentSessionId AgentSessionId, body UpdateAgentSessionStateJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateAgentSessionStateResponse, error)
+
 	// GetDiscussionWithResponse performs a GET /v1/discussions/{discussionId} (the `GetDiscussion` operationId) request.
 	//
 	// Returns a wrapper object for the known response body format(s).
@@ -4228,6 +4959,44 @@ type ClientWithResponsesInterface interface {
 	//
 	// Returns a wrapper object for the known response body format(s).
 	GetReviewWithResponse(ctx context.Context, reviewId ReviewId, reqEditors ...RequestEditorFn) (*GetReviewResponse, error)
+
+	// GetAgentBindingWithResponse performs a GET /v1/reviews/{reviewId}/agent-binding (the `GetAgentBinding` operationId) request.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	GetAgentBindingWithResponse(ctx context.Context, reviewId ReviewId, reqEditors ...RequestEditorFn) (*GetAgentBindingResponse, error)
+
+	// SetAgentBindingWithBodyWithResponse performs a PUT /v1/reviews/{reviewId}/agent-binding (the `SetAgentBinding` operationId) request,
+	// with any type of body and a specified content type.
+	//
+	// Select a Pi, deliberately disconnect, or explicitly restore automatic matching. No request is dispatched.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	SetAgentBindingWithBodyWithResponse(ctx context.Context, reviewId ReviewId, params *SetAgentBindingParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SetAgentBindingResponse, error)
+
+	// SetAgentBindingWithResponse performs a PUT /v1/reviews/{reviewId}/agent-binding (the `SetAgentBinding` operationId) request.
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Select a Pi, deliberately disconnect, or explicitly restore automatic matching. No request is dispatched.
+	SetAgentBindingWithResponse(ctx context.Context, reviewId ReviewId, params *SetAgentBindingParams, body SetAgentBindingJSONRequestBody, reqEditors ...RequestEditorFn) (*SetAgentBindingResponse, error)
+
+	// ListAgentInvocationsWithResponse performs a GET /v1/reviews/{reviewId}/agent-invocations (the `ListAgentInvocations` operationId) request.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	ListAgentInvocationsWithResponse(ctx context.Context, reviewId ReviewId, reqEditors ...RequestEditorFn) (*ListAgentInvocationsResponse, error)
+
+	// CreateAgentInvocationWithBodyWithResponse performs a POST /v1/reviews/{reviewId}/agent-invocations (the `CreateAgentInvocation` operationId) request,
+	// with any type of body and a specified content type.
+	//
+	// Explicit human action only. Resolve a unique unbound candidate, reject busy/unavailable, persist and send once over the live Pi connection. Committed replay never dispatches again.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	CreateAgentInvocationWithBodyWithResponse(ctx context.Context, reviewId ReviewId, params *CreateAgentInvocationParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateAgentInvocationResponse, error)
+
+	// CreateAgentInvocationWithResponse performs a POST /v1/reviews/{reviewId}/agent-invocations (the `CreateAgentInvocation` operationId) request.
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Explicit human action only. Resolve a unique unbound candidate, reject busy/unavailable, persist and send once over the live Pi connection. Committed replay never dispatches again.
+	CreateAgentInvocationWithResponse(ctx context.Context, reviewId ReviewId, params *CreateAgentInvocationParams, body CreateAgentInvocationJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateAgentInvocationResponse, error)
 
 	// GetDiscussionAnchorStatusesWithResponse performs a GET /v1/reviews/{reviewId}/anchor-status (the `GetDiscussionAnchorStatuses` operationId) request.
 	//
@@ -4351,20 +5120,6 @@ type ClientWithResponsesInterface interface {
 	// Capture the declared review repository set using per-repository overrides, then a capture-wide base ref, then the server snapshot default. No fetch or branch switch. A committed idempotent retry returns its original revision even if defaults change.
 	CaptureRevisionWithResponse(ctx context.Context, reviewId ReviewId, params *CaptureRevisionParams, body CaptureRevisionJSONRequestBody, reqEditors ...RequestEditorFn) (*CaptureRevisionResponse, error)
 
-	// DissociateRuntimeSessionWithResponse performs a DELETE /v1/reviews/{reviewId}/runtime-sessions/{runtimeSessionId} (the `DissociateRuntimeSession` operationId) request.
-	//
-	// Remove an association. Idempotent.
-	//
-	// Returns a wrapper object for the known response body format(s).
-	DissociateRuntimeSessionWithResponse(ctx context.Context, reviewId ReviewId, runtimeSessionId RuntimeSessionId, reqEditors ...RequestEditorFn) (*DissociateRuntimeSessionResponse, error)
-
-	// AssociateRuntimeSessionWithResponse performs a PUT /v1/reviews/{reviewId}/runtime-sessions/{runtimeSessionId} (the `AssociateRuntimeSession` operationId) request.
-	//
-	// Explicitly associate a runtime session with a review. Idempotent.
-	//
-	// Returns a wrapper object for the known response body format(s).
-	AssociateRuntimeSessionWithResponse(ctx context.Context, reviewId ReviewId, runtimeSessionId RuntimeSessionId, reqEditors ...RequestEditorFn) (*AssociateRuntimeSessionResponse, error)
-
 	// ListTopicsWithResponse performs a GET /v1/reviews/{reviewId}/topics (the `ListTopics` operationId) request.
 	//
 	// Topics ordered roots first, then children by parent and position. Build the tree from parent_id.
@@ -4418,23 +5173,6 @@ type ClientWithResponsesInterface interface {
 	//
 	// Set an explicit topic set (including empty), or reset to DERIVED. Only the current revision is writable; initial assignment version is 1.
 	UpdateSourceTopicsWithResponse(ctx context.Context, revisionId RevisionId, params *UpdateSourceTopicsParams, body UpdateSourceTopicsJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateSourceTopicsResponse, error)
-
-	// ListRuntimeSessionsWithResponse performs a GET /v1/runtime-sessions (the `ListRuntimeSessions` operationId) request.
-	//
-	// Returns a wrapper object for the known response body format(s).
-	ListRuntimeSessionsWithResponse(ctx context.Context, params *ListRuntimeSessionsParams, reqEditors ...RequestEditorFn) (*ListRuntimeSessionsResponse, error)
-
-	// GetRuntimeSessionWithResponse performs a GET /v1/runtime-sessions/{runtimeSessionId} (the `GetRuntimeSession` operationId) request.
-	//
-	// Returns a wrapper object for the known response body format(s).
-	GetRuntimeSessionWithResponse(ctx context.Context, runtimeSessionId RuntimeSessionId, reqEditors ...RequestEditorFn) (*GetRuntimeSessionResponse, error)
-
-	// ListSessionBackendsWithResponse performs a GET /v1/session-backends (the `ListSessionBackends` operationId) request.
-	//
-	// Session backends from the server configuration, with their current health. Backends are configured in the server config file, never through the API.
-	//
-	// Returns a wrapper object for the known response body format(s).
-	ListSessionBackendsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListSessionBackendsResponse, error)
 
 	// GetTopicWithResponse performs a GET /v1/topics/{topicId} (the `GetTopic` operationId) request.
 	//
@@ -4491,6 +5229,383 @@ type ClientWithResponsesInterface interface {
 	//
 	// Add a MANUAL representation authored against the review's current revision. Give the config matching the type; references are record IDs of the review.
 	CreateRepresentationWithResponse(ctx context.Context, topicId TopicId, params *CreateRepresentationParams, body CreateRepresentationJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateRepresentationResponse, error)
+}
+
+type GetAgentInvocationResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *AgentInvocation
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *Error
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetAgentInvocationResponse) GetJSON200() *AgentInvocation {
+	return r.JSON200
+}
+
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r GetAgentInvocationResponse) GetJSONDefault() *Error {
+	return r.JSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r GetAgentInvocationResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetAgentInvocationResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetAgentInvocationResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetAgentInvocationResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type CompleteAgentInvocationResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *AgentInvocation
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *Error
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r CompleteAgentInvocationResponse) GetJSON200() *AgentInvocation {
+	return r.JSON200
+}
+
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r CompleteAgentInvocationResponse) GetJSONDefault() *Error {
+	return r.JSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r CompleteAgentInvocationResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r CompleteAgentInvocationResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CompleteAgentInvocationResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r CompleteAgentInvocationResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type GetAgentInvocationContextResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *AgentInvocationContext
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *Error
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetAgentInvocationContextResponse) GetJSON200() *AgentInvocationContext {
+	return r.JSON200
+}
+
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r GetAgentInvocationContextResponse) GetJSONDefault() *Error {
+	return r.JSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r GetAgentInvocationContextResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetAgentInvocationContextResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetAgentInvocationContextResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetAgentInvocationContextResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type UpdateAgentInvocationResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *AgentInvocation
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *Error
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r UpdateAgentInvocationResponse) GetJSON200() *AgentInvocation {
+	return r.JSON200
+}
+
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r UpdateAgentInvocationResponse) GetJSONDefault() *Error {
+	return r.JSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r UpdateAgentInvocationResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r UpdateAgentInvocationResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r UpdateAgentInvocationResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r UpdateAgentInvocationResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type ListAgentSessionsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *[]AgentSession
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *Error
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ListAgentSessionsResponse) GetJSON200() *[]AgentSession {
+	return r.JSON200
+}
+
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r ListAgentSessionsResponse) GetJSONDefault() *Error {
+	return r.JSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r ListAgentSessionsResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ListAgentSessionsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListAgentSessionsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListAgentSessionsResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type RegisterAgentSessionResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *AgentSession
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *Error
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r RegisterAgentSessionResponse) GetJSON200() *AgentSession {
+	return r.JSON200
+}
+
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r RegisterAgentSessionResponse) GetJSONDefault() *Error {
+	return r.JSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r RegisterAgentSessionResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r RegisterAgentSessionResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r RegisterAgentSessionResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r RegisterAgentSessionResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type ConnectAgentSessionResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *Error
+}
+
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r ConnectAgentSessionResponse) GetJSONDefault() *Error {
+	return r.JSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r ConnectAgentSessionResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ConnectAgentSessionResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ConnectAgentSessionResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ConnectAgentSessionResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type UpdateAgentSessionStateResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *AgentSession
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *Error
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r UpdateAgentSessionStateResponse) GetJSON200() *AgentSession {
+	return r.JSON200
+}
+
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r UpdateAgentSessionStateResponse) GetJSONDefault() *Error {
+	return r.JSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r UpdateAgentSessionStateResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r UpdateAgentSessionStateResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r UpdateAgentSessionStateResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r UpdateAgentSessionStateResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
 }
 
 // GetDiscussionResponse200Headers the declared response headers of an HTTP 200 response for GetDiscussion
@@ -5118,6 +6233,212 @@ func (r GetReviewResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r GetReviewResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+// GetAgentBindingResponse200Headers the declared response headers of an HTTP 200 response for GetAgentBinding
+type GetAgentBindingResponse200Headers struct {
+	ETag string
+}
+
+type GetAgentBindingResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *AgentBinding
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *Error
+	// Headers200 the parsed response headers for an HTTP 200 response
+	Headers200 *GetAgentBindingResponse200Headers
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetAgentBindingResponse) GetJSON200() *AgentBinding {
+	return r.JSON200
+}
+
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r GetAgentBindingResponse) GetJSONDefault() *Error {
+	return r.JSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r GetAgentBindingResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetAgentBindingResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetAgentBindingResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetAgentBindingResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+// SetAgentBindingResponse200Headers the declared response headers of an HTTP 200 response for SetAgentBinding
+type SetAgentBindingResponse200Headers struct {
+	ETag string
+}
+
+type SetAgentBindingResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *AgentBinding
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *Error
+	// Headers200 the parsed response headers for an HTTP 200 response
+	Headers200 *SetAgentBindingResponse200Headers
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r SetAgentBindingResponse) GetJSON200() *AgentBinding {
+	return r.JSON200
+}
+
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r SetAgentBindingResponse) GetJSONDefault() *Error {
+	return r.JSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r SetAgentBindingResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r SetAgentBindingResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r SetAgentBindingResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r SetAgentBindingResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type ListAgentInvocationsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *[]AgentInvocation
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *Error
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ListAgentInvocationsResponse) GetJSON200() *[]AgentInvocation {
+	return r.JSON200
+}
+
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r ListAgentInvocationsResponse) GetJSONDefault() *Error {
+	return r.JSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r ListAgentInvocationsResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ListAgentInvocationsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListAgentInvocationsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListAgentInvocationsResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type CreateAgentInvocationResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON202 the response for an HTTP 202 `application/json` response
+	JSON202 *AgentInvocation
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *Error
+}
+
+// GetJSON202 returns the response for an HTTP 202 `application/json` response
+func (r CreateAgentInvocationResponse) GetJSON202() *AgentInvocation {
+	return r.JSON202
+}
+
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r CreateAgentInvocationResponse) GetJSONDefault() *Error {
+	return r.JSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r CreateAgentInvocationResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r CreateAgentInvocationResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CreateAgentInvocationResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r CreateAgentInvocationResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -5892,95 +7213,6 @@ func (r CaptureRevisionResponse) ContentType() string {
 	return ""
 }
 
-type DissociateRuntimeSessionResponse struct {
-	Body         []byte
-	HTTPResponse *http.Response
-	// JSONDefault the response for an HTTP default `application/json` response
-	JSONDefault *Error
-}
-
-// GetJSONDefault returns the response for an HTTP default `application/json` response
-func (r DissociateRuntimeSessionResponse) GetJSONDefault() *Error {
-	return r.JSONDefault
-}
-
-// GetBody returns the raw response body bytes
-func (r DissociateRuntimeSessionResponse) GetBody() []byte {
-	return r.Body
-}
-
-// Status returns HTTPResponse.Status
-func (r DissociateRuntimeSessionResponse) Status() string {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.Status
-	}
-	return http.StatusText(0)
-}
-
-// StatusCode returns HTTPResponse.StatusCode
-func (r DissociateRuntimeSessionResponse) StatusCode() int {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.StatusCode
-	}
-	return 0
-}
-
-// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
-func (r DissociateRuntimeSessionResponse) ContentType() string {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.Header.Get("Content-Type")
-	}
-	return ""
-}
-
-type AssociateRuntimeSessionResponse struct {
-	Body         []byte
-	HTTPResponse *http.Response
-	// JSON200 the response for an HTTP 200 `application/json` response
-	JSON200 *RuntimeSession
-	// JSONDefault the response for an HTTP default `application/json` response
-	JSONDefault *Error
-}
-
-// GetJSON200 returns the response for an HTTP 200 `application/json` response
-func (r AssociateRuntimeSessionResponse) GetJSON200() *RuntimeSession {
-	return r.JSON200
-}
-
-// GetJSONDefault returns the response for an HTTP default `application/json` response
-func (r AssociateRuntimeSessionResponse) GetJSONDefault() *Error {
-	return r.JSONDefault
-}
-
-// GetBody returns the raw response body bytes
-func (r AssociateRuntimeSessionResponse) GetBody() []byte {
-	return r.Body
-}
-
-// Status returns HTTPResponse.Status
-func (r AssociateRuntimeSessionResponse) Status() string {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.Status
-	}
-	return http.StatusText(0)
-}
-
-// StatusCode returns HTTPResponse.StatusCode
-func (r AssociateRuntimeSessionResponse) StatusCode() int {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.StatusCode
-	}
-	return 0
-}
-
-// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
-func (r AssociateRuntimeSessionResponse) ContentType() string {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.Header.Get("Content-Type")
-	}
-	return ""
-}
-
 type ListTopicsResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -6276,150 +7508,6 @@ func (r UpdateSourceTopicsResponse) ContentType() string {
 	return ""
 }
 
-type ListRuntimeSessionsResponse struct {
-	Body         []byte
-	HTTPResponse *http.Response
-	// JSON200 the response for an HTTP 200 `application/json` response
-	JSON200 *[]RuntimeSession
-	// JSONDefault the response for an HTTP default `application/json` response
-	JSONDefault *Error
-}
-
-// GetJSON200 returns the response for an HTTP 200 `application/json` response
-func (r ListRuntimeSessionsResponse) GetJSON200() *[]RuntimeSession {
-	return r.JSON200
-}
-
-// GetJSONDefault returns the response for an HTTP default `application/json` response
-func (r ListRuntimeSessionsResponse) GetJSONDefault() *Error {
-	return r.JSONDefault
-}
-
-// GetBody returns the raw response body bytes
-func (r ListRuntimeSessionsResponse) GetBody() []byte {
-	return r.Body
-}
-
-// Status returns HTTPResponse.Status
-func (r ListRuntimeSessionsResponse) Status() string {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.Status
-	}
-	return http.StatusText(0)
-}
-
-// StatusCode returns HTTPResponse.StatusCode
-func (r ListRuntimeSessionsResponse) StatusCode() int {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.StatusCode
-	}
-	return 0
-}
-
-// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
-func (r ListRuntimeSessionsResponse) ContentType() string {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.Header.Get("Content-Type")
-	}
-	return ""
-}
-
-type GetRuntimeSessionResponse struct {
-	Body         []byte
-	HTTPResponse *http.Response
-	// JSON200 the response for an HTTP 200 `application/json` response
-	JSON200 *RuntimeSession
-	// JSONDefault the response for an HTTP default `application/json` response
-	JSONDefault *Error
-}
-
-// GetJSON200 returns the response for an HTTP 200 `application/json` response
-func (r GetRuntimeSessionResponse) GetJSON200() *RuntimeSession {
-	return r.JSON200
-}
-
-// GetJSONDefault returns the response for an HTTP default `application/json` response
-func (r GetRuntimeSessionResponse) GetJSONDefault() *Error {
-	return r.JSONDefault
-}
-
-// GetBody returns the raw response body bytes
-func (r GetRuntimeSessionResponse) GetBody() []byte {
-	return r.Body
-}
-
-// Status returns HTTPResponse.Status
-func (r GetRuntimeSessionResponse) Status() string {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.Status
-	}
-	return http.StatusText(0)
-}
-
-// StatusCode returns HTTPResponse.StatusCode
-func (r GetRuntimeSessionResponse) StatusCode() int {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.StatusCode
-	}
-	return 0
-}
-
-// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
-func (r GetRuntimeSessionResponse) ContentType() string {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.Header.Get("Content-Type")
-	}
-	return ""
-}
-
-type ListSessionBackendsResponse struct {
-	Body         []byte
-	HTTPResponse *http.Response
-	// JSON200 the response for an HTTP 200 `application/json` response
-	JSON200 *[]SessionBackend
-	// JSONDefault the response for an HTTP default `application/json` response
-	JSONDefault *Error
-}
-
-// GetJSON200 returns the response for an HTTP 200 `application/json` response
-func (r ListSessionBackendsResponse) GetJSON200() *[]SessionBackend {
-	return r.JSON200
-}
-
-// GetJSONDefault returns the response for an HTTP default `application/json` response
-func (r ListSessionBackendsResponse) GetJSONDefault() *Error {
-	return r.JSONDefault
-}
-
-// GetBody returns the raw response body bytes
-func (r ListSessionBackendsResponse) GetBody() []byte {
-	return r.Body
-}
-
-// Status returns HTTPResponse.Status
-func (r ListSessionBackendsResponse) Status() string {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.Status
-	}
-	return http.StatusText(0)
-}
-
-// StatusCode returns HTTPResponse.StatusCode
-func (r ListSessionBackendsResponse) StatusCode() int {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.StatusCode
-	}
-	return 0
-}
-
-// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
-func (r ListSessionBackendsResponse) ContentType() string {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.Header.Get("Content-Type")
-	}
-	return ""
-}
-
 // GetTopicResponse200Headers the declared response headers of an HTTP 200 response for GetTopic
 type GetTopicResponse200Headers struct {
 	ETag string
@@ -6681,6 +7769,156 @@ func (r CreateRepresentationResponse) ContentType() string {
 	return ""
 }
 
+// GetAgentInvocationWithResponse performs a GET /v1/agent-invocations/{invocationId} (the `GetAgentInvocation` operationId) request.
+//
+// Returns a wrapper object for the known response body format(s).
+func (c *ClientWithResponses) GetAgentInvocationWithResponse(ctx context.Context, invocationId InvocationId, reqEditors ...RequestEditorFn) (*GetAgentInvocationResponse, error) {
+	rsp, err := c.GetAgentInvocation(ctx, invocationId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetAgentInvocationResponse(rsp)
+}
+
+// CompleteAgentInvocationWithBodyWithResponse performs a POST /v1/agent-invocations/{invocationId}/complete (the `CompleteAgentInvocation` operationId) request,
+// with any type of body and a specified content type.
+//
+// Target Pi publishes one structured result atomically. Domain deduplication also protects independent keys, restart, and receipt expiry. Conflicting results reject.
+//
+// Returns a wrapper object for the known response body format(s).
+func (c *ClientWithResponses) CompleteAgentInvocationWithBodyWithResponse(ctx context.Context, invocationId InvocationId, params *CompleteAgentInvocationParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CompleteAgentInvocationResponse, error) {
+	rsp, err := c.CompleteAgentInvocationWithBody(ctx, invocationId, params, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCompleteAgentInvocationResponse(rsp)
+}
+
+// CompleteAgentInvocationWithResponse performs a POST /v1/agent-invocations/{invocationId}/complete (the `CompleteAgentInvocation` operationId) request.
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Target Pi publishes one structured result atomically. Domain deduplication also protects independent keys, restart, and receipt expiry. Conflicting results reject.
+func (c *ClientWithResponses) CompleteAgentInvocationWithResponse(ctx context.Context, invocationId InvocationId, params *CompleteAgentInvocationParams, body CompleteAgentInvocationJSONRequestBody, reqEditors ...RequestEditorFn) (*CompleteAgentInvocationResponse, error) {
+	rsp, err := c.CompleteAgentInvocation(ctx, invocationId, params, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCompleteAgentInvocationResponse(rsp)
+}
+
+// GetAgentInvocationContextWithResponse performs a GET /v1/agent-invocations/{invocationId}/context (the `GetAgentInvocationContext` operationId) request.
+//
+// Returns a wrapper object for the known response body format(s).
+func (c *ClientWithResponses) GetAgentInvocationContextWithResponse(ctx context.Context, invocationId InvocationId, reqEditors ...RequestEditorFn) (*GetAgentInvocationContextResponse, error) {
+	rsp, err := c.GetAgentInvocationContext(ctx, invocationId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetAgentInvocationContextResponse(rsp)
+}
+
+// UpdateAgentInvocationWithBodyWithResponse performs a POST /v1/agent-invocations/{invocationId}/state (the `UpdateAgentInvocation` operationId) request,
+// with any type of body and a specified content type.
+//
+// Target Pi only; report running, definite failure or uncertainty without overwriting a committed result.
+//
+// Returns a wrapper object for the known response body format(s).
+func (c *ClientWithResponses) UpdateAgentInvocationWithBodyWithResponse(ctx context.Context, invocationId InvocationId, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateAgentInvocationResponse, error) {
+	rsp, err := c.UpdateAgentInvocationWithBody(ctx, invocationId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateAgentInvocationResponse(rsp)
+}
+
+// UpdateAgentInvocationWithResponse performs a POST /v1/agent-invocations/{invocationId}/state (the `UpdateAgentInvocation` operationId) request.
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Target Pi only; report running, definite failure or uncertainty without overwriting a committed result.
+func (c *ClientWithResponses) UpdateAgentInvocationWithResponse(ctx context.Context, invocationId InvocationId, body UpdateAgentInvocationJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateAgentInvocationResponse, error) {
+	rsp, err := c.UpdateAgentInvocation(ctx, invocationId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateAgentInvocationResponse(rsp)
+}
+
+// ListAgentSessionsWithResponse performs a GET /v1/agent-sessions (the `ListAgentSessions` operationId) request.
+//
+// Returns a wrapper object for the known response body format(s).
+func (c *ClientWithResponses) ListAgentSessionsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListAgentSessionsResponse, error) {
+	rsp, err := c.ListAgentSessions(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListAgentSessionsResponse(rsp)
+}
+
+// RegisterAgentSessionWithBodyWithResponse performs a POST /v1/agent-sessions (the `RegisterAgentSession` operationId) request,
+// with any type of body and a specified content type.
+//
+// Pi self-registration; actor must be pi:<external_id>. Direct loopback registrations may participate in canonical cwd matching; proxied/remote paths do not.
+//
+// Returns a wrapper object for the known response body format(s).
+func (c *ClientWithResponses) RegisterAgentSessionWithBodyWithResponse(ctx context.Context, params *RegisterAgentSessionParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*RegisterAgentSessionResponse, error) {
+	rsp, err := c.RegisterAgentSessionWithBody(ctx, params, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseRegisterAgentSessionResponse(rsp)
+}
+
+// RegisterAgentSessionWithResponse performs a POST /v1/agent-sessions (the `RegisterAgentSession` operationId) request.
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Pi self-registration; actor must be pi:<external_id>. Direct loopback registrations may participate in canonical cwd matching; proxied/remote paths do not.
+func (c *ClientWithResponses) RegisterAgentSessionWithResponse(ctx context.Context, params *RegisterAgentSessionParams, body RegisterAgentSessionJSONRequestBody, reqEditors ...RequestEditorFn) (*RegisterAgentSessionResponse, error) {
+	rsp, err := c.RegisterAgentSession(ctx, params, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseRegisterAgentSessionResponse(rsp)
+}
+
+// ConnectAgentSessionWithResponse performs a GET /v1/agent-sessions/{agentSessionId}/connect (the `ConnectAgentSession` operationId) request.
+//
+// Pi-only live SSE dispatch connection. Opens with ready/connection_id, then request frames containing AgentInvocation. No event IDs or execution replay; reconnect does not resend commands.
+//
+// Returns a wrapper object for the known response body format(s).
+func (c *ClientWithResponses) ConnectAgentSessionWithResponse(ctx context.Context, agentSessionId AgentSessionId, reqEditors ...RequestEditorFn) (*ConnectAgentSessionResponse, error) {
+	rsp, err := c.ConnectAgentSession(ctx, agentSessionId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseConnectAgentSessionResponse(rsp)
+}
+
+// UpdateAgentSessionStateWithBodyWithResponse performs a PUT /v1/agent-sessions/{agentSessionId}/state (the `UpdateAgentSessionState` operationId) request,
+// with any type of body and a specified content type.
+//
+// The connected Pi reports actual readiness/model/checkpoint for its current connection ID.
+//
+// Returns a wrapper object for the known response body format(s).
+func (c *ClientWithResponses) UpdateAgentSessionStateWithBodyWithResponse(ctx context.Context, agentSessionId AgentSessionId, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateAgentSessionStateResponse, error) {
+	rsp, err := c.UpdateAgentSessionStateWithBody(ctx, agentSessionId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateAgentSessionStateResponse(rsp)
+}
+
+// UpdateAgentSessionStateWithResponse performs a PUT /v1/agent-sessions/{agentSessionId}/state (the `UpdateAgentSessionState` operationId) request.
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// The connected Pi reports actual readiness/model/checkpoint for its current connection ID.
+func (c *ClientWithResponses) UpdateAgentSessionStateWithResponse(ctx context.Context, agentSessionId AgentSessionId, body UpdateAgentSessionStateJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateAgentSessionStateResponse, error) {
+	rsp, err := c.UpdateAgentSessionState(ctx, agentSessionId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateAgentSessionStateResponse(rsp)
+}
+
 // GetDiscussionWithResponse performs a GET /v1/discussions/{discussionId} (the `GetDiscussion` operationId) request.
 //
 // Returns a wrapper object for the known response body format(s).
@@ -6902,6 +8140,80 @@ func (c *ClientWithResponses) GetReviewWithResponse(ctx context.Context, reviewI
 		return nil, err
 	}
 	return ParseGetReviewResponse(rsp)
+}
+
+// GetAgentBindingWithResponse performs a GET /v1/reviews/{reviewId}/agent-binding (the `GetAgentBinding` operationId) request.
+//
+// Returns a wrapper object for the known response body format(s).
+func (c *ClientWithResponses) GetAgentBindingWithResponse(ctx context.Context, reviewId ReviewId, reqEditors ...RequestEditorFn) (*GetAgentBindingResponse, error) {
+	rsp, err := c.GetAgentBinding(ctx, reviewId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetAgentBindingResponse(rsp)
+}
+
+// SetAgentBindingWithBodyWithResponse performs a PUT /v1/reviews/{reviewId}/agent-binding (the `SetAgentBinding` operationId) request,
+// with any type of body and a specified content type.
+//
+// Select a Pi, deliberately disconnect, or explicitly restore automatic matching. No request is dispatched.
+//
+// Returns a wrapper object for the known response body format(s).
+func (c *ClientWithResponses) SetAgentBindingWithBodyWithResponse(ctx context.Context, reviewId ReviewId, params *SetAgentBindingParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SetAgentBindingResponse, error) {
+	rsp, err := c.SetAgentBindingWithBody(ctx, reviewId, params, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSetAgentBindingResponse(rsp)
+}
+
+// SetAgentBindingWithResponse performs a PUT /v1/reviews/{reviewId}/agent-binding (the `SetAgentBinding` operationId) request.
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Select a Pi, deliberately disconnect, or explicitly restore automatic matching. No request is dispatched.
+func (c *ClientWithResponses) SetAgentBindingWithResponse(ctx context.Context, reviewId ReviewId, params *SetAgentBindingParams, body SetAgentBindingJSONRequestBody, reqEditors ...RequestEditorFn) (*SetAgentBindingResponse, error) {
+	rsp, err := c.SetAgentBinding(ctx, reviewId, params, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSetAgentBindingResponse(rsp)
+}
+
+// ListAgentInvocationsWithResponse performs a GET /v1/reviews/{reviewId}/agent-invocations (the `ListAgentInvocations` operationId) request.
+//
+// Returns a wrapper object for the known response body format(s).
+func (c *ClientWithResponses) ListAgentInvocationsWithResponse(ctx context.Context, reviewId ReviewId, reqEditors ...RequestEditorFn) (*ListAgentInvocationsResponse, error) {
+	rsp, err := c.ListAgentInvocations(ctx, reviewId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListAgentInvocationsResponse(rsp)
+}
+
+// CreateAgentInvocationWithBodyWithResponse performs a POST /v1/reviews/{reviewId}/agent-invocations (the `CreateAgentInvocation` operationId) request,
+// with any type of body and a specified content type.
+//
+// Explicit human action only. Resolve a unique unbound candidate, reject busy/unavailable, persist and send once over the live Pi connection. Committed replay never dispatches again.
+//
+// Returns a wrapper object for the known response body format(s).
+func (c *ClientWithResponses) CreateAgentInvocationWithBodyWithResponse(ctx context.Context, reviewId ReviewId, params *CreateAgentInvocationParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateAgentInvocationResponse, error) {
+	rsp, err := c.CreateAgentInvocationWithBody(ctx, reviewId, params, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateAgentInvocationResponse(rsp)
+}
+
+// CreateAgentInvocationWithResponse performs a POST /v1/reviews/{reviewId}/agent-invocations (the `CreateAgentInvocation` operationId) request.
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Explicit human action only. Resolve a unique unbound candidate, reject busy/unavailable, persist and send once over the live Pi connection. Committed replay never dispatches again.
+func (c *ClientWithResponses) CreateAgentInvocationWithResponse(ctx context.Context, reviewId ReviewId, params *CreateAgentInvocationParams, body CreateAgentInvocationJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateAgentInvocationResponse, error) {
+	rsp, err := c.CreateAgentInvocation(ctx, reviewId, params, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateAgentInvocationResponse(rsp)
 }
 
 // GetDiscussionAnchorStatusesWithResponse performs a GET /v1/reviews/{reviewId}/anchor-status (the `GetDiscussionAnchorStatuses` operationId) request.
@@ -7146,32 +8458,6 @@ func (c *ClientWithResponses) CaptureRevisionWithResponse(ctx context.Context, r
 	return ParseCaptureRevisionResponse(rsp)
 }
 
-// DissociateRuntimeSessionWithResponse performs a DELETE /v1/reviews/{reviewId}/runtime-sessions/{runtimeSessionId} (the `DissociateRuntimeSession` operationId) request.
-//
-// Remove an association. Idempotent.
-//
-// Returns a wrapper object for the known response body format(s).
-func (c *ClientWithResponses) DissociateRuntimeSessionWithResponse(ctx context.Context, reviewId ReviewId, runtimeSessionId RuntimeSessionId, reqEditors ...RequestEditorFn) (*DissociateRuntimeSessionResponse, error) {
-	rsp, err := c.DissociateRuntimeSession(ctx, reviewId, runtimeSessionId, reqEditors...)
-	if err != nil {
-		return nil, err
-	}
-	return ParseDissociateRuntimeSessionResponse(rsp)
-}
-
-// AssociateRuntimeSessionWithResponse performs a PUT /v1/reviews/{reviewId}/runtime-sessions/{runtimeSessionId} (the `AssociateRuntimeSession` operationId) request.
-//
-// Explicitly associate a runtime session with a review. Idempotent.
-//
-// Returns a wrapper object for the known response body format(s).
-func (c *ClientWithResponses) AssociateRuntimeSessionWithResponse(ctx context.Context, reviewId ReviewId, runtimeSessionId RuntimeSessionId, reqEditors ...RequestEditorFn) (*AssociateRuntimeSessionResponse, error) {
-	rsp, err := c.AssociateRuntimeSession(ctx, reviewId, runtimeSessionId, reqEditors...)
-	if err != nil {
-		return nil, err
-	}
-	return ParseAssociateRuntimeSessionResponse(rsp)
-}
-
 // ListTopicsWithResponse performs a GET /v1/reviews/{reviewId}/topics (the `ListTopics` operationId) request.
 //
 // Topics ordered roots first, then children by parent and position. Build the tree from parent_id.
@@ -7272,41 +8558,6 @@ func (c *ClientWithResponses) UpdateSourceTopicsWithResponse(ctx context.Context
 		return nil, err
 	}
 	return ParseUpdateSourceTopicsResponse(rsp)
-}
-
-// ListRuntimeSessionsWithResponse performs a GET /v1/runtime-sessions (the `ListRuntimeSessions` operationId) request.
-//
-// Returns a wrapper object for the known response body format(s).
-func (c *ClientWithResponses) ListRuntimeSessionsWithResponse(ctx context.Context, params *ListRuntimeSessionsParams, reqEditors ...RequestEditorFn) (*ListRuntimeSessionsResponse, error) {
-	rsp, err := c.ListRuntimeSessions(ctx, params, reqEditors...)
-	if err != nil {
-		return nil, err
-	}
-	return ParseListRuntimeSessionsResponse(rsp)
-}
-
-// GetRuntimeSessionWithResponse performs a GET /v1/runtime-sessions/{runtimeSessionId} (the `GetRuntimeSession` operationId) request.
-//
-// Returns a wrapper object for the known response body format(s).
-func (c *ClientWithResponses) GetRuntimeSessionWithResponse(ctx context.Context, runtimeSessionId RuntimeSessionId, reqEditors ...RequestEditorFn) (*GetRuntimeSessionResponse, error) {
-	rsp, err := c.GetRuntimeSession(ctx, runtimeSessionId, reqEditors...)
-	if err != nil {
-		return nil, err
-	}
-	return ParseGetRuntimeSessionResponse(rsp)
-}
-
-// ListSessionBackendsWithResponse performs a GET /v1/session-backends (the `ListSessionBackends` operationId) request.
-//
-// Session backends from the server configuration, with their current health. Backends are configured in the server config file, never through the API.
-//
-// Returns a wrapper object for the known response body format(s).
-func (c *ClientWithResponses) ListSessionBackendsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListSessionBackendsResponse, error) {
-	rsp, err := c.ListSessionBackends(ctx, reqEditors...)
-	if err != nil {
-		return nil, err
-	}
-	return ParseListSessionBackendsResponse(rsp)
 }
 
 // GetTopicWithResponse performs a GET /v1/topics/{topicId} (the `GetTopic` operationId) request.
@@ -7411,6 +8662,263 @@ func (c *ClientWithResponses) CreateRepresentationWithResponse(ctx context.Conte
 		return nil, err
 	}
 	return ParseCreateRepresentationResponse(rsp)
+}
+
+// ParseGetAgentInvocationResponse parses an HTTP response from a GetAgentInvocationWithResponse call
+func ParseGetAgentInvocationResponse(rsp *http.Response) (*GetAgentInvocationResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetAgentInvocationResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AgentInvocation
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseCompleteAgentInvocationResponse parses an HTTP response from a CompleteAgentInvocationWithResponse call
+func ParseCompleteAgentInvocationResponse(rsp *http.Response) (*CompleteAgentInvocationResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &CompleteAgentInvocationResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AgentInvocation
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetAgentInvocationContextResponse parses an HTTP response from a GetAgentInvocationContextWithResponse call
+func ParseGetAgentInvocationContextResponse(rsp *http.Response) (*GetAgentInvocationContextResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetAgentInvocationContextResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AgentInvocationContext
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseUpdateAgentInvocationResponse parses an HTTP response from a UpdateAgentInvocationWithResponse call
+func ParseUpdateAgentInvocationResponse(rsp *http.Response) (*UpdateAgentInvocationResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &UpdateAgentInvocationResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AgentInvocation
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListAgentSessionsResponse parses an HTTP response from a ListAgentSessionsWithResponse call
+func ParseListAgentSessionsResponse(rsp *http.Response) (*ListAgentSessionsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListAgentSessionsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest []AgentSession
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseRegisterAgentSessionResponse parses an HTTP response from a RegisterAgentSessionWithResponse call
+func ParseRegisterAgentSessionResponse(rsp *http.Response) (*RegisterAgentSessionResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &RegisterAgentSessionResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AgentSession
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseConnectAgentSessionResponse parses an HTTP response from a ConnectAgentSessionWithResponse call
+func ParseConnectAgentSessionResponse(rsp *http.Response) (*ConnectAgentSessionResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ConnectAgentSessionResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseUpdateAgentSessionStateResponse parses an HTTP response from a UpdateAgentSessionStateWithResponse call
+func ParseUpdateAgentSessionStateResponse(rsp *http.Response) (*UpdateAgentSessionStateResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &UpdateAgentSessionStateResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AgentSession
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
 }
 
 // ParseGetDiscussionResponse parses an HTTP response from a GetDiscussionWithResponse call
@@ -7863,6 +9371,164 @@ func ParseGetReviewResponse(rsp *http.Response) (*GetReviewResponse, error) {
 			return nil, err
 		}
 		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetAgentBindingResponse parses an HTTP response from a GetAgentBindingWithResponse call
+func ParseGetAgentBindingResponse(rsp *http.Response) (*GetAgentBindingResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetAgentBindingResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AgentBinding
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	switch {
+	case rsp.StatusCode == 200:
+		var headers GetAgentBindingResponse200Headers
+		if values := rsp.Header.Values("ETag"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "ETag", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.ETag = value
+		}
+		response.Headers200 = &headers
+	}
+
+	return response, nil
+}
+
+// ParseSetAgentBindingResponse parses an HTTP response from a SetAgentBindingWithResponse call
+func ParseSetAgentBindingResponse(rsp *http.Response) (*SetAgentBindingResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &SetAgentBindingResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AgentBinding
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	switch {
+	case rsp.StatusCode == 200:
+		var headers SetAgentBindingResponse200Headers
+		if values := rsp.Header.Values("ETag"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "ETag", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.ETag = value
+		}
+		response.Headers200 = &headers
+	}
+
+	return response, nil
+}
+
+// ParseListAgentInvocationsResponse parses an HTTP response from a ListAgentInvocationsWithResponse call
+func ParseListAgentInvocationsResponse(rsp *http.Response) (*ListAgentInvocationsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListAgentInvocationsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest []AgentInvocation
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseCreateAgentInvocationResponse parses an HTTP response from a CreateAgentInvocationWithResponse call
+func ParseCreateAgentInvocationResponse(rsp *http.Response) (*CreateAgentInvocationResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &CreateAgentInvocationResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 202:
+		var dest AgentInvocation
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON202 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
 		var dest Error
@@ -8404,68 +10070,6 @@ func ParseCaptureRevisionResponse(rsp *http.Response) (*CaptureRevisionResponse,
 	return response, nil
 }
 
-// ParseDissociateRuntimeSessionResponse parses an HTTP response from a DissociateRuntimeSessionWithResponse call
-func ParseDissociateRuntimeSessionResponse(rsp *http.Response) (*DissociateRuntimeSessionResponse, error) {
-	bodyBytes, err := io.ReadAll(rsp.Body)
-	defer func() { _ = rsp.Body.Close() }()
-	if err != nil {
-		return nil, err
-	}
-
-	response := &DissociateRuntimeSessionResponse{
-		Body:         bodyBytes,
-		HTTPResponse: rsp,
-	}
-
-	switch {
-	case rsp.StatusCode == 204:
-		break // No content-type
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
-		var dest Error
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSONDefault = &dest
-
-	}
-
-	return response, nil
-}
-
-// ParseAssociateRuntimeSessionResponse parses an HTTP response from a AssociateRuntimeSessionWithResponse call
-func ParseAssociateRuntimeSessionResponse(rsp *http.Response) (*AssociateRuntimeSessionResponse, error) {
-	bodyBytes, err := io.ReadAll(rsp.Body)
-	defer func() { _ = rsp.Body.Close() }()
-	if err != nil {
-		return nil, err
-	}
-
-	response := &AssociateRuntimeSessionResponse{
-		Body:         bodyBytes,
-		HTTPResponse: rsp,
-	}
-
-	switch {
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
-		var dest RuntimeSession
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON200 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
-		var dest Error
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSONDefault = &dest
-
-	}
-
-	return response, nil
-}
-
 // ParseListTopicsResponse parses an HTTP response from a ListTopicsWithResponse call
 func ParseListTopicsResponse(rsp *http.Response) (*ListTopicsResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -8672,105 +10276,6 @@ func ParseUpdateSourceTopicsResponse(rsp *http.Response) (*UpdateSourceTopicsRes
 			headers.ETag = value
 		}
 		response.Headers200 = &headers
-	}
-
-	return response, nil
-}
-
-// ParseListRuntimeSessionsResponse parses an HTTP response from a ListRuntimeSessionsWithResponse call
-func ParseListRuntimeSessionsResponse(rsp *http.Response) (*ListRuntimeSessionsResponse, error) {
-	bodyBytes, err := io.ReadAll(rsp.Body)
-	defer func() { _ = rsp.Body.Close() }()
-	if err != nil {
-		return nil, err
-	}
-
-	response := &ListRuntimeSessionsResponse{
-		Body:         bodyBytes,
-		HTTPResponse: rsp,
-	}
-
-	switch {
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
-		var dest []RuntimeSession
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON200 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
-		var dest Error
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSONDefault = &dest
-
-	}
-
-	return response, nil
-}
-
-// ParseGetRuntimeSessionResponse parses an HTTP response from a GetRuntimeSessionWithResponse call
-func ParseGetRuntimeSessionResponse(rsp *http.Response) (*GetRuntimeSessionResponse, error) {
-	bodyBytes, err := io.ReadAll(rsp.Body)
-	defer func() { _ = rsp.Body.Close() }()
-	if err != nil {
-		return nil, err
-	}
-
-	response := &GetRuntimeSessionResponse{
-		Body:         bodyBytes,
-		HTTPResponse: rsp,
-	}
-
-	switch {
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
-		var dest RuntimeSession
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON200 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
-		var dest Error
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSONDefault = &dest
-
-	}
-
-	return response, nil
-}
-
-// ParseListSessionBackendsResponse parses an HTTP response from a ListSessionBackendsWithResponse call
-func ParseListSessionBackendsResponse(rsp *http.Response) (*ListSessionBackendsResponse, error) {
-	bodyBytes, err := io.ReadAll(rsp.Body)
-	defer func() { _ = rsp.Body.Close() }()
-	if err != nil {
-		return nil, err
-	}
-
-	response := &ListSessionBackendsResponse{
-		Body:         bodyBytes,
-		HTTPResponse: rsp,
-	}
-
-	switch {
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
-		var dest []SessionBackend
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON200 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
-		var dest Error
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSONDefault = &dest
-
 	}
 
 	return response, nil
@@ -8983,6 +10488,30 @@ func ParseCreateRepresentationResponse(rsp *http.Response) (*CreateRepresentatio
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
 
+	// (GET /v1/agent-invocations/{invocationId})
+	GetAgentInvocation(w http.ResponseWriter, r *http.Request, invocationId InvocationId)
+
+	// (POST /v1/agent-invocations/{invocationId}/complete)
+	CompleteAgentInvocation(w http.ResponseWriter, r *http.Request, invocationId InvocationId, params CompleteAgentInvocationParams)
+
+	// (GET /v1/agent-invocations/{invocationId}/context)
+	GetAgentInvocationContext(w http.ResponseWriter, r *http.Request, invocationId InvocationId)
+
+	// (POST /v1/agent-invocations/{invocationId}/state)
+	UpdateAgentInvocation(w http.ResponseWriter, r *http.Request, invocationId InvocationId)
+
+	// (GET /v1/agent-sessions)
+	ListAgentSessions(w http.ResponseWriter, r *http.Request)
+
+	// (POST /v1/agent-sessions)
+	RegisterAgentSession(w http.ResponseWriter, r *http.Request, params RegisterAgentSessionParams)
+
+	// (GET /v1/agent-sessions/{agentSessionId}/connect)
+	ConnectAgentSession(w http.ResponseWriter, r *http.Request, agentSessionId AgentSessionId)
+
+	// (PUT /v1/agent-sessions/{agentSessionId}/state)
+	UpdateAgentSessionState(w http.ResponseWriter, r *http.Request, agentSessionId AgentSessionId)
+
 	// (GET /v1/discussions/{discussionId})
 	GetDiscussion(w http.ResponseWriter, r *http.Request, discussionId DiscussionId)
 
@@ -9021,6 +10550,18 @@ type ServerInterface interface {
 
 	// (GET /v1/reviews/{reviewId})
 	GetReview(w http.ResponseWriter, r *http.Request, reviewId ReviewId)
+
+	// (GET /v1/reviews/{reviewId}/agent-binding)
+	GetAgentBinding(w http.ResponseWriter, r *http.Request, reviewId ReviewId)
+
+	// (PUT /v1/reviews/{reviewId}/agent-binding)
+	SetAgentBinding(w http.ResponseWriter, r *http.Request, reviewId ReviewId, params SetAgentBindingParams)
+
+	// (GET /v1/reviews/{reviewId}/agent-invocations)
+	ListAgentInvocations(w http.ResponseWriter, r *http.Request, reviewId ReviewId)
+
+	// (POST /v1/reviews/{reviewId}/agent-invocations)
+	CreateAgentInvocation(w http.ResponseWriter, r *http.Request, reviewId ReviewId, params CreateAgentInvocationParams)
 
 	// (GET /v1/reviews/{reviewId}/anchor-status)
 	GetDiscussionAnchorStatuses(w http.ResponseWriter, r *http.Request, reviewId ReviewId, params GetDiscussionAnchorStatusesParams)
@@ -9070,12 +10611,6 @@ type ServerInterface interface {
 	// (POST /v1/reviews/{reviewId}/revisions)
 	CaptureRevision(w http.ResponseWriter, r *http.Request, reviewId ReviewId, params CaptureRevisionParams)
 
-	// (DELETE /v1/reviews/{reviewId}/runtime-sessions/{runtimeSessionId})
-	DissociateRuntimeSession(w http.ResponseWriter, r *http.Request, reviewId ReviewId, runtimeSessionId RuntimeSessionId)
-
-	// (PUT /v1/reviews/{reviewId}/runtime-sessions/{runtimeSessionId})
-	AssociateRuntimeSession(w http.ResponseWriter, r *http.Request, reviewId ReviewId, runtimeSessionId RuntimeSessionId)
-
 	// (GET /v1/reviews/{reviewId}/topics)
 	ListTopics(w http.ResponseWriter, r *http.Request, reviewId ReviewId)
 
@@ -9093,15 +10628,6 @@ type ServerInterface interface {
 
 	// (PATCH /v1/revisions/{revisionId}/source-topics)
 	UpdateSourceTopics(w http.ResponseWriter, r *http.Request, revisionId RevisionId, params UpdateSourceTopicsParams)
-
-	// (GET /v1/runtime-sessions)
-	ListRuntimeSessions(w http.ResponseWriter, r *http.Request, params ListRuntimeSessionsParams)
-
-	// (GET /v1/runtime-sessions/{runtimeSessionId})
-	GetRuntimeSession(w http.ResponseWriter, r *http.Request, runtimeSessionId RuntimeSessionId)
-
-	// (GET /v1/session-backends)
-	ListSessionBackends(w http.ResponseWriter, r *http.Request)
 
 	// (GET /v1/topics/{topicId})
 	GetTopic(w http.ResponseWriter, r *http.Request, topicId TopicId)
@@ -9127,6 +10653,241 @@ type ServerInterfaceWrapper struct {
 }
 
 type MiddlewareFunc func(http.Handler) http.Handler
+
+// GetAgentInvocation operation middleware
+func (siw *ServerInterfaceWrapper) GetAgentInvocation(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "invocationId" -------------
+	var invocationId InvocationId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "invocationId", r.PathValue("invocationId"), &invocationId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "invocationId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetAgentInvocation(w, r, invocationId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CompleteAgentInvocation operation middleware
+func (siw *ServerInterfaceWrapper) CompleteAgentInvocation(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "invocationId" -------------
+	var invocationId InvocationId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "invocationId", r.PathValue("invocationId"), &invocationId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "invocationId", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params CompleteAgentInvocationParams
+
+	headers := r.Header
+
+	// ------------- Optional header parameter "Idempotency-Key" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("Idempotency-Key")]; found {
+		var IdempotencyKey IdempotencyKey
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "Idempotency-Key", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "Idempotency-Key", valueList[0], &IdempotencyKey, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "Idempotency-Key", Err: err})
+			return
+		}
+
+		params.IdempotencyKey = &IdempotencyKey
+
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CompleteAgentInvocation(w, r, invocationId, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetAgentInvocationContext operation middleware
+func (siw *ServerInterfaceWrapper) GetAgentInvocationContext(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "invocationId" -------------
+	var invocationId InvocationId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "invocationId", r.PathValue("invocationId"), &invocationId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "invocationId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetAgentInvocationContext(w, r, invocationId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateAgentInvocation operation middleware
+func (siw *ServerInterfaceWrapper) UpdateAgentInvocation(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "invocationId" -------------
+	var invocationId InvocationId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "invocationId", r.PathValue("invocationId"), &invocationId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "invocationId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateAgentInvocation(w, r, invocationId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListAgentSessions operation middleware
+func (siw *ServerInterfaceWrapper) ListAgentSessions(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListAgentSessions(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RegisterAgentSession operation middleware
+func (siw *ServerInterfaceWrapper) RegisterAgentSession(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params RegisterAgentSessionParams
+
+	headers := r.Header
+
+	// ------------- Optional header parameter "Idempotency-Key" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("Idempotency-Key")]; found {
+		var IdempotencyKey IdempotencyKey
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "Idempotency-Key", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "Idempotency-Key", valueList[0], &IdempotencyKey, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "Idempotency-Key", Err: err})
+			return
+		}
+
+		params.IdempotencyKey = &IdempotencyKey
+
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RegisterAgentSession(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ConnectAgentSession operation middleware
+func (siw *ServerInterfaceWrapper) ConnectAgentSession(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "agentSessionId" -------------
+	var agentSessionId AgentSessionId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "agentSessionId", r.PathValue("agentSessionId"), &agentSessionId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "agentSessionId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ConnectAgentSession(w, r, agentSessionId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateAgentSessionState operation middleware
+func (siw *ServerInterfaceWrapper) UpdateAgentSessionState(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "agentSessionId" -------------
+	var agentSessionId AgentSessionId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "agentSessionId", r.PathValue("agentSessionId"), &agentSessionId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "agentSessionId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateAgentSessionState(w, r, agentSessionId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
 
 // GetDiscussion operation middleware
 func (siw *ServerInterfaceWrapper) GetDiscussion(w http.ResponseWriter, r *http.Request) {
@@ -9579,6 +11340,158 @@ func (siw *ServerInterfaceWrapper) GetReview(w http.ResponseWriter, r *http.Requ
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetReview(w, r, reviewId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetAgentBinding operation middleware
+func (siw *ServerInterfaceWrapper) GetAgentBinding(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "reviewId" -------------
+	var reviewId ReviewId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "reviewId", r.PathValue("reviewId"), &reviewId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "reviewId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetAgentBinding(w, r, reviewId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SetAgentBinding operation middleware
+func (siw *ServerInterfaceWrapper) SetAgentBinding(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "reviewId" -------------
+	var reviewId ReviewId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "reviewId", r.PathValue("reviewId"), &reviewId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "reviewId", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params SetAgentBindingParams
+
+	headers := r.Header
+
+	// ------------- Optional header parameter "If-Match" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("If-Match")]; found {
+		var IfMatch IfMatch
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "If-Match", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "If-Match", valueList[0], &IfMatch, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "If-Match", Err: err})
+			return
+		}
+
+		params.IfMatch = &IfMatch
+
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SetAgentBinding(w, r, reviewId, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListAgentInvocations operation middleware
+func (siw *ServerInterfaceWrapper) ListAgentInvocations(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "reviewId" -------------
+	var reviewId ReviewId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "reviewId", r.PathValue("reviewId"), &reviewId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "reviewId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListAgentInvocations(w, r, reviewId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateAgentInvocation operation middleware
+func (siw *ServerInterfaceWrapper) CreateAgentInvocation(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "reviewId" -------------
+	var reviewId ReviewId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "reviewId", r.PathValue("reviewId"), &reviewId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "reviewId", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params CreateAgentInvocationParams
+
+	headers := r.Header
+
+	// ------------- Optional header parameter "Idempotency-Key" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("Idempotency-Key")]; found {
+		var IdempotencyKey IdempotencyKey
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "Idempotency-Key", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "Idempotency-Key", valueList[0], &IdempotencyKey, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "Idempotency-Key", Err: err})
+			return
+		}
+
+		params.IdempotencyKey = &IdempotencyKey
+
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateAgentInvocation(w, r, reviewId, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -10177,76 +12090,6 @@ func (siw *ServerInterfaceWrapper) CaptureRevision(w http.ResponseWriter, r *htt
 	handler.ServeHTTP(w, r)
 }
 
-// DissociateRuntimeSession operation middleware
-func (siw *ServerInterfaceWrapper) DissociateRuntimeSession(w http.ResponseWriter, r *http.Request) {
-
-	var err error
-	_ = err
-
-	// ------------- Path parameter "reviewId" -------------
-	var reviewId ReviewId
-
-	err = runtime.BindStyledParameterWithOptions("simple", "reviewId", r.PathValue("reviewId"), &reviewId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "reviewId", Err: err})
-		return
-	}
-
-	// ------------- Path parameter "runtimeSessionId" -------------
-	var runtimeSessionId RuntimeSessionId
-
-	err = runtime.BindStyledParameterWithOptions("simple", "runtimeSessionId", r.PathValue("runtimeSessionId"), &runtimeSessionId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "runtimeSessionId", Err: err})
-		return
-	}
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.DissociateRuntimeSession(w, r, reviewId, runtimeSessionId)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
-// AssociateRuntimeSession operation middleware
-func (siw *ServerInterfaceWrapper) AssociateRuntimeSession(w http.ResponseWriter, r *http.Request) {
-
-	var err error
-	_ = err
-
-	// ------------- Path parameter "reviewId" -------------
-	var reviewId ReviewId
-
-	err = runtime.BindStyledParameterWithOptions("simple", "reviewId", r.PathValue("reviewId"), &reviewId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "reviewId", Err: err})
-		return
-	}
-
-	// ------------- Path parameter "runtimeSessionId" -------------
-	var runtimeSessionId RuntimeSessionId
-
-	err = runtime.BindStyledParameterWithOptions("simple", "runtimeSessionId", r.PathValue("runtimeSessionId"), &runtimeSessionId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "runtimeSessionId", Err: err})
-		return
-	}
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.AssociateRuntimeSession(w, r, reviewId, runtimeSessionId)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
 // ListTopics operation middleware
 func (siw *ServerInterfaceWrapper) ListTopics(w http.ResponseWriter, r *http.Request) {
 
@@ -10471,79 +12314,6 @@ func (siw *ServerInterfaceWrapper) UpdateSourceTopics(w http.ResponseWriter, r *
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.UpdateSourceTopics(w, r, revisionId, params)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
-// ListRuntimeSessions operation middleware
-func (siw *ServerInterfaceWrapper) ListRuntimeSessions(w http.ResponseWriter, r *http.Request) {
-
-	var err error
-	_ = err
-
-	// Parameter object where we will unmarshal all parameters from the context
-	var params ListRuntimeSessionsParams
-
-	// ------------- Optional query parameter "review_id" -------------
-
-	err = runtime.BindQueryParameterWithOptions("form", true, false, "review_id", r.URL.Query(), &params.ReviewId, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
-	if err != nil {
-		var requiredError *runtime.RequiredParameterError
-		if errors.As(err, &requiredError) {
-			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "review_id"})
-		} else {
-			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "review_id", Err: err})
-		}
-		return
-	}
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.ListRuntimeSessions(w, r, params)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
-// GetRuntimeSession operation middleware
-func (siw *ServerInterfaceWrapper) GetRuntimeSession(w http.ResponseWriter, r *http.Request) {
-
-	var err error
-	_ = err
-
-	// ------------- Path parameter "runtimeSessionId" -------------
-	var runtimeSessionId RuntimeSessionId
-
-	err = runtime.BindStyledParameterWithOptions("simple", "runtimeSessionId", r.PathValue("runtimeSessionId"), &runtimeSessionId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "runtimeSessionId", Err: err})
-		return
-	}
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.GetRuntimeSession(w, r, runtimeSessionId)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
-// ListSessionBackends operation middleware
-func (siw *ServerInterfaceWrapper) ListSessionBackends(w http.ResponseWriter, r *http.Request) {
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.ListSessionBackends(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -10915,16 +12685,368 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/reviews/{reviewId}/decisions", wrapper.ListDecisions)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/reviews/{reviewId}/decisions", wrapper.CreateDecision)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/events", wrapper.StreamEvents)
-	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/session-backends", wrapper.ListSessionBackends)
-	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/runtime-sessions", wrapper.ListRuntimeSessions)
-	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/runtime-sessions/{runtimeSessionId}", wrapper.GetRuntimeSession)
-	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/v1/reviews/{reviewId}/runtime-sessions/{runtimeSessionId}", wrapper.DissociateRuntimeSession)
-	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/v1/reviews/{reviewId}/runtime-sessions/{runtimeSessionId}", wrapper.AssociateRuntimeSession)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/agent-sessions", wrapper.ListAgentSessions)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/agent-sessions", wrapper.RegisterAgentSession)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/agent-sessions/{agentSessionId}/connect", wrapper.ConnectAgentSession)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/v1/agent-sessions/{agentSessionId}/state", wrapper.UpdateAgentSessionState)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/reviews/{reviewId}/agent-binding", wrapper.GetAgentBinding)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/v1/reviews/{reviewId}/agent-binding", wrapper.SetAgentBinding)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/reviews/{reviewId}/agent-invocations", wrapper.ListAgentInvocations)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/reviews/{reviewId}/agent-invocations", wrapper.CreateAgentInvocation)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/agent-invocations/{invocationId}", wrapper.GetAgentInvocation)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/agent-invocations/{invocationId}/context", wrapper.GetAgentInvocationContext)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/agent-invocations/{invocationId}/state", wrapper.UpdateAgentInvocation)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/agent-invocations/{invocationId}/complete", wrapper.CompleteAgentInvocation)
 
 	return m
 }
 
 type ErrorJSONResponse Error
+
+type GetAgentInvocationRequestObject struct {
+	InvocationId InvocationId `json:"invocationId"`
+}
+
+type GetAgentInvocationResponseObject interface {
+	VisitGetAgentInvocationResponse(w http.ResponseWriter) error
+}
+
+type GetAgentInvocation200JSONResponse AgentInvocation
+
+func (response GetAgentInvocation200JSONResponse) VisitGetAgentInvocationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAgentInvocationdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response GetAgentInvocationdefaultJSONResponse) VisitGetAgentInvocationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CompleteAgentInvocationRequestObject struct {
+	InvocationId InvocationId `json:"invocationId"`
+	Params       CompleteAgentInvocationParams
+	Body         *CompleteAgentInvocationJSONRequestBody
+}
+
+type CompleteAgentInvocationResponseObject interface {
+	VisitCompleteAgentInvocationResponse(w http.ResponseWriter) error
+}
+
+type CompleteAgentInvocation200JSONResponse AgentInvocation
+
+func (response CompleteAgentInvocation200JSONResponse) VisitCompleteAgentInvocationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CompleteAgentInvocationdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response CompleteAgentInvocationdefaultJSONResponse) VisitCompleteAgentInvocationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAgentInvocationContextRequestObject struct {
+	InvocationId InvocationId `json:"invocationId"`
+}
+
+type GetAgentInvocationContextResponseObject interface {
+	VisitGetAgentInvocationContextResponse(w http.ResponseWriter) error
+}
+
+type GetAgentInvocationContext200JSONResponse AgentInvocationContext
+
+func (response GetAgentInvocationContext200JSONResponse) VisitGetAgentInvocationContextResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAgentInvocationContextdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response GetAgentInvocationContextdefaultJSONResponse) VisitGetAgentInvocationContextResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateAgentInvocationRequestObject struct {
+	InvocationId InvocationId `json:"invocationId"`
+	Body         *UpdateAgentInvocationJSONRequestBody
+}
+
+type UpdateAgentInvocationResponseObject interface {
+	VisitUpdateAgentInvocationResponse(w http.ResponseWriter) error
+}
+
+type UpdateAgentInvocation200JSONResponse AgentInvocation
+
+func (response UpdateAgentInvocation200JSONResponse) VisitUpdateAgentInvocationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateAgentInvocationdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response UpdateAgentInvocationdefaultJSONResponse) VisitUpdateAgentInvocationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAgentSessionsRequestObject struct {
+}
+
+type ListAgentSessionsResponseObject interface {
+	VisitListAgentSessionsResponse(w http.ResponseWriter) error
+}
+
+type ListAgentSessions200JSONResponse []AgentSession
+
+func (response ListAgentSessions200JSONResponse) VisitListAgentSessionsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAgentSessionsdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response ListAgentSessionsdefaultJSONResponse) VisitListAgentSessionsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RegisterAgentSessionRequestObject struct {
+	Params RegisterAgentSessionParams
+	Body   *RegisterAgentSessionJSONRequestBody
+}
+
+type RegisterAgentSessionResponseObject interface {
+	VisitRegisterAgentSessionResponse(w http.ResponseWriter) error
+}
+
+type RegisterAgentSession200JSONResponse AgentSession
+
+func (response RegisterAgentSession200JSONResponse) VisitRegisterAgentSessionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RegisterAgentSessiondefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response RegisterAgentSessiondefaultJSONResponse) VisitRegisterAgentSessionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ConnectAgentSessionRequestObject struct {
+	AgentSessionId AgentSessionId `json:"agentSessionId"`
+}
+
+type ConnectAgentSessionResponseObject interface {
+	VisitConnectAgentSessionResponse(w http.ResponseWriter) error
+}
+
+type ConnectAgentSession200TexteventStreamResponse struct {
+	Body          io.Reader
+	ContentLength int64
+}
+
+func (response ConnectAgentSession200TexteventStreamResponse) VisitConnectAgentSessionResponse(w http.ResponseWriter) error {
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	if response.ContentLength != 0 {
+		w.Header().Set("Content-Length", fmt.Sprint(response.ContentLength))
+	}
+	w.WriteHeader(200)
+
+	if closer, ok := response.Body.(io.ReadCloser); ok {
+		defer closer.Close()
+	}
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		// If w doesn't support flushing, fall back to io.Copy.
+		_, err := io.Copy(w, response.Body)
+		return err
+	}
+	// text/event-stream messages are typically small; use a
+	// modest buffer and flush after each chunk so clients see
+	// events immediately instead of waiting on OS buffering.
+	buf := make([]byte, 4096)
+	for {
+		n, err := response.Body.Read(buf)
+		if n > 0 {
+			if _, writeErr := w.Write(buf[:n]); writeErr != nil {
+				return writeErr
+			}
+			flusher.Flush()
+		}
+		if err != nil {
+			if err == io.EOF {
+				return nil
+			}
+			return err
+		}
+	}
+}
+
+type ConnectAgentSessiondefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response ConnectAgentSessiondefaultJSONResponse) VisitConnectAgentSessionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateAgentSessionStateRequestObject struct {
+	AgentSessionId AgentSessionId `json:"agentSessionId"`
+	Body           *UpdateAgentSessionStateJSONRequestBody
+}
+
+type UpdateAgentSessionStateResponseObject interface {
+	VisitUpdateAgentSessionStateResponse(w http.ResponseWriter) error
+}
+
+type UpdateAgentSessionState200JSONResponse AgentSession
+
+func (response UpdateAgentSessionState200JSONResponse) VisitUpdateAgentSessionStateResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateAgentSessionStatedefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response UpdateAgentSessionStatedefaultJSONResponse) VisitUpdateAgentSessionStateResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
 
 type GetDiscussionRequestObject struct {
 	DiscussionId DiscussionId `json:"discussionId"`
@@ -11467,6 +13589,182 @@ type GetReviewdefaultJSONResponse struct {
 }
 
 func (response GetReviewdefaultJSONResponse) VisitGetReviewResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAgentBindingRequestObject struct {
+	ReviewId ReviewId `json:"reviewId"`
+}
+
+type GetAgentBindingResponseObject interface {
+	VisitGetAgentBindingResponse(w http.ResponseWriter) error
+}
+
+type GetAgentBinding200ResponseHeaders struct {
+	ETag string
+}
+
+type GetAgentBinding200JSONResponse struct {
+	Body    AgentBinding
+	Headers GetAgentBinding200ResponseHeaders
+}
+
+func (response GetAgentBinding200JSONResponse) VisitGetAgentBindingResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("ETag", fmt.Sprint(response.Headers.ETag))
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAgentBindingdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response GetAgentBindingdefaultJSONResponse) VisitGetAgentBindingResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetAgentBindingRequestObject struct {
+	ReviewId ReviewId `json:"reviewId"`
+	Params   SetAgentBindingParams
+	Body     *SetAgentBindingJSONRequestBody
+}
+
+type SetAgentBindingResponseObject interface {
+	VisitSetAgentBindingResponse(w http.ResponseWriter) error
+}
+
+type SetAgentBinding200ResponseHeaders struct {
+	ETag string
+}
+
+type SetAgentBinding200JSONResponse struct {
+	Body    AgentBinding
+	Headers SetAgentBinding200ResponseHeaders
+}
+
+func (response SetAgentBinding200JSONResponse) VisitSetAgentBindingResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("ETag", fmt.Sprint(response.Headers.ETag))
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetAgentBindingdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response SetAgentBindingdefaultJSONResponse) VisitSetAgentBindingResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAgentInvocationsRequestObject struct {
+	ReviewId ReviewId `json:"reviewId"`
+}
+
+type ListAgentInvocationsResponseObject interface {
+	VisitListAgentInvocationsResponse(w http.ResponseWriter) error
+}
+
+type ListAgentInvocations200JSONResponse []AgentInvocation
+
+func (response ListAgentInvocations200JSONResponse) VisitListAgentInvocationsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAgentInvocationsdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response ListAgentInvocationsdefaultJSONResponse) VisitListAgentInvocationsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateAgentInvocationRequestObject struct {
+	ReviewId ReviewId `json:"reviewId"`
+	Params   CreateAgentInvocationParams
+	Body     *CreateAgentInvocationJSONRequestBody
+}
+
+type CreateAgentInvocationResponseObject interface {
+	VisitCreateAgentInvocationResponse(w http.ResponseWriter) error
+}
+
+type CreateAgentInvocation202JSONResponse AgentInvocation
+
+func (response CreateAgentInvocation202JSONResponse) VisitCreateAgentInvocationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(202)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateAgentInvocationdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response CreateAgentInvocationdefaultJSONResponse) VisitCreateAgentInvocationResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -12114,80 +14412,6 @@ func (response CaptureRevisiondefaultJSONResponse) VisitCaptureRevisionResponse(
 	return err
 }
 
-type DissociateRuntimeSessionRequestObject struct {
-	ReviewId         ReviewId         `json:"reviewId"`
-	RuntimeSessionId RuntimeSessionId `json:"runtimeSessionId"`
-}
-
-type DissociateRuntimeSessionResponseObject interface {
-	VisitDissociateRuntimeSessionResponse(w http.ResponseWriter) error
-}
-
-type DissociateRuntimeSession204Response struct {
-}
-
-func (response DissociateRuntimeSession204Response) VisitDissociateRuntimeSessionResponse(w http.ResponseWriter) error {
-	w.WriteHeader(204)
-	return nil
-}
-
-type DissociateRuntimeSessiondefaultJSONResponse struct {
-	Body       Error
-	StatusCode int
-}
-
-func (response DissociateRuntimeSessiondefaultJSONResponse) VisitDissociateRuntimeSessionResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(response.StatusCode)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type AssociateRuntimeSessionRequestObject struct {
-	ReviewId         ReviewId         `json:"reviewId"`
-	RuntimeSessionId RuntimeSessionId `json:"runtimeSessionId"`
-}
-
-type AssociateRuntimeSessionResponseObject interface {
-	VisitAssociateRuntimeSessionResponse(w http.ResponseWriter) error
-}
-
-type AssociateRuntimeSession200JSONResponse RuntimeSession
-
-func (response AssociateRuntimeSession200JSONResponse) VisitAssociateRuntimeSessionResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(200)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type AssociateRuntimeSessiondefaultJSONResponse struct {
-	Body       Error
-	StatusCode int
-}
-
-func (response AssociateRuntimeSessiondefaultJSONResponse) VisitAssociateRuntimeSessionResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(response.StatusCode)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
 type ListTopicsRequestObject struct {
 	ReviewId ReviewId `json:"reviewId"`
 }
@@ -12435,122 +14659,6 @@ func (response UpdateSourceTopicsdefaultJSONResponse) VisitUpdateSourceTopicsRes
 	return err
 }
 
-type ListRuntimeSessionsRequestObject struct {
-	Params ListRuntimeSessionsParams
-}
-
-type ListRuntimeSessionsResponseObject interface {
-	VisitListRuntimeSessionsResponse(w http.ResponseWriter) error
-}
-
-type ListRuntimeSessions200JSONResponse []RuntimeSession
-
-func (response ListRuntimeSessions200JSONResponse) VisitListRuntimeSessionsResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(200)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type ListRuntimeSessionsdefaultJSONResponse struct {
-	Body       Error
-	StatusCode int
-}
-
-func (response ListRuntimeSessionsdefaultJSONResponse) VisitListRuntimeSessionsResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(response.StatusCode)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type GetRuntimeSessionRequestObject struct {
-	RuntimeSessionId RuntimeSessionId `json:"runtimeSessionId"`
-}
-
-type GetRuntimeSessionResponseObject interface {
-	VisitGetRuntimeSessionResponse(w http.ResponseWriter) error
-}
-
-type GetRuntimeSession200JSONResponse RuntimeSession
-
-func (response GetRuntimeSession200JSONResponse) VisitGetRuntimeSessionResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(200)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type GetRuntimeSessiondefaultJSONResponse struct {
-	Body       Error
-	StatusCode int
-}
-
-func (response GetRuntimeSessiondefaultJSONResponse) VisitGetRuntimeSessionResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(response.StatusCode)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type ListSessionBackendsRequestObject struct {
-}
-
-type ListSessionBackendsResponseObject interface {
-	VisitListSessionBackendsResponse(w http.ResponseWriter) error
-}
-
-type ListSessionBackends200JSONResponse []SessionBackend
-
-func (response ListSessionBackends200JSONResponse) VisitListSessionBackendsResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(200)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type ListSessionBackendsdefaultJSONResponse struct {
-	Body       Error
-	StatusCode int
-}
-
-func (response ListSessionBackendsdefaultJSONResponse) VisitListSessionBackendsResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(response.StatusCode)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
 type GetTopicRequestObject struct {
 	TopicId TopicId `json:"topicId"`
 }
@@ -12779,6 +14887,30 @@ func (response CreateRepresentationdefaultJSONResponse) VisitCreateRepresentatio
 // StrictServerInterface represents all server handlers.
 type StrictServerInterface interface {
 
+	// (GET /v1/agent-invocations/{invocationId})
+	GetAgentInvocation(ctx context.Context, request GetAgentInvocationRequestObject) (GetAgentInvocationResponseObject, error)
+
+	// (POST /v1/agent-invocations/{invocationId}/complete)
+	CompleteAgentInvocation(ctx context.Context, request CompleteAgentInvocationRequestObject) (CompleteAgentInvocationResponseObject, error)
+
+	// (GET /v1/agent-invocations/{invocationId}/context)
+	GetAgentInvocationContext(ctx context.Context, request GetAgentInvocationContextRequestObject) (GetAgentInvocationContextResponseObject, error)
+
+	// (POST /v1/agent-invocations/{invocationId}/state)
+	UpdateAgentInvocation(ctx context.Context, request UpdateAgentInvocationRequestObject) (UpdateAgentInvocationResponseObject, error)
+
+	// (GET /v1/agent-sessions)
+	ListAgentSessions(ctx context.Context, request ListAgentSessionsRequestObject) (ListAgentSessionsResponseObject, error)
+
+	// (POST /v1/agent-sessions)
+	RegisterAgentSession(ctx context.Context, request RegisterAgentSessionRequestObject) (RegisterAgentSessionResponseObject, error)
+
+	// (GET /v1/agent-sessions/{agentSessionId}/connect)
+	ConnectAgentSession(ctx context.Context, request ConnectAgentSessionRequestObject) (ConnectAgentSessionResponseObject, error)
+
+	// (PUT /v1/agent-sessions/{agentSessionId}/state)
+	UpdateAgentSessionState(ctx context.Context, request UpdateAgentSessionStateRequestObject) (UpdateAgentSessionStateResponseObject, error)
+
 	// (GET /v1/discussions/{discussionId})
 	GetDiscussion(ctx context.Context, request GetDiscussionRequestObject) (GetDiscussionResponseObject, error)
 
@@ -12817,6 +14949,18 @@ type StrictServerInterface interface {
 
 	// (GET /v1/reviews/{reviewId})
 	GetReview(ctx context.Context, request GetReviewRequestObject) (GetReviewResponseObject, error)
+
+	// (GET /v1/reviews/{reviewId}/agent-binding)
+	GetAgentBinding(ctx context.Context, request GetAgentBindingRequestObject) (GetAgentBindingResponseObject, error)
+
+	// (PUT /v1/reviews/{reviewId}/agent-binding)
+	SetAgentBinding(ctx context.Context, request SetAgentBindingRequestObject) (SetAgentBindingResponseObject, error)
+
+	// (GET /v1/reviews/{reviewId}/agent-invocations)
+	ListAgentInvocations(ctx context.Context, request ListAgentInvocationsRequestObject) (ListAgentInvocationsResponseObject, error)
+
+	// (POST /v1/reviews/{reviewId}/agent-invocations)
+	CreateAgentInvocation(ctx context.Context, request CreateAgentInvocationRequestObject) (CreateAgentInvocationResponseObject, error)
 
 	// (GET /v1/reviews/{reviewId}/anchor-status)
 	GetDiscussionAnchorStatuses(ctx context.Context, request GetDiscussionAnchorStatusesRequestObject) (GetDiscussionAnchorStatusesResponseObject, error)
@@ -12866,12 +15010,6 @@ type StrictServerInterface interface {
 	// (POST /v1/reviews/{reviewId}/revisions)
 	CaptureRevision(ctx context.Context, request CaptureRevisionRequestObject) (CaptureRevisionResponseObject, error)
 
-	// (DELETE /v1/reviews/{reviewId}/runtime-sessions/{runtimeSessionId})
-	DissociateRuntimeSession(ctx context.Context, request DissociateRuntimeSessionRequestObject) (DissociateRuntimeSessionResponseObject, error)
-
-	// (PUT /v1/reviews/{reviewId}/runtime-sessions/{runtimeSessionId})
-	AssociateRuntimeSession(ctx context.Context, request AssociateRuntimeSessionRequestObject) (AssociateRuntimeSessionResponseObject, error)
-
 	// (GET /v1/reviews/{reviewId}/topics)
 	ListTopics(ctx context.Context, request ListTopicsRequestObject) (ListTopicsResponseObject, error)
 
@@ -12889,15 +15027,6 @@ type StrictServerInterface interface {
 
 	// (PATCH /v1/revisions/{revisionId}/source-topics)
 	UpdateSourceTopics(ctx context.Context, request UpdateSourceTopicsRequestObject) (UpdateSourceTopicsResponseObject, error)
-
-	// (GET /v1/runtime-sessions)
-	ListRuntimeSessions(ctx context.Context, request ListRuntimeSessionsRequestObject) (ListRuntimeSessionsResponseObject, error)
-
-	// (GET /v1/runtime-sessions/{runtimeSessionId})
-	GetRuntimeSession(ctx context.Context, request GetRuntimeSessionRequestObject) (GetRuntimeSessionResponseObject, error)
-
-	// (GET /v1/session-backends)
-	ListSessionBackends(ctx context.Context, request ListSessionBackendsRequestObject) (ListSessionBackendsResponseObject, error)
 
 	// (GET /v1/topics/{topicId})
 	GetTopic(ctx context.Context, request GetTopicRequestObject) (GetTopicResponseObject, error)
@@ -12952,6 +15081,241 @@ type strictHandler struct {
 	ssi         StrictServerInterface
 	middlewares []StrictMiddlewareFunc
 	options     StrictHTTPServerOptions
+}
+
+// GetAgentInvocation operation middleware
+func (sh *strictHandler) GetAgentInvocation(w http.ResponseWriter, r *http.Request, invocationId InvocationId) {
+	var request GetAgentInvocationRequestObject
+
+	request.InvocationId = invocationId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetAgentInvocation(ctx, request.(GetAgentInvocationRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetAgentInvocation")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetAgentInvocationResponseObject); ok {
+		if err := validResponse.VisitGetAgentInvocationResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CompleteAgentInvocation operation middleware
+func (sh *strictHandler) CompleteAgentInvocation(w http.ResponseWriter, r *http.Request, invocationId InvocationId, params CompleteAgentInvocationParams) {
+	var request CompleteAgentInvocationRequestObject
+
+	request.InvocationId = invocationId
+	request.Params = params
+
+	var body CompleteAgentInvocationJSONRequestBody
+	if err := runtime.BindJSONBody(r, &body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CompleteAgentInvocation(ctx, request.(CompleteAgentInvocationRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CompleteAgentInvocation")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CompleteAgentInvocationResponseObject); ok {
+		if err := validResponse.VisitCompleteAgentInvocationResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetAgentInvocationContext operation middleware
+func (sh *strictHandler) GetAgentInvocationContext(w http.ResponseWriter, r *http.Request, invocationId InvocationId) {
+	var request GetAgentInvocationContextRequestObject
+
+	request.InvocationId = invocationId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetAgentInvocationContext(ctx, request.(GetAgentInvocationContextRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetAgentInvocationContext")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetAgentInvocationContextResponseObject); ok {
+		if err := validResponse.VisitGetAgentInvocationContextResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// UpdateAgentInvocation operation middleware
+func (sh *strictHandler) UpdateAgentInvocation(w http.ResponseWriter, r *http.Request, invocationId InvocationId) {
+	var request UpdateAgentInvocationRequestObject
+
+	request.InvocationId = invocationId
+
+	var body UpdateAgentInvocationJSONRequestBody
+	if err := runtime.BindJSONBody(r, &body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.UpdateAgentInvocation(ctx, request.(UpdateAgentInvocationRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UpdateAgentInvocation")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(UpdateAgentInvocationResponseObject); ok {
+		if err := validResponse.VisitUpdateAgentInvocationResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListAgentSessions operation middleware
+func (sh *strictHandler) ListAgentSessions(w http.ResponseWriter, r *http.Request) {
+	var request ListAgentSessionsRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListAgentSessions(ctx, request.(ListAgentSessionsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListAgentSessions")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListAgentSessionsResponseObject); ok {
+		if err := validResponse.VisitListAgentSessionsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// RegisterAgentSession operation middleware
+func (sh *strictHandler) RegisterAgentSession(w http.ResponseWriter, r *http.Request, params RegisterAgentSessionParams) {
+	var request RegisterAgentSessionRequestObject
+
+	request.Params = params
+
+	var body RegisterAgentSessionJSONRequestBody
+	if err := runtime.BindJSONBody(r, &body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.RegisterAgentSession(ctx, request.(RegisterAgentSessionRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "RegisterAgentSession")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(RegisterAgentSessionResponseObject); ok {
+		if err := validResponse.VisitRegisterAgentSessionResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ConnectAgentSession operation middleware
+func (sh *strictHandler) ConnectAgentSession(w http.ResponseWriter, r *http.Request, agentSessionId AgentSessionId) {
+	var request ConnectAgentSessionRequestObject
+
+	request.AgentSessionId = agentSessionId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ConnectAgentSession(ctx, request.(ConnectAgentSessionRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ConnectAgentSession")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ConnectAgentSessionResponseObject); ok {
+		if err := validResponse.VisitConnectAgentSessionResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// UpdateAgentSessionState operation middleware
+func (sh *strictHandler) UpdateAgentSessionState(w http.ResponseWriter, r *http.Request, agentSessionId AgentSessionId) {
+	var request UpdateAgentSessionStateRequestObject
+
+	request.AgentSessionId = agentSessionId
+
+	var body UpdateAgentSessionStateJSONRequestBody
+	if err := runtime.BindJSONBody(r, &body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.UpdateAgentSessionState(ctx, request.(UpdateAgentSessionStateRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UpdateAgentSessionState")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(UpdateAgentSessionStateResponseObject); ok {
+		if err := validResponse.VisitUpdateAgentSessionStateResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
 }
 
 // GetDiscussion operation middleware
@@ -13320,6 +15684,126 @@ func (sh *strictHandler) GetReview(w http.ResponseWriter, r *http.Request, revie
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetReviewResponseObject); ok {
 		if err := validResponse.VisitGetReviewResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetAgentBinding operation middleware
+func (sh *strictHandler) GetAgentBinding(w http.ResponseWriter, r *http.Request, reviewId ReviewId) {
+	var request GetAgentBindingRequestObject
+
+	request.ReviewId = reviewId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetAgentBinding(ctx, request.(GetAgentBindingRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetAgentBinding")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetAgentBindingResponseObject); ok {
+		if err := validResponse.VisitGetAgentBindingResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// SetAgentBinding operation middleware
+func (sh *strictHandler) SetAgentBinding(w http.ResponseWriter, r *http.Request, reviewId ReviewId, params SetAgentBindingParams) {
+	var request SetAgentBindingRequestObject
+
+	request.ReviewId = reviewId
+	request.Params = params
+
+	var body SetAgentBindingJSONRequestBody
+	if err := runtime.BindJSONBody(r, &body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.SetAgentBinding(ctx, request.(SetAgentBindingRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "SetAgentBinding")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(SetAgentBindingResponseObject); ok {
+		if err := validResponse.VisitSetAgentBindingResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListAgentInvocations operation middleware
+func (sh *strictHandler) ListAgentInvocations(w http.ResponseWriter, r *http.Request, reviewId ReviewId) {
+	var request ListAgentInvocationsRequestObject
+
+	request.ReviewId = reviewId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListAgentInvocations(ctx, request.(ListAgentInvocationsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListAgentInvocations")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListAgentInvocationsResponseObject); ok {
+		if err := validResponse.VisitListAgentInvocationsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CreateAgentInvocation operation middleware
+func (sh *strictHandler) CreateAgentInvocation(w http.ResponseWriter, r *http.Request, reviewId ReviewId, params CreateAgentInvocationParams) {
+	var request CreateAgentInvocationRequestObject
+
+	request.ReviewId = reviewId
+	request.Params = params
+
+	var body CreateAgentInvocationJSONRequestBody
+	if err := runtime.BindJSONBody(r, &body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateAgentInvocation(ctx, request.(CreateAgentInvocationRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateAgentInvocation")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CreateAgentInvocationResponseObject); ok {
+		if err := validResponse.VisitCreateAgentInvocationResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -13782,60 +16266,6 @@ func (sh *strictHandler) CaptureRevision(w http.ResponseWriter, r *http.Request,
 	}
 }
 
-// DissociateRuntimeSession operation middleware
-func (sh *strictHandler) DissociateRuntimeSession(w http.ResponseWriter, r *http.Request, reviewId ReviewId, runtimeSessionId RuntimeSessionId) {
-	var request DissociateRuntimeSessionRequestObject
-
-	request.ReviewId = reviewId
-	request.RuntimeSessionId = runtimeSessionId
-
-	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
-		return sh.ssi.DissociateRuntimeSession(ctx, request.(DissociateRuntimeSessionRequestObject))
-	}
-	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "DissociateRuntimeSession")
-	}
-
-	response, err := handler(r.Context(), w, r, request)
-
-	if err != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, err)
-	} else if validResponse, ok := response.(DissociateRuntimeSessionResponseObject); ok {
-		if err := validResponse.VisitDissociateRuntimeSessionResponse(w); err != nil {
-			sh.options.ResponseErrorHandlerFunc(w, r, err)
-		}
-	} else if response != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
-	}
-}
-
-// AssociateRuntimeSession operation middleware
-func (sh *strictHandler) AssociateRuntimeSession(w http.ResponseWriter, r *http.Request, reviewId ReviewId, runtimeSessionId RuntimeSessionId) {
-	var request AssociateRuntimeSessionRequestObject
-
-	request.ReviewId = reviewId
-	request.RuntimeSessionId = runtimeSessionId
-
-	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
-		return sh.ssi.AssociateRuntimeSession(ctx, request.(AssociateRuntimeSessionRequestObject))
-	}
-	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "AssociateRuntimeSession")
-	}
-
-	response, err := handler(r.Context(), w, r, request)
-
-	if err != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, err)
-	} else if validResponse, ok := response.(AssociateRuntimeSessionResponseObject); ok {
-		if err := validResponse.VisitAssociateRuntimeSessionResponse(w); err != nil {
-			sh.options.ResponseErrorHandlerFunc(w, r, err)
-		}
-	} else if response != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
-	}
-}
-
 // ListTopics operation middleware
 func (sh *strictHandler) ListTopics(w http.ResponseWriter, r *http.Request, reviewId ReviewId) {
 	var request ListTopicsRequestObject
@@ -14009,82 +16439,6 @@ func (sh *strictHandler) UpdateSourceTopics(w http.ResponseWriter, r *http.Reque
 	}
 }
 
-// ListRuntimeSessions operation middleware
-func (sh *strictHandler) ListRuntimeSessions(w http.ResponseWriter, r *http.Request, params ListRuntimeSessionsParams) {
-	var request ListRuntimeSessionsRequestObject
-
-	request.Params = params
-
-	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
-		return sh.ssi.ListRuntimeSessions(ctx, request.(ListRuntimeSessionsRequestObject))
-	}
-	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "ListRuntimeSessions")
-	}
-
-	response, err := handler(r.Context(), w, r, request)
-
-	if err != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, err)
-	} else if validResponse, ok := response.(ListRuntimeSessionsResponseObject); ok {
-		if err := validResponse.VisitListRuntimeSessionsResponse(w); err != nil {
-			sh.options.ResponseErrorHandlerFunc(w, r, err)
-		}
-	} else if response != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
-	}
-}
-
-// GetRuntimeSession operation middleware
-func (sh *strictHandler) GetRuntimeSession(w http.ResponseWriter, r *http.Request, runtimeSessionId RuntimeSessionId) {
-	var request GetRuntimeSessionRequestObject
-
-	request.RuntimeSessionId = runtimeSessionId
-
-	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
-		return sh.ssi.GetRuntimeSession(ctx, request.(GetRuntimeSessionRequestObject))
-	}
-	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "GetRuntimeSession")
-	}
-
-	response, err := handler(r.Context(), w, r, request)
-
-	if err != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, err)
-	} else if validResponse, ok := response.(GetRuntimeSessionResponseObject); ok {
-		if err := validResponse.VisitGetRuntimeSessionResponse(w); err != nil {
-			sh.options.ResponseErrorHandlerFunc(w, r, err)
-		}
-	} else if response != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
-	}
-}
-
-// ListSessionBackends operation middleware
-func (sh *strictHandler) ListSessionBackends(w http.ResponseWriter, r *http.Request) {
-	var request ListSessionBackendsRequestObject
-
-	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
-		return sh.ssi.ListSessionBackends(ctx, request.(ListSessionBackendsRequestObject))
-	}
-	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "ListSessionBackends")
-	}
-
-	response, err := handler(r.Context(), w, r, request)
-
-	if err != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, err)
-	} else if validResponse, ok := response.(ListSessionBackendsResponseObject); ok {
-		if err := validResponse.VisitListSessionBackendsResponse(w); err != nil {
-			sh.options.ResponseErrorHandlerFunc(w, r, err)
-		}
-	} else if response != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
-	}
-}
-
 // GetTopic operation middleware
 func (sh *strictHandler) GetTopic(w http.ResponseWriter, r *http.Request, topicId TopicId) {
 	var request GetTopicRequestObject
@@ -14244,185 +16598,203 @@ func (sh *strictHandler) CreateRepresentation(w http.ResponseWriter, r *http.Req
 // const string: with thousands of chunks the chained `+` fold is several
 // times slower for the Go compiler than parsing a slice literal.
 var swaggerSpec = []string{
-	"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",
+	"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",
 }
 
 // decodeSpec returns the embedded OpenAPI spec as raw JSON bytes,

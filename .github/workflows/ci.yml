@@ -28,6 +28,27 @@ jobs:
       - name: build for macOS
         run: GOOS=darwin GOARCH=arm64 go build ./...
 
+  pi:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: integrations/pi
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: server/go.mod
+          cache-dependency-path: server/go.sum
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 26
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 12.16.1
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm peers check
+      - run: pnpm format:check && pnpm check && pnpm test
+
   client:
     runs-on: ubuntu-latest
     defaults:

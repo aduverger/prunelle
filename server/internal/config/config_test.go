@@ -30,11 +30,12 @@ func TestLoadAppliesDefaultsAndExpandsHome(t *testing.T) {
 
 func TestLoadRejectsRetiredConfigAndInvalidCaptureDefaults(t *testing.T) {
 	for name, input := range map[string]struct{ contents, errorHint string }{
-		"retired allowed roots":   {"allowed_roots = ['/source']\n", "[snapshot]"},
-		"retired roots":           {"workspace_root_paths = ['/source']\n", "[snapshot]"},
-		"retired workspace table": {"[[workspace]]\nroot_paths = ['/source']\n", "[snapshot]"},
-		"empty base ref":          {"[snapshot]\ndefault_base_ref = ''\n", "snapshot.default_base_ref"},
-		"invalid base ref":        {"[snapshot]\ndefault_base_ref = '--upload-pack=evil'\n", "snapshot.default_base_ref"},
+		"retired allowed roots":    {"allowed_roots = ['/source']\n", "[snapshot]"},
+		"retired roots":            {"workspace_root_paths = ['/source']\n", "[snapshot]"},
+		"retired workspace table":  {"[[workspace]]\nroot_paths = ['/source']\n", "[snapshot]"},
+		"retired runtime backends": {"[[session_backends]]\nname = 'rex'\nkind = 'REX'\n", "Pi extension"},
+		"empty base ref":           {"[snapshot]\ndefault_base_ref = ''\n", "snapshot.default_base_ref"},
+		"invalid base ref":         {"[snapshot]\ndefault_base_ref = '--upload-pack=evil'\n", "snapshot.default_base_ref"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			path := filepath.Join(t.TempDir(), "config.toml")
@@ -62,32 +63,5 @@ func TestLoadRejectsMalformedFile(t *testing.T) {
 	}
 	if _, err := Load(path); err == nil {
 		t.Fatal("expected error")
-	}
-}
-
-func TestLoadSessionBackends(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "config.toml")
-	content := "[[session_backends]]\nname = \"rex\"\nkind = \"REX\"\nserver = \"https://rex.example.ts.net\"\n"
-	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	cfg, err := Load(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(cfg.SessionBackends) != 1 || cfg.SessionBackends[0].Server != "https://rex.example.ts.net" {
-		t.Errorf("backends = %+v", cfg.SessionBackends)
-	}
-
-	for _, bad := range []string{
-		"[[session_backends]]\nname = \"h\"\nkind = \"HERDR\"\n",
-		"[[session_backends]]\nname = \"r\"\nkind = \"REX\"\n[[session_backends]]\nname = \"r\"\nkind = \"REX\"\n",
-	} {
-		if err := os.WriteFile(path, []byte(bad), 0o600); err != nil {
-			t.Fatal(err)
-		}
-		if _, err := Load(path); err == nil {
-			t.Errorf("accepted %q", bad)
-		}
 	}
 }

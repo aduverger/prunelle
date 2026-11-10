@@ -99,38 +99,7 @@ func (s *Service) UpdateSourceTopics(ctx context.Context, revisionID string, ver
 		return SourceFile{}, err
 	}
 	err = s.db.Write(ctx, func(tx *sql.Tx) error {
-		if err := requireCurrentRevision(ctx, tx, revision.ReviewID, &revisionID); err != nil {
-			return err
-		}
-		var snapshotID string
-		var currentVersion int
-		if err := scanOne(tx.QueryRowContext(ctx, `SELECT f.snapshot_id, COALESCE(a.version,1) FROM snapshot_files f JOIN repo_snapshots s ON s.id = f.snapshot_id LEFT JOIN source_topic_assignments a ON a.snapshot_id=f.snapshot_id AND a.path=f.path WHERE s.revision_id=? AND s.repository_id=? AND f.path=?`, revisionID, req.RepositoryID, req.Path), "source file", req.Path, &snapshotID, &currentVersion); err != nil {
-			return err
-		}
-		if err := checkVersion("source assignment", req.Path, currentVersion, version); err != nil {
-			return err
-		}
-		for _, id := range uniqueIDs(req.TopicIDs) {
-			var valid bool
-			if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM topics WHERE id = ? AND review_id = ? AND state = 'ACTIVE')`, id, revision.ReviewID).Scan(&valid); err != nil {
-				return err
-			}
-			if !valid {
-				return invalid("topic %s is not an active topic of this review", id)
-			}
-		}
-		if _, err := tx.ExecContext(ctx, `INSERT INTO source_topic_assignments(snapshot_id,path,mode,version) VALUES(?,?,?,?) ON CONFLICT(snapshot_id,path) DO UPDATE SET mode=excluded.mode,version=excluded.version`, snapshotID, req.Path, req.Mode, currentVersion+1); err != nil {
-			return err
-		}
-		if _, err := tx.ExecContext(ctx, `DELETE FROM source_topic_assignment_topics WHERE snapshot_id=? AND path=?`, snapshotID, req.Path); err != nil {
-			return err
-		}
-		for _, id := range uniqueIDs(req.TopicIDs) {
-			if _, err := tx.ExecContext(ctx, `INSERT INTO source_topic_assignment_topics VALUES(?,?,?)`, snapshotID, req.Path, id); err != nil {
-				return err
-			}
-		}
-		return recordEvent(ctx, tx, "source.topics.updated", revisionID, revision.ReviewID, actor, s.now())
+		return s.writeSourceTopics(ctx, tx, revision.ReviewID, revisionID, version, req, actor)
 	})
 	if err != nil {
 		return SourceFile{}, err
@@ -149,6 +118,41 @@ func (s *Service) UpdateSourceTopics(ctx context.Context, revisionID string, ver
 		}
 	}
 	return SourceFile{}, notFound("source file", req.Path)
+}
+
+func (s *Service) writeSourceTopics(ctx context.Context, tx *sql.Tx, reviewID, revisionID string, version int, req UpdateSourceTopicsRequest, actor Actor) error {
+	if err := requireCurrentRevision(ctx, tx, reviewID, &revisionID); err != nil {
+		return err
+	}
+	var snapshotID string
+	var currentVersion int
+	if err := scanOne(tx.QueryRowContext(ctx, `SELECT f.snapshot_id, COALESCE(a.version,1) FROM snapshot_files f JOIN repo_snapshots s ON s.id = f.snapshot_id LEFT JOIN source_topic_assignments a ON a.snapshot_id=f.snapshot_id AND a.path=f.path WHERE s.revision_id=? AND s.repository_id=? AND f.path=?`, revisionID, req.RepositoryID, req.Path), "source file", req.Path, &snapshotID, &currentVersion); err != nil {
+		return err
+	}
+	if err := checkVersion("source assignment", req.Path, currentVersion, version); err != nil {
+		return err
+	}
+	for _, id := range uniqueIDs(req.TopicIDs) {
+		var valid bool
+		if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM topics WHERE id = ? AND review_id = ? AND state = 'ACTIVE')`, id, reviewID).Scan(&valid); err != nil {
+			return err
+		}
+		if !valid {
+			return invalid("topic %s is not an active topic of this review", id)
+		}
+	}
+	if _, err := tx.ExecContext(ctx, `INSERT INTO source_topic_assignments(snapshot_id,path,mode,version) VALUES(?,?,?,?) ON CONFLICT(snapshot_id,path) DO UPDATE SET mode=excluded.mode,version=excluded.version`, snapshotID, req.Path, req.Mode, currentVersion+1); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM source_topic_assignment_topics WHERE snapshot_id=? AND path=?`, snapshotID, req.Path); err != nil {
+		return err
+	}
+	for _, id := range uniqueIDs(req.TopicIDs) {
+		if _, err := tx.ExecContext(ctx, `INSERT INTO source_topic_assignment_topics VALUES(?,?,?)`, snapshotID, req.Path, id); err != nil {
+			return err
+		}
+	}
+	return recordEvent(ctx, tx, "source.topics.updated", revisionID, reviewID, actor, s.now())
 }
 
 func carrySourceTopics(ctx context.Context, tx *sql.Tx, previousID, revisionID string) error {

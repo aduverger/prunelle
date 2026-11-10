@@ -10,6 +10,7 @@ Status: early prototype. See [docs/plan.md](docs/plan.md) and the [spec](docs/Pr
 
 - `server/` - Go review server and `prunelle` CLI
 - `client/` - React + Vite UI and MyGo desktop shell
+- `integrations/pi/` - companion extension for the existing Pi conversation (Pi 1.5.1)
 - `docs/` - spec, delivery plan, decisions, per-milestone plans
 
 ## Development
@@ -32,13 +33,6 @@ allowed_logins = []               # Tailscale logins besides the machine owner
 
 [snapshot]
 default_base_ref = "origin/main" # omit for the built-in main default; no automatic fetch/fallback
-
-# Optional: discover agent runtimes in Rex. Reviews work without it.
-[[session_backends]]
-name = "rex"
-kind = "REX"
-# rex_path = "rex"                # rex CLI
-# server = ""                     # rex -S value; empty = default local server
 ```
 
 Run the server and seed the demo review:
@@ -51,7 +45,7 @@ bin/prunelle review ls
 
 ### Reviews, source context and snapshots
 
-A review owns its repository set, revisions, semantic content and runtime associations. There is no workspace registration or configured discovery root. Start from a Git repository/worktree, or explicitly target a folder whose immediate children are Git worktrees. Prunelle does not recursively collect an entire namespace. New reviews re-evaluate source independently; changing a folder does not rewrite another review’s declared set.
+A review owns its repository set, revisions, semantic content and Pi attachment. There is no workspace registration or configured discovery root. Start from a Git repository/worktree, or explicitly target a folder whose immediate children are Git worktrees. Prunelle does not recursively collect an entire namespace. New reviews re-evaluate source independently; changing a folder does not rewrite another review’s declared set.
 
 Install the CLI on your `PATH` so cwd means your project directory, not the Prunelle Go module:
 
@@ -85,6 +79,8 @@ Deletion removes only that review’s Prunelle history, scoped receipts and link
 
 **Upgrade to M3:** stop/back up the server data directory and upgrade server/CLI/desktop together. Additive migration 0006 stores normalized frozen semantic views, finding versions and file-topic corrections with normal FK enforcement. Earlier source revisions without recorded semantic history explicitly report it unavailable; their stored code, existing threads and decisions remain accessible. The current graph is the known baseline and freezes on its next advance. Semantic views record the last state before advance, not per-edit/comment-time snapshots. Older binaries reject the new schema; rollback requires the backup.
 
+**Upgrade to M4:** stop the server, back up its complete data directory, remove `[[session_backends]]`, and coordinate server/CLI/desktop/extension versions. Migration 0007 adds Pi bindings/invocations and retires stored runtime backends, sessions, associations and their committed receipts. Existing review/source/semantic IDs and anchors survive; old runtime IDs are never converted into Pi identities. This does not access or uninstall Rex or stop any process. Older servers reject schema 7; rollback restores the stopped-server backup. The extension targets Pi 1.5.1; see [setup and protocol](integrations/pi/README.md).
+
 Expose it to your tailnet (no sudo once your user is the Tailscale operator):
 
 ```sh
@@ -93,7 +89,27 @@ tailscale serve --bg --https=443 http://127.0.0.1:7390
 
 Requests through Tailscale Serve must come from the machine's Tailscale owner or a login in `allowed_logins`. Local processes on the server machine are trusted (see [decisions](docs/decisions.md), D2).
 
-With a session backend configured, `prunelle sessions ls` lists discovered runtimes (one per Rex terminal block) and the reviews they suggest; `prunelle sessions link RUNTIME_ID REVIEW_ID` records the association explicitly.
+### Existing Pi conversation
+
+Install the [Pi companion extension](integrations/pi/README.md), then connect it from the existing coding conversation with `/prunelle connect http://127.0.0.1:7390`. Registration and attachment send no model work. A unique connected local cwd match attaches automatically; multiple matches require selection. Manual selection/disconnection persists, and an offline target is never silently replaced. Tailnet/unknown filesystem namespaces require manual selection.
+
+```sh
+prunelle agent ls
+prunelle agent binding                    # cwd's sole review; or --review REVIEW_ID
+prunelle agent select --review REVIEW_ID PI_ID
+prunelle agent disconnect --review REVIEW_ID
+prunelle agent auto --review REVIEW_ID
+prunelle agent prepare --review REVIEW_ID
+prunelle agent ask --review REVIEW_ID DISCUSSION_ID MESSAGE_ID
+prunelle agent implement --review REVIEW_ID DECISION_ID  # preview only
+prunelle agent implement --review REVIEW_ID --yes --agent-session PI_ID DECISION_ID
+prunelle agent requests --review REVIEW_ID
+prunelle agent get INVOCATION_ID
+```
+
+Only humans dispatch work; unset `PRUNELLE_AGENT` when acting as a reviewer. Save a question normally, then explicitly **Ask Pi** about its canonical message. **Prepare review** directly publishes validated topics/explanations/source links for eligible unassigned captured text; it does not overwrite existing content or explicit grouping. **Send implementation request** separately authorizes the exact saved REQUEST_CHANGES decision. These use the existing live Pi conversation and normal permissions, not a read-only sandbox. Completion never decides, resolves or captures automatically, nor commits, publishes or deploys project code.
+
+Busy/unavailable Pi rejects work rather than queuing or steering it. CLI dispatch prints the exact Pi/revision and a request key; retry only the unchanged action with `--key`, `--agent-session` and `--revision` as printed. A lost response is not authorization to repost the question or start a second invocation. Inspect `agent get` after disconnect/restart: UNKNOWN is not failure or proof that Pi stopped. Reconnecting never replays execution.
 
 The API contract is [`server/api/openapi.yaml`](server/api/openapi.yaml). Review content is imported as a manifest: `prunelle review import REVIEW_ID manifest.json`; `prunelle fixture --print-manifest` prints a complete example. Imports append records to the **current** revision; an explicit `--revision` must still name that current revision. Manifest keys remain import-local, so keep canonical IDs and conditionally update links when continuing an existing topic/finding. Imports do not match by title/key or overwrite human metadata. Committed retries retain their original responses after capture advances.
 
@@ -130,7 +146,7 @@ Use **Server** in the app to connect to `http://127.0.0.1:7390` locally or `http
 - Capture is manual. The latest semantic graph stays editable; the next successful capture freezes its predecessor atomically with source advance. Selecting an older revision loads its frozen topics, findings, links and representations, not today's metadata. Compare against the preceding or another earlier revision; change reasons and linked-source changes are separate.
 - Explicitly resolve, dismiss or reopen findings; this never automatically resolves threads or submits a verdict. Topics remain active/obsolete navigation, not automatically resolved concerns. **Edit file topics** sets a many-to-many topic set (including deliberate unassignment) or resets to evidence-derived grouping. Corrections survive capture only for exact surviving repository/path identities, never guessed renames.
 - Discussions retain their original anchors. Changed stored content is flagged outdated; missing/omitted content is unavailable to compare, not proof of deletion or a fix. No line relocation is attempted. Code, reply, decision and correction drafts remain in memory across refresh/advance; a stale correction requires explicit reload/review. Perspectives and layout stay local preferences.
-- **Settings → Integrations** contains optional runtime sessions, polls only while open, and allows only explicit review association/removal. It has no process-control or agent-chat UI.
+- The review bar shows Pi attachment. **Settings → Integrations** lists Pi conversations and requests, polls only while open, and permits selection, automatic attachment or deliberate disconnection. **Ask Pi**, **Prepare review** and saved-decision implementation controls open a separate target/revision preview; merely opening it dispatches nothing. Lost-response dispatch identity stays independent of comment/reply/verdict drafts.
 
 Package the desktop app (`build/` is ignored):
 
@@ -155,9 +171,9 @@ pnpm test:e2e
 pnpm test:native
 ```
 
-Both integration test commands build the real server and create disposable two-repository reviews. They never connect to the user's Rex server. `test:native` launches the bundled MyGo/WebKit app under Xvfb with isolated app storage and writes the ignored `client/native-smoke.png`. Its automation endpoint is compiled only with the `e2e` build tag, never into ordinary/release builds. The smoke test disables WebKit's sandbox only in that disposable test subprocess (for restricted CI containers).
+Both integration test commands build the real server and create disposable two-repository reviews. They never connect to the user's Pi/Rex sessions or paid models. Browser agent tests use controlled API peers; `integrations/pi` separately exercises the real Pi SDK with its faux provider and the real Go server/CLI. `test:native` launches the bundled MyGo/WebKit app under Xvfb with isolated app storage and writes the ignored `client/native-smoke.png`. Its automation endpoint is compiled only with the `e2e` build tag, never into ordinary/release builds. The smoke test disables WebKit's sandbox only in that disposable test subprocess (for restricted CI containers).
 
-The [M2 plan](docs/plans/m2.md), [M2b plan](docs/plans/m2b.md), [M3b plan](docs/plans/m3b.md) and [M3 plan](docs/plans/m3.md) record implementation choices and verification.
+The [M2 plan](docs/plans/m2.md), [M2b plan](docs/plans/m2b.md), [M3b plan](docs/plans/m3b.md), [M3 plan](docs/plans/m3.md) and [M4 plan](docs/plans/m4.md) record implementation choices and verification.
 
 ## License
 

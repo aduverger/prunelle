@@ -316,7 +316,8 @@ summary {
 }
 .review-bar {
   flex-shrink: 0;
-  height: 103px;
+  min-height: 103px;
+  flex-wrap: wrap;
   padding: 20px 26px;
   display: flex;
   align-items: center;
@@ -811,7 +812,7 @@ dialog::backdrop {
   background: #17241a66;
 }
 .decisions,
-.sessions {
+.agents {
   padding: 8px 0;
 }
 .diagram svg {
@@ -941,19 +942,25 @@ dialog::backdrop {
   margin: 14px 0;
 }
 .decisions h2,
-.sessions h2 {
+.agents h2 {
   font-size: 15px;
 }
 .decisions .notice,
-.sessions .notice {
+.agents .notice {
   font-size: 11px;
 }
-.sessions .card {
+.agents .card {
   font-size: 11px;
   overflow-wrap: anywhere;
 }
-.sessions small {
+.agents small {
   font-size: 9px;
+}
+.agents {
+  overflow-wrap: anywhere;
+}
+.agents select {
+  max-width: 100%;
 }
 .welcome {
   max-width: 650px;
