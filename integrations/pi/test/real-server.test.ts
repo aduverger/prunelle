@@ -150,7 +150,8 @@ test(
         captured.head_text,
         "the fixture has captured dependency source",
       );
-      const selectedLine = captured.head_text.split("\n")[1];
+      const capturedLines = captured.head_text.split("\n");
+      const selectedLine = capturedLines[1];
       const discussion = (
         await json(`/v1/reviews/${review.id}/discussions`, "POST", {
           anchor: {
@@ -191,15 +192,13 @@ test(
                   .map((part) => part.text)
                   .join("\n");
           assert.ok(
-            text.includes("```\n" + selectedLine + "\n```"),
-            "the initial prompt carries only the selected captured line",
+            text.includes(selectedLine),
+            "the initial prompt carries the selected captured line",
           );
+          assert.ok(text.includes("package.json") && text.includes("HEAD"));
           assert.ok(
-            text.includes("package.json") && text.includes("HEAD lines 2–2"),
-          );
-          assert.ok(
-            !text.includes(captured.head_text),
-            "the full file must not be injected",
+            !text.includes(capturedLines[2]),
+            "the next unselected source line must not be injected",
           );
           await firstAnswer;
           return fauxAssistantMessage(
@@ -360,6 +359,7 @@ test(
         discussion.id,
         discussion.messages[0].id,
       ];
+      const beforeDiscussion = model.state.callCount;
       const first = { result: cli(ask) };
       const followup = (
         await json(`/v1/discussions/${discussion.id}/messages`, "POST", {
@@ -397,7 +397,7 @@ test(
         "The queued follow-up keeps the same conversation and thread.",
       );
       assert.equal(
-        model.state.callCount,
+        model.state.callCount - beforeDiscussion,
         2,
         "each queued comment needs one normal answer, no protocol tool calls",
       );
@@ -543,7 +543,14 @@ test(
         (await json(`/v1/discussions/${discussion.id}`)).result.status,
         "OPEN",
       );
-      assert.equal(cli(["requests", "--review", review.id]).length, 4);
+      assert.deepEqual(
+        new Set(
+          cli(["requests", "--review", review.id]).map(
+            (request: { id: string }) => request.id,
+          ),
+        ),
+        new Set([first.result.id, queued.id, prepared.id, implementation.id]),
+      );
       const beforeAttachment = model.state.callCount;
       assert.equal(
         cli(["disconnect", "--review", review.id]).mode,

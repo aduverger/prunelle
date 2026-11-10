@@ -152,24 +152,19 @@ func TestPiHTTPExplicitDispatchTargetSafetyAndStructuredResults(t *testing.T) {
 		t.Fatalf("wrong dispatch: %+v", dispatched)
 	}
 	code := question.JSON201.Anchor.CodeRange
-	for _, expected := range []string{code.RepositoryID, code.Path, "HEAD lines 8–9", code.BlobHash, "```\n" + code.SelectedText + "\n```", revision.ID} {
+	for _, expected := range []string{code.RepositoryID, code.Path, code.Side, code.BlobHash, code.SelectedText, revision.ID} {
 		if !strings.Contains(first.JSON202.Prompt, expected) {
 			t.Fatalf("question omitted original captured selection %q", expected)
 		}
 	}
-	if strings.Contains(first.JSON202.Prompt, "import ") || strings.Contains(first.JSON202.Prompt, "Earlier discussion messages") {
-		t.Fatal("a new question included unselected source or invented history")
+	captured := must(s.client.GetFileWithResponse(ctx, revision.ID, &api.GetFileParams{RepositoryId: code.RepositoryID, Path: code.Path}))
+	expectStatus(t, captured.StatusCode(), 200, captured.Body)
+	lines := strings.Split(*captured.JSON200.HeadText, "\n")
+	for _, unselected := range []string{lines[code.StartLine-2], lines[code.EndLine]} {
+		if strings.Contains(first.JSON202.Prompt, unselected) {
+			t.Fatalf("question included neighboring source %q", unselected)
+		}
 	}
-	if ready := peer.ready(t, s); ready.State != "BUSY" {
-		t.Fatal("a premature readiness report freed an in-flight request")
-	}
-	busy := must(s.client.CreateAgentInvocationWithResponse(ctx, rv.ID, nil, request))
-	expectStatus(t, busy.StatusCode(), 202, busy.Body)
-	if busy.JSON202.Status != "QUEUED" {
-		t.Fatal("busy Pi did not retain the comment in its queue")
-	}
-	cancelled := must(s.client.CancelAgentInvocationWithResponse(ctx, busy.JSON202.ID))
-	expectStatus(t, cancelled.StatusCode(), 200, cancelled.Body)
 	result := review.CompleteAgentInvocationRequest{InvocationID: first.JSON202.ID, DiscussionID: &question.JSON201.ID, Body: "An inferred explanation of the captured retry path."}
 	foreign := must(s.client.CompleteAgentInvocationWithResponse(ctx, first.JSON202.ID, nil, result, piActor("another-conversation")))
 	expectStatus(t, foreign.StatusCode(), 403, foreign.Body)

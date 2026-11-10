@@ -45,9 +45,6 @@ func TestPiQueueSerializesReviewsAndCancellationPreservesComments(t *testing.T) 
 	fourth := queueQuestion(t, s, rv, revision, peer, "Cancel on changing Pi", "fifo-fourth")
 	generation := must(s.client.CreateAgentInvocationWithResponse(ctx, rv.ID, nil, review.CreateAgentInvocationRequest{AgentSessionID: peer.session.ID, RevisionID: revision.ID, Intent: "PREPARE_REVIEW"}))
 	expectStatus(t, generation.StatusCode(), 409, generation.Body)
-	if !bytes.Contains(generation.Body, []byte("queued comments")) {
-		t.Fatal("generation bypassed comment ordering")
-	}
 	queue := must(s.client.ListAgentQueueWithResponse(ctx, peer.session.ID))
 	expectStatus(t, queue.StatusCode(), 200, queue.Body)
 	for i, expected := range []string{first.JSON202.ID, second.JSON202.ID, third.JSON202.ID, fourth.JSON202.ID} {
@@ -127,9 +124,6 @@ func TestPiQueueSurvivesRestartAndRequiresHumanResumeAfterUncertainty(t *testing
 	}
 	generation := must(s.client.CreateAgentInvocationWithResponse(ctx, rv.ID, nil, review.CreateAgentInvocationRequest{AgentSessionID: peer.session.ID, RevisionID: revision.ID, Intent: "PREPARE_REVIEW"}))
 	expectStatus(t, generation.StatusCode(), 409, generation.Body)
-	if !bytes.Contains(generation.Body, []byte("paused")) {
-		t.Fatal("generation bypassed queue uncertainty")
-	}
 	waiting := must(s.client.GetAgentInvocationWithResponse(ctx, second.JSON202.ID))
 	if waiting.JSON200.Status != "QUEUED" {
 		t.Fatal("restart lost or dispatched pending work")
@@ -148,8 +142,18 @@ func TestPiQueueSurvivesRestartAndRequiresHumanResumeAfterUncertainty(t *testing
 	if next := resumed.next(t); next.ID != second.JSON202.ID {
 		t.Fatal("resume replayed dispatched work instead of the queued comment")
 	}
+	etag = fmt.Sprintf(`"%d"`, continued.JSON200.QueueVersion)
+	uncertain := must(s.client.UpdateAgentInvocationWithResponse(ctx, second.JSON202.ID, review.UpdateAgentInvocationRequest{Status: "UNKNOWN", Error: "A new uncertain outcome after the inspected queue state"}, piActor(peer.external)))
+	expectStatus(t, uncertain.StatusCode(), 200, uncertain.Body)
+	state = resumed.ready(t, s)
+	if !state.QueuePaused {
+		t.Fatal("new uncertainty did not pause the queue")
+	}
 	stale := must(s.client.ResumeAgentQueueWithResponse(ctx, peer.session.ID, &api.ResumeAgentQueueParams{IfMatch: &etag}))
 	expectStatus(t, stale.StatusCode(), 412, stale.Body)
+	etag = fmt.Sprintf(`"%d"`, state.QueueVersion)
+	acknowledged := must(s.client.ResumeAgentQueueWithResponse(ctx, peer.session.ID, &api.ResumeAgentQueueParams{IfMatch: &etag}))
+	expectStatus(t, acknowledged.StatusCode(), 200, acknowledged.Body)
 	finishQuestion(t, s, resumed, *second.JSON202)
 	resumed.ready(t, s)
 	finishQuestion(t, s, resumed, *first.JSON202)

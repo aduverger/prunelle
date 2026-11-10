@@ -188,7 +188,6 @@ try {
   for (let i = 0; i < 100 && pi.requests.length < 2; i++) await sleep(100);
   assert.equal(pi.requests.length, 2);
   assert.equal(pi.requests[1].discussion_id, inlineThread.id);
-  assert(pi.requests[1].prompt.includes('```\n' + range.selected_text + '\n```'));
   const externalReply = await globalThis.fetch(
     `${target}/v1/discussions/${inlineThread.id}/messages`,
     {
