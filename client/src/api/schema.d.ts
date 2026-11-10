@@ -606,6 +606,44 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/agent-sessions/{agentSessionId}/queue": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                agentSessionId: components["parameters"]["AgentSessionId"];
+            };
+            cookie?: never;
+        };
+        /** @description Outstanding requests across reviews in server acceptance order. QUEUED comments are never dispatched twice; UNKNOWN entries are retained for inspection. */
+        get: operations["listAgentQueue"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/agent-sessions/{agentSessionId}/resume-queue": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                agentSessionId: components["parameters"]["AgentSessionId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Human acknowledgement of inspected uncertainty. If-Match is the quoted queue_version from AgentSession. Resume only never-dispatched comments; never replay UNKNOWN work. */
+        post: operations["resumeAgentQueue"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/agent-sessions/{agentSessionId}/state": {
         parameters: {
             query?: never;
@@ -655,7 +693,7 @@ export interface paths {
         };
         get: operations["listAgentInvocations"];
         put?: never;
-        /** @description Explicit human action only. Resolve a unique unbound candidate, reject busy/unavailable, persist and send once over the live Pi connection. Committed replay never dispatches again. */
+        /** @description Human initiation only. DISCUSS enters a durable FIFO queue for the exact selected Pi, including when busy/offline/paused. Other intents require a ready Pi and no queued comments. Committed replay never enqueues or dispatches again. */
         post: operations["createAgentInvocation"];
         delete?: never;
         options?: never;
@@ -675,6 +713,25 @@ export interface paths {
         get: operations["getAgentInvocation"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/agent-invocations/{invocationId}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                invocationId: components["parameters"]["InvocationId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Human-only cancellation of never-dispatched QUEUED work. Already cancelled is safe to repeat; in-flight work returns conflict and is not stopped. */
+        post: operations["cancelAgentInvocation"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1455,6 +1512,10 @@ export interface components {
             local: boolean;
             /** @enum {string} */
             state: "READY" | "BUSY" | "UNAVAILABLE";
+            /** @description Present on fresh responses; older committed registration receipts may omit queue fields. */
+            queue_paused?: boolean;
+            /** @description Present on fresh responses; quoted value is required for conditional queue resume. */
+            queue_version?: number;
             model: string;
             /** Format: date-time */
             created_at: string;
@@ -1497,12 +1558,12 @@ export interface components {
             review_id: string;
             revision_id: string;
             agent_session_id: string;
-            /** @description Original dispatch connection identity; not an authentication credential. */
+            /** @description Original dispatch connection identity; empty until dispatch */
             connection_id: string;
             /** @enum {string} */
             intent: "DISCUSS" | "PREPARE_REVIEW" | "IMPLEMENT";
             /** @enum {string} */
-            status: "PENDING" | "RUNNING" | "SUCCEEDED" | "FAILED" | "UNKNOWN";
+            status: "QUEUED" | "PENDING" | "RUNNING" | "SUCCEEDED" | "FAILED" | "UNKNOWN" | "CANCELLED";
             discussion_id: string | null;
             message_id: string | null;
             decision_id: string | null;
@@ -2719,6 +2780,55 @@ export interface operations {
             default: components["responses"]["Error"];
         };
     };
+    listAgentQueue: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                agentSessionId: components["parameters"]["AgentSessionId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Outstanding requests for this Pi conversation. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentInvocation"][];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    resumeAgentQueue: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description ETag of the version the change is based on. Required; omitting it returns 428. */
+                "If-Match"?: components["parameters"]["IfMatch"];
+            };
+            path: {
+                agentSessionId: components["parameters"]["AgentSessionId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Current Pi and queue state. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentSession"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
     updateAgentSessionState: {
         parameters: {
             query?: never;
@@ -2866,6 +2976,29 @@ export interface operations {
         requestBody?: never;
         responses: {
             /** @description Current request state, including explicit uncertainty if its original connection is gone. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentInvocation"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    cancelAgentInvocation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                invocationId: components["parameters"]["InvocationId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Cancelled invocation, retaining the saved comment. */
             200: {
                 headers: {
                     [name: string]: unknown;

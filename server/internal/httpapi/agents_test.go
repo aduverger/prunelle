@@ -148,14 +148,28 @@ func TestPiHTTPExplicitDispatchTargetSafetyAndStructuredResults(t *testing.T) {
 	key := "original-question-dispatch"
 	first := must(s.client.CreateAgentInvocationWithResponse(ctx, rv.ID, &api.CreateAgentInvocationParams{IdempotencyKey: &key}, request))
 	expectStatus(t, first.StatusCode(), 202, first.Body)
-	if dispatched := peer.next(t); dispatched.ID != first.JSON202.ID || dispatched.DiscussionID == nil || *dispatched.DiscussionID != question.JSON201.ID || dispatched.Prompt != question.JSON201.Messages[0].Body {
+	if dispatched := peer.next(t); dispatched.ID != first.JSON202.ID || dispatched.DiscussionID == nil || *dispatched.DiscussionID != question.JSON201.ID || !strings.Contains(dispatched.Prompt, question.JSON201.Messages[0].Body) {
 		t.Fatalf("wrong dispatch: %+v", dispatched)
+	}
+	code := question.JSON201.Anchor.CodeRange
+	for _, expected := range []string{code.RepositoryID, code.Path, "HEAD lines 8–9", code.BlobHash, "```\n" + code.SelectedText + "\n```", revision.ID} {
+		if !strings.Contains(first.JSON202.Prompt, expected) {
+			t.Fatalf("question omitted original captured selection %q", expected)
+		}
+	}
+	if strings.Contains(first.JSON202.Prompt, "import ") || strings.Contains(first.JSON202.Prompt, "Earlier discussion messages") {
+		t.Fatal("a new question included unselected source or invented history")
 	}
 	if ready := peer.ready(t, s); ready.State != "BUSY" {
 		t.Fatal("a premature readiness report freed an in-flight request")
 	}
 	busy := must(s.client.CreateAgentInvocationWithResponse(ctx, rv.ID, nil, request))
-	expectStatus(t, busy.StatusCode(), 409, busy.Body)
+	expectStatus(t, busy.StatusCode(), 202, busy.Body)
+	if busy.JSON202.Status != "QUEUED" {
+		t.Fatal("busy Pi did not retain the comment in its queue")
+	}
+	cancelled := must(s.client.CancelAgentInvocationWithResponse(ctx, busy.JSON202.ID))
+	expectStatus(t, cancelled.StatusCode(), 200, cancelled.Body)
 	result := review.CompleteAgentInvocationRequest{InvocationID: first.JSON202.ID, DiscussionID: &question.JSON201.ID, Body: "An inferred explanation of the captured retry path."}
 	foreign := must(s.client.CompleteAgentInvocationWithResponse(ctx, first.JSON202.ID, nil, result, piActor("another-conversation")))
 	expectStatus(t, foreign.StatusCode(), 403, foreign.Body)
@@ -183,6 +197,27 @@ func TestPiHTTPExplicitDispatchTargetSafetyAndStructuredResults(t *testing.T) {
 	if !bytes.Equal(first.Body, replay.Body) || replay.HTTPResponse.Header.Get("Idempotent-Replayed") != "true" {
 		t.Fatal("capture changed committed dispatch replay")
 	}
+	peer.ready(t, s)
+	followup := must(s.client.CreateMessageWithResponse(ctx, question.JSON201.ID, nil, review.CreateMessageRequest{Body: "Why is this useful?"}))
+	expectStatus(t, followup.StatusCode(), 201, followup.Body)
+	laterMessage := must(s.client.CreateMessageWithResponse(ctx, question.JSON201.ID, nil, review.CreateMessageRequest{Body: "Not part of this question yet."}))
+	expectStatus(t, laterMessage.StatusCode(), 201, laterMessage.Body)
+	followupRequest := request
+	followupRequest.RevisionID = second.JSON201.ID
+	followupRequest.MessageID = &followup.JSON201.ID
+	askedAgain := must(s.client.CreateAgentInvocationWithResponse(ctx, rv.ID, nil, followupRequest))
+	expectStatus(t, askedAgain.StatusCode(), 202, askedAgain.Body)
+	followupDispatch := peer.next(t)
+	for _, expected := range []string{followup.JSON201.Body, question.JSON201.Messages[0].Body, result.Body, code.SelectedText, code.BlobHash, revision.ID} {
+		if !strings.Contains(followupDispatch.Prompt, expected) {
+			t.Fatalf("follow-up lost saved context %q", expected)
+		}
+	}
+	if strings.Contains(followupDispatch.Prompt, laterMessage.JSON201.Body) {
+		t.Fatal("follow-up included messages after its saved input")
+	}
+	answeredAgain := must(s.client.CompleteAgentInvocationWithResponse(ctx, askedAgain.JSON202.ID, nil, review.CompleteAgentInvocationRequest{DiscussionID: &question.JSON201.ID, Body: "A follow-up explanation."}, piActor(peer.external)))
+	expectStatus(t, answeredAgain.StatusCode(), 200, answeredAgain.Body)
 	peer.ready(t, s)
 	handoff := review.CreateAgentInvocationRequest{AgentSessionID: peer.session.ID, RevisionID: revision.ID, Intent: "IMPLEMENT", DecisionID: &decision.JSON201.ID}
 	implementation := must(s.client.CreateAgentInvocationWithResponse(ctx, rv.ID, nil, handoff))
@@ -243,7 +278,13 @@ func TestPiHTTPRestartDoesNotReplayAndDeletionRejectsLateResults(t *testing.T) {
 	late := review.CompleteAgentInvocationRequest{InvocationID: first.JSON202.ID, DiscussionID: &question.JSON201.ID, Body: "A matching late answer to the original request."}
 	accepted := must(s.client.CompleteAgentInvocationWithResponse(ctx, first.JSON202.ID, nil, late, piActor(peer.external)))
 	expectStatus(t, accepted.StatusCode(), 200, accepted.Body)
-	resumed.ready(t, s)
+	state := resumed.ready(t, s)
+	if !state.QueuePaused {
+		t.Fatal("a late result silently resumed the uncertain queue")
+	}
+	queueVersion := fmt.Sprintf(`"%d"`, state.QueueVersion)
+	continued := must(s.client.ResumeAgentQueueWithResponse(ctx, peer.session.ID, &api.ResumeAgentQueueParams{IfMatch: &queueVersion}))
+	expectStatus(t, continued.StatusCode(), 200, continued.Body)
 	pending := must(s.client.CreateAgentInvocationWithResponse(ctx, rv.ID, nil, request))
 	expectStatus(t, pending.StatusCode(), 202, pending.Body)
 	resumed.next(t)

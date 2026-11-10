@@ -89,6 +89,13 @@ export class PiFixture {
     await this.ready();
     return completed;
   }
+  async uncertain(invocation: Model['AgentInvocation']) {
+    await this.request(`/v1/agent-invocations/${invocation.id}/state`, 'POST', {
+      status: 'UNKNOWN',
+      error: 'Controlled uncertain outcome',
+    });
+    await this.ready();
+  }
   async close() {
     this.controller.abort();
     await this.reading;

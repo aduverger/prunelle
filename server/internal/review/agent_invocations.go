@@ -196,9 +196,21 @@ func (s *Service) CreateAgentInvocation(ctx context.Context, reviewID string, re
 		if !selected.Valid || selected.String != target.SessionID || req.AgentSessionID != target.SessionID {
 			return &Error{Code: CodePreconditionFailed, Message: "the attached Pi changed; reload and review the target before sending"}
 		}
+		if req.Intent != "DISCUSS" {
+			var blocked bool
+			if err := tx.QueryRowContext(ctx, `SELECT queue_paused OR EXISTS (SELECT 1 FROM agent_invocations WHERE agent_session_id=? AND status='QUEUED') FROM agent_sessions WHERE id=?`, target.SessionID, target.SessionID).Scan(&blocked); err != nil {
+				return err
+			}
+			if blocked {
+				return &Error{Code: CodeConflict, Message: "Pi queue is paused or has pending comments"}
+			}
+		}
 		invocation := AgentInvocation{ID: id, ReviewID: reviewID, RevisionID: req.RevisionID, AgentSessionID: target.SessionID,
 			ConnectionID: target.ConnectionID, Intent: req.Intent, Status: "PENDING", DiscussionID: req.DiscussionID,
 			MessageID: req.MessageID, DecisionID: req.DecisionID, Author: actor.Author, Model: target.Model, ContextID: target.ContextID}
+		if req.Intent == "DISCUSS" && target.ConnectionID == "" {
+			invocation.Status = "QUEUED"
+		}
 		switch req.Intent {
 		case "DISCUSS":
 			if req.DiscussionID == nil || req.MessageID == nil || req.DecisionID != nil {
@@ -211,14 +223,9 @@ func (s *Service) CreateAgentInvocation(ctx context.Context, reviewID string, re
 			if discussion.ReviewID != reviewID {
 				return invalid("discussion belongs to another review")
 			}
-			for _, message := range discussion.Messages {
-				if message.ID == *req.MessageID {
-					invocation.Prompt = message.Body
-					break
-				}
-			}
-			if invocation.Prompt == "" {
-				return invalid("message is not a saved message of this discussion")
+			invocation.Prompt, err = discussionPrompt(discussion, *req.MessageID)
+			if err != nil {
+				return err
 			}
 		case "PREPARE_REVIEW":
 			if req.DiscussionID != nil || req.MessageID != nil || req.DecisionID != nil {
@@ -271,7 +278,7 @@ func (s *Service) CreateAgentInvocation(ctx context.Context, reviewID string, re
 		}
 		now := store.FormatTime(s.now())
 		_, err := tx.ExecContext(ctx, `INSERT INTO agent_invocations(id,review_id,revision_id,agent_session_id,connection_id,intent,status,discussion_id,message_id,decision_id,prompt,author_kind,author_id,login,model,context_id,input_fingerprint,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-			id, reviewID, req.RevisionID, target.SessionID, target.ConnectionID, req.Intent, "PENDING", nullString(req.DiscussionID), nullString(req.MessageID), nullString(req.DecisionID), invocation.Prompt, actor.Kind, actor.ID, actor.Login, target.Model, target.ContextID, invocation.InputFingerprint, now, now)
+			id, reviewID, req.RevisionID, target.SessionID, target.ConnectionID, req.Intent, invocation.Status, nullString(req.DiscussionID), nullString(req.MessageID), nullString(req.DecisionID), invocation.Prompt, actor.Kind, actor.ID, actor.Login, target.Model, target.ContextID, invocation.InputFingerprint, now, now)
 		if err != nil {
 			return err
 		}
@@ -281,6 +288,36 @@ func (s *Service) CreateAgentInvocation(ctx context.Context, reviewID string, re
 		return AgentInvocation{}, err
 	}
 	return s.GetAgentInvocation(ctx, id)
+}
+
+func discussionPrompt(discussion Discussion, messageID string) (string, error) {
+	for index, message := range discussion.Messages {
+		if message.ID != messageID {
+			continue
+		}
+		prompt := fmt.Sprintf("Question:\n%s\n\nOriginal captured revision: %s", message.Body, discussion.RevisionID)
+		if code := discussion.Anchor.CodeRange; code != nil {
+			fence := "```"
+			for strings.Contains(code.SelectedText, fence) {
+				fence += "`"
+			}
+			prompt += fmt.Sprintf("\nRepository: %s\nFile: %s · %s lines %d–%d\nBlob: %s\n\nSelected code only:\n%s\n%s\n%s", code.RepositoryID, code.Path, code.Side, code.StartLine, code.EndLine, code.BlobHash, fence, code.SelectedText, fence)
+		} else {
+			anchor, err := json.Marshal(discussion.Anchor)
+			if err != nil {
+				return "", err
+			}
+			prompt += "\nAnchor: " + string(anchor)
+		}
+		if index > 0 {
+			prompt += "\n\nEarlier discussion messages:"
+			for _, earlier := range discussion.Messages[:index] {
+				prompt += fmt.Sprintf("\n\n%s (%s):\n%s", earlier.Author.Kind, earlier.Author.ID, earlier.Body)
+			}
+		}
+		return prompt, nil
+	}
+	return "", invalid("message is not a saved message of this discussion")
 }
 
 func (s *Service) AgentInvocationContext(ctx context.Context, id string) (AgentInvocationContext, error) {
@@ -319,7 +356,10 @@ func (s *Service) UpdateAgentInvocation(ctx context.Context, id, sessionID strin
 		if invocation.AgentSessionID != sessionID {
 			return &Error{Code: CodePermissionDenied, Message: "invocation belongs to another Pi conversation"}
 		}
-		if invocation.Status == "SUCCEEDED" || invocation.Status == "FAILED" {
+		if invocation.Status == "QUEUED" || invocation.Status == "CANCELLED" {
+			return &Error{Code: CodeConflict, Message: "this invocation was not dispatched"}
+		}
+		if invocation.Status == "SUCCEEDED" || invocation.Status == "FAILED" || (invocation.Status == "UNKNOWN" && req.Status == "UNKNOWN") {
 			return nil
 		}
 		if invocation.Status == "UNKNOWN" && req.Status == "RUNNING" {
@@ -328,6 +368,11 @@ func (s *Service) UpdateAgentInvocation(ctx context.Context, id, sessionID strin
 		_, err = tx.ExecContext(ctx, `UPDATE agent_invocations SET status=?,error=NULLIF(?,''),updated_at=? WHERE id=?`, req.Status, req.Error, store.FormatTime(s.now()), id)
 		if err != nil {
 			return err
+		}
+		if req.Status == "UNKNOWN" {
+			if err := s.pauseAgentQueue(ctx, tx, sessionID, actor); err != nil {
+				return err
+			}
 		}
 		return recordEvent(ctx, tx, "agent.invocation.updated", id, invocation.ReviewID, actor, s.now())
 	})
@@ -367,8 +412,8 @@ func (s *Service) CompleteAgentInvocation(ctx context.Context, id, sessionID str
 			}
 			return nil
 		}
-		if invocation.Status == "FAILED" {
-			return &Error{Code: CodeConflict, Message: "this invocation failed before publishing a result"}
+		if invocation.Status == "FAILED" || invocation.Status == "CANCELLED" || invocation.Status == "QUEUED" {
+			return &Error{Code: CodeConflict, Message: "this invocation cannot publish a result"}
 		}
 		result := AgentInvocationResult{TopicIDs: map[string]string{}, Summary: req.Body}
 		if invocation.Intent == "PREPARE_REVIEW" {

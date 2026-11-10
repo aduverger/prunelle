@@ -73,6 +73,7 @@ test(
     };
     let session:
       Awaited<ReturnType<typeof createAgentSession>>["session"] | undefined;
+    let releaseFirstAnswer: (() => void) | undefined;
     try {
       const repos = join(root, "repos");
       const env: NodeJS.ProcessEnv = {
@@ -116,12 +117,6 @@ test(
         return JSON.parse(output.stdout);
       };
       const review = (await json("/v1/reviews")).result[0];
-      const discussion = (
-        await json(`/v1/reviews/${review.id}/discussions`, "POST", {
-          anchor: { type: "REVIEW" },
-          body: "Explain retry behavior from the captured revision.",
-        })
-      ).result;
       const invocationFor = async (intent: string, messages: unknown) => {
         const invocations = (
           await json(`/v1/reviews/${review.id}/agent-invocations`)
@@ -155,25 +150,77 @@ test(
         captured.head_text,
         "the fixture has captured dependency source",
       );
+      const selectedLine = captured.head_text.split("\n")[1];
+      const discussion = (
+        await json(`/v1/reviews/${review.id}/discussions`, "POST", {
+          anchor: {
+            type: "CODE_RANGE",
+            code_range: {
+              repository_id: apiRepository.id,
+              path: "package.json",
+              side: "HEAD",
+              start_line: 2,
+              end_line: 2,
+            },
+          },
+          body: "Explain retry behavior from the captured revision.",
+        })
+      ).result;
       const cwd = join(repos, "api");
       const agentDir = join(root, "pi");
       await mkdir(agentDir);
       const model = fauxProvider({ provider: "prunelle-real-server-fixture" });
+      const firstAnswer = new Promise<void>((resolve) => {
+        releaseFirstAnswer = resolve;
+      });
       model.setResponses([
         async (context) => {
-          const request = await invocationFor("DISCUSS", context.messages);
+          await invocationFor("DISCUSS", context.messages);
           assert.ok(
             JSON.stringify(context.messages).includes(
               discussion.messages[0].body,
             ),
           );
+          const received = context.messages.at(-1);
+          assert.ok(received);
+          const text =
+            typeof received.content === "string"
+              ? received.content
+              : received.content
+                  .filter((part) => part.type === "text")
+                  .map((part) => part.text)
+                  .join("\n");
+          assert.ok(
+            text.includes("```\n" + selectedLine + "\n```"),
+            "the initial prompt carries only the selected captured line",
+          );
+          assert.ok(
+            text.includes("package.json") && text.includes("HEAD lines 2–2"),
+          );
+          assert.ok(
+            !text.includes(captured.head_text),
+            "the full file must not be injected",
+          );
+          await firstAnswer;
           return fauxAssistantMessage(
-            fauxToolCall("prunelle_reply", {
-              invocation_id: request.id,
-              discussion_id: discussion.id,
-              body: "The captured worker can retry; this is an explanation, not verification or a code change.",
-            }),
-            { stopReason: "toolUse" },
+            "The captured worker can retry; this is an explanation, not verification or a code change.",
+          );
+        },
+        async (context) => {
+          const request = await invocationFor("DISCUSS", context.messages);
+          assert.equal(request.discussion_id, discussion.id);
+          assert.ok(
+            JSON.stringify(context.messages).includes(
+              "Explain the next queued question.",
+            ),
+          );
+          assert.ok(
+            JSON.stringify(context.messages).includes(
+              "The captured worker can retry",
+            ),
+          );
+          return fauxAssistantMessage(
+            "The queued follow-up keeps the same conversation and thread.",
           );
         },
         async (context) => {
@@ -232,13 +279,9 @@ test(
           );
         },
         async (context) => {
-          const request = await invocationFor("IMPLEMENT", context.messages);
+          await invocationFor("IMPLEMENT", context.messages);
           return fauxAssistantMessage(
-            fauxToolCall("prunelle_reply", {
-              invocation_id: request.id,
-              body: "Controlled fixture handoff received. No project changes, verdict, capture, commit or publication were performed.",
-            }),
-            { stopReason: "toolUse" },
+            "Controlled fixture handoff received. No project changes, verdict, capture, commit or publication were performed.",
           );
         },
       ]);
@@ -318,16 +361,46 @@ test(
         discussion.messages[0].id,
       ];
       const first = { result: cli(ask) };
+      const followup = (
+        await json(`/v1/discussions/${discussion.id}/messages`, "POST", {
+          body: "Explain the next queued question.",
+        })
+      ).result;
+      const queued = cli([
+        "ask",
+        "--review",
+        review.id,
+        "--key",
+        "queued-followup",
+        discussion.id,
+        followup.id,
+      ]);
+      assert.equal(queued.status, "QUEUED");
+      releaseFirstAnswer!();
+      await waitFor(
+        async () =>
+          (await json(`/v1/agent-invocations/${queued.id}`)).result.status ===
+          "SUCCEEDED",
+      );
       await waitFor(
         async () =>
           (await json(`/v1/agent-invocations/${first.result.id}`)).result
             .status === "SUCCEEDED",
       );
       const replied = (await json(`/v1/discussions/${discussion.id}`)).result;
-      assert.equal(replied.messages.length, 2);
-      assert.equal(replied.messages[1].author.kind, "AGENT");
-      assert.equal(replied.messages[1].author.id, `pi:${sessionID}`);
-      assert.ok(replied.messages[1].body.includes("captured worker"));
+      assert.equal(replied.messages.length, 4);
+      assert.equal(replied.messages[2].author.kind, "AGENT");
+      assert.equal(replied.messages[2].author.id, `pi:${sessionID}`);
+      assert.ok(replied.messages[2].body.includes("captured worker"));
+      assert.equal(
+        replied.messages[3].body,
+        "The queued follow-up keeps the same conversation and thread.",
+      );
+      assert.equal(
+        model.state.callCount,
+        2,
+        "each queued comment needs one normal answer, no protocol tool calls",
+      );
       const beforeReplay = model.state.callCount;
       assert.deepEqual(cli(ask), first.result);
       assert.equal(cli(["get", first.result.id]).status, "SUCCEEDED");
@@ -470,7 +543,7 @@ test(
         (await json(`/v1/discussions/${discussion.id}`)).result.status,
         "OPEN",
       );
-      assert.equal(cli(["requests", "--review", review.id]).length, 3);
+      assert.equal(cli(["requests", "--review", review.id]).length, 4);
       const beforeAttachment = model.state.callCount;
       assert.equal(
         cli(["disconnect", "--review", review.id]).mode,
@@ -492,6 +565,7 @@ test(
       assert.equal(session.sessionId, sessionID);
       assert.deepEqual(errors, []);
     } finally {
+      releaseFirstAnswer?.();
       if (session) {
         await session.extensionRunner.emit({
           type: "session_shutdown",

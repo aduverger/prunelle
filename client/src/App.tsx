@@ -44,6 +44,7 @@ import {
   AgentPanel,
   AgentRequestForm,
   useAgentState,
+  useCommentDelivery,
   type AgentAction,
   type AgentPreview,
 } from './Agents';
@@ -326,9 +327,6 @@ function ReviewPage({
   const [discussionDirty, setDiscussionDirty] = useState(false);
   const [decisionDirty, setDecisionDirty] = useState(false);
   const [agentDirty, setAgentDirty] = useState(false);
-  useEffect(() => {
-    onDraftChange(discussionDirty || decisionDirty || agentDirty || !!sourceDraft?.dirty);
-  }, [discussionDirty, decisionDirty, agentDirty, sourceDraft?.dirty, onDraftChange]);
   useEffect(() => () => onDraftChange(false), [onDraftChange]);
   const [tab, setTab] = useState<Navigation>(presets[pref.perspective].tab);
   const [order, setOrder] = useState(presets[pref.perspective].order);
@@ -341,19 +339,36 @@ function ReviewPage({
   >(null);
   const [agentPreview, setAgentPreview] = useState<AgentPreview | null>(null);
   const agents = useAgentState(api, data.review.id, panel === 'agents');
+  const commentDelivery = useCommentDelivery(api, data.review.id, agents);
+  useEffect(() => {
+    onDraftChange(
+      discussionDirty ||
+        decisionDirty ||
+        agentDirty ||
+        commentDelivery.dirty ||
+        !!sourceDraft?.dirty,
+    );
+  }, [
+    discussionDirty,
+    decisionDirty,
+    agentDirty,
+    commentDelivery.dirty,
+    sourceDraft?.dirty,
+    onDraftChange,
+  ]);
   const attachedPi = agents.data?.sessions.find(
     (session) => session.id === agents.data?.binding.agent_session_id,
   );
   let attachmentLabel = 'Pi · Unattached';
   if (agents.isPending) attachmentLabel = 'Pi · Loading';
   else if (attachedPi)
-    attachmentLabel = `Pi ${attachedPi.external_id.slice(0, 12)} · ${attachedPi.state}`;
+    attachmentLabel = `Pi ${attachedPi.external_id.slice(0, 12)} · ${attachedPi.state}${attachedPi.queue_paused ? ' · Queue paused' : ''}`;
   function requestAgent(action: AgentAction) {
     let requestedRevisionID = effectiveRevisionID;
     let savedInput: string | string[] | null = null;
     switch (action.intent) {
       case 'DISCUSS':
-        requestedRevisionID = effectiveRevisionID || action.discussion.revision_id;
+        requestedRevisionID = action.discussion.revision_id;
         savedInput = [action.discussion.id, action.message.id];
         break;
       case 'IMPLEMENT':
@@ -385,7 +400,7 @@ function ReviewPage({
   const [navigation, setNavigation] = useState(0);
   const [focusedDiscussionID, setFocusedDiscussionID] = useState<string | null>(null);
   const [discussionNavigation, setDiscussionNavigation] = useState(0);
-  const composer = useDiscussionComposer(api, data.review.id);
+  const composer = useDiscussionComposer(api, data.review.id, commentDelivery.post);
   const [representationIDs, setRepresentationIDs] = useState<Partial<Record<View, string>>>({});
   const [elementID, setElementID] = useState<string | null>(null);
   const topic = data.topics.find((t) => t.id === topicID);
@@ -766,6 +781,7 @@ function ReviewPage({
       onDraftChange={setDiscussionDirty}
       anchorStatuses={anchorStatuses.data || []}
       requestAgent={requestAgent}
+      delivery={commentDelivery}
     >
       <div className="review-bar">
         <div>

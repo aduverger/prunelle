@@ -126,13 +126,10 @@ try {
   await waitFor(
     "!!Array.from(document.querySelectorAll('.message')).find(e=>e.textContent.includes('Native WebKit comment'))",
   );
-  await evaluate(
-    "Array.from(document.querySelectorAll('.message')).find(message => message.textContent.includes('Native WebKit comment')).querySelector('button').click(); true",
-  );
-  await waitFor('document.querySelector(\'dialog[aria-label="Pi request"]\')?.open');
-  assert.equal(pi.requests.length, 0, 'Opening the native preview must not dispatch');
-  await evaluate(
-    'Array.from(document.querySelector(\'dialog[aria-label="Pi request"]\').querySelectorAll("button")).find(button => button.textContent === "Ask Pi").click(); true',
+  assert.equal(
+    await evaluate('!!document.querySelector(\'dialog[aria-label="Pi request"]\')?.open'),
+    false,
+    'Posting must not require a Pi preview',
   );
   for (let i = 0; i < 100 && !pi.requests.length; i++) await sleep(100);
   assert.equal(pi.requests.length, 1);
@@ -142,10 +139,7 @@ try {
     discussion_id: pi.requests[0].discussion_id,
     body: 'Native Pi reply on the original saved thread.',
   });
-  await waitFor(
-    'document.querySelector(\'[aria-label="Pi request status"]\')?.textContent.includes("SUCCEEDED")',
-  );
-  await evaluate('document.querySelector(\'[aria-label="Close Pi request"]\').click(); true');
+  await waitFor("document.querySelector('.thread')?.textContent.includes('Pi · SUCCEEDED')");
   await waitFor(
     "Array.from(document.querySelectorAll('.message')).some(message => message.textContent.includes('Native Pi reply on the original saved thread.'))",
   );
@@ -191,6 +185,10 @@ try {
   assert.equal(range.side, 'HEAD');
   assert.equal(range.start_line, 3);
   assert.equal(range.end_line, 3);
+  for (let i = 0; i < 100 && pi.requests.length < 2; i++) await sleep(100);
+  assert.equal(pi.requests.length, 2);
+  assert.equal(pi.requests[1].discussion_id, inlineThread.id);
+  assert(pi.requests[1].prompt.includes('```\n' + range.selected_text + '\n```'));
   const externalReply = await globalThis.fetch(
     `${target}/v1/discussions/${inlineThread.id}/messages`,
     {
@@ -220,7 +218,7 @@ try {
   const png = await call('capture');
   if (png.png) writeFileSync(resolve('native-smoke.png'), Buffer.from(png.png, 'base64'));
   console.log(
-    'Native MyGo/WebKit: bundled UI, Go-backed REST/SSE, explicit Pi preview/correlated reply/integration panel, Highlights, Pierre tree navigation, inline stored-code comments and decision dialog passed.',
+    'Native MyGo/WebKit: bundled UI, Go-backed REST/SSE, automatic comment dispatch/correlated reply/integration panel, Highlights, Pierre tree navigation, inline stored-code comments and decision dialog passed.',
   );
   lines.close();
 } finally {
