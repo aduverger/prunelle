@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useEffect, useRef, useState } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { APIError, result, type API, type Model } from './api/client';
 import { useSubmit } from './hooks';
 import { anchorLabel } from './Discussions';
@@ -38,6 +38,116 @@ export function useAgentState(api: API, reviewID: string, poll: boolean) {
 
 type AgentQuery = ReturnType<typeof useAgentState>;
 
+function useAgentInvocations(api: API, reviewID: string, poll: boolean) {
+  return useQuery({
+    queryKey: ['agent-invocations', reviewID],
+    queryFn: ({ signal }) =>
+      result(
+        api.GET('/v1/reviews/{reviewId}/agent-invocations', {
+          params: { path: { reviewId: reviewID } },
+          signal,
+        }),
+      ),
+    refetchInterval: poll ? 5000 : false,
+  });
+}
+
+type CommentDelivery = {
+  key: string;
+  request: Model['CreateAgentInvocationRequest'];
+  busy: boolean;
+  uncertain: boolean;
+  error?: string;
+  invocation?: Model['AgentInvocation'];
+};
+
+export function useCommentDelivery(api: API, reviewID: string, agents: AgentQuery) {
+  const cache = useQueryClient();
+  const [deliveries, setDeliveries] = useState(new Map<string, CommentDelivery>());
+  const attempts = useRef(deliveries);
+  const invocations = useAgentInvocations(api, reviewID, false);
+  function update(messageID: string, delivery: CommentDelivery) {
+    const updatedDeliveries = new Map(attempts.current).set(messageID, delivery);
+    attempts.current = updatedDeliveries;
+    setDeliveries(updatedDeliveries);
+  }
+  async function send(messageID: string, delivery: CommentDelivery) {
+    update(messageID, { ...delivery, busy: true, error: undefined });
+    try {
+      const invocation = await result(
+        api.POST('/v1/reviews/{reviewId}/agent-invocations', {
+          params: { path: { reviewId: reviewID }, header: { 'Idempotency-Key': delivery.key } },
+          body: delivery.request,
+        }),
+      );
+      update(messageID, {
+        ...delivery,
+        busy: false,
+        uncertain: false,
+        error: undefined,
+        invocation,
+      });
+    } catch (error) {
+      const uncertain = !(error instanceof APIError && error.status >= 400 && error.status < 500);
+      update(messageID, {
+        ...delivery,
+        busy: false,
+        uncertain,
+        error: String(error instanceof Error ? error.message : error),
+      });
+    }
+    await cache.invalidateQueries();
+  }
+  function post(discussion: Model['Discussion'], message: Model['Message']) {
+    if (attempts.current.has(message.id)) return;
+    const targetID = agents.data?.binding.agent_session_id;
+    const request: Model['CreateAgentInvocationRequest'] = {
+      intent: 'DISCUSS',
+      agent_session_id: targetID || '',
+      revision_id: discussion.revision_id,
+      discussion_id: discussion.id,
+      message_id: message.id,
+    };
+    const delivery: CommentDelivery = {
+      key: crypto.randomUUID(),
+      request,
+      busy: false,
+      uncertain: false,
+    };
+    if (!targetID) {
+      update(message.id, { ...delivery, error: 'No Pi attached.' });
+      return;
+    }
+    void send(message.id, delivery);
+  }
+  return {
+    post,
+    dirty: [...deliveries.values()].some((delivery) => delivery.busy || delivery.uncertain),
+    status(messageID: string) {
+      const delivery = deliveries.get(messageID);
+      const invocation =
+        invocations.data?.findLast((invocation) => invocation.message_id === messageID) ||
+        delivery?.invocation;
+      const paused = agents.data?.sessions.find(
+        (session) => session.id === invocation?.agent_session_id,
+      )?.queue_paused;
+      return {
+        delivery,
+        invocation,
+        paused,
+        error: invocations.error,
+        loading: invocations.isPending,
+      };
+    },
+    retry(messageID: string) {
+      const delivery = attempts.current.get(messageID);
+      if (delivery?.uncertain && !delivery.busy) void send(messageID, delivery);
+    },
+  };
+}
+
+export type CommentDeliveryController = ReturnType<typeof useCommentDelivery>;
+
 const requestLabels: Record<AgentAction['intent'], string> = {
   DISCUSS: 'Ask Pi',
   PREPARE_REVIEW: 'Prepare review',
@@ -54,17 +164,7 @@ export function AgentPanel({
   query: AgentQuery;
 }) {
   const action = useSubmit();
-  const invocations = useQuery({
-    queryKey: ['agent-invocations', reviewID],
-    queryFn: ({ signal }) =>
-      result(
-        api.GET('/v1/reviews/{reviewId}/agent-invocations', {
-          params: { path: { reviewId: reviewID } },
-          signal,
-        }),
-      ),
-    refetchInterval: 5000,
-  });
+  const invocations = useAgentInvocations(api, reviewID, true);
   function choose(request: Model['AgentBindingRequest']) {
     const binding = query.data?.binding;
     if (!binding) return;
@@ -78,6 +178,36 @@ export function AgentPanel({
     );
   }
   const binding = query.data?.binding;
+  const queue = useQuery({
+    queryKey: ['agent-queue', binding?.agent_session_id],
+    enabled: !!binding?.agent_session_id,
+    queryFn: ({ signal }) =>
+      result(
+        api.GET('/v1/agent-sessions/{agentSessionId}/queue', {
+          params: { path: { agentSessionId: binding!.agent_session_id! } },
+          signal,
+        }),
+      ),
+    refetchInterval: 5000,
+  });
+  function resume(session: Model['AgentSession']) {
+    if (
+      !window.confirm(
+        'Inspect uncertain requests and the Pi conversation first. Resume only pending comments? Previously dispatched work will not be replayed.',
+      )
+    )
+      return;
+    void action.submit([session.id, session.queue_version, 'resume'], () =>
+      result(
+        api.POST('/v1/agent-sessions/{agentSessionId}/resume-queue', {
+          params: {
+            path: { agentSessionId: session.id },
+            header: { 'If-Match': `"${session.queue_version}"` },
+          },
+        }),
+      ),
+    );
+  }
   let attachmentNotice = 'No Pi is attached. Connect the extension or select a conversation.';
   if (binding?.mode === 'DISCONNECTED') {
     attachmentNotice =
@@ -139,6 +269,21 @@ export function AgentPanel({
         <article className="card" key={session.id}>
           <strong>Pi {session.external_id}</strong> <span className="badge">{session.state}</span>
           <p>{session.cwd}</p>
+          {session.queue_paused && (
+            <Notice>
+              Queue paused after an uncertain outcome. Inspect Pi before continuing.
+              {session.id === binding?.agent_session_id && (
+                <button
+                  disabled={
+                    action.busy || !session.queue_version || queue.isPending || !!queue.error
+                  }
+                  onClick={() => resume(session)}
+                >
+                  Resume queued comments
+                </button>
+              )}
+            </Notice>
+          )}
           <small>
             {session.id} · extension {session.version} · {session.model || 'No model reported'} ·{' '}
             {session.local ? 'local namespace' : 'manual selection only'}
@@ -150,10 +295,36 @@ export function AgentPanel({
           {action.error}
         </p>
       )}
+      {binding?.agent_session_id && (
+        <section aria-label="Pi queue">
+          <h3>Pi queue · all reviews</h3>
+          <p>
+            Comments run one at a time in acceptance order, even when the desktop is closed.
+            Cancelling a queued request keeps its comment. Changing Pi selection cancels this
+            review’s unsent queue entries.
+          </p>
+          <ErrorNotice error={queue.error} />
+          {queue.isPending && <Notice>Loading queued requests…</Notice>}
+          <ol>
+            {queue.data?.map((invocation) => (
+              <li key={invocation.id}>
+                <strong>{invocation.status}</strong> · Review {invocation.review_id} ·{' '}
+                {invocation.id}
+                <details>
+                  <summary>Saved request</summary>
+                  <pre>{invocation.prompt}</pre>
+                </details>
+                <CancelQueuedRequest api={api} invocation={invocation} />
+              </li>
+            ))}
+          </ol>
+          {queue.data?.length === 0 && <p>No outstanding requests.</p>}
+        </section>
+      )}
       <h3>Requests</h3>
       <p className="muted">
         Unavailable delivery/completion is unknown, not a claim that Pi stopped. Reconnection never
-        replays work.
+        replays dispatched work; never-dispatched queued comments can continue after reconnection.
       </p>
       <ErrorNotice error={invocations.error} />
       {invocations.data?.map((invocation) => (
@@ -168,6 +339,38 @@ export function AgentPanel({
         </article>
       ))}
     </section>
+  );
+}
+
+export function CancelQueuedRequest({
+  api,
+  invocation,
+}: {
+  api: API;
+  invocation: Model['AgentInvocation'];
+}) {
+  const action = useSubmit();
+  if (invocation.status !== 'QUEUED') return null;
+  return (
+    <>
+      <button
+        className="link"
+        type="button"
+        disabled={action.busy}
+        onClick={() => {
+          void action.submit([invocation.id, 'cancel'], () =>
+            result(
+              api.POST('/v1/agent-invocations/{invocationId}/cancel', {
+                params: { path: { invocationId: invocation.id } },
+              }),
+            ),
+          );
+        }}
+      >
+        Cancel queued request
+      </button>
+      {action.error && <small role="alert">{action.error}</small>}
+    </>
   );
 }
 
@@ -317,7 +520,8 @@ export function AgentRequestForm({
           </details>
           <Markdown>{preview.action.message.body}</Markdown>
           <p>
-            The saved message is sent once; Pi can retrieve the continuing thread by discussion ID.
+            The saved message joins this Pi’s durable comment queue. Pi can retrieve further context
+            by discussion ID.
           </p>
         </>
       )}
@@ -393,7 +597,8 @@ export function AgentRequestForm({
           !targetID ||
           (!uncertain &&
             (selectionChanged ||
-              target?.state !== 'READY' ||
+              (preview.action.intent !== 'DISCUSS' &&
+                (target?.state !== 'READY' || target.queue_paused)) ||
               (preview.action.intent === 'IMPLEMENT' && (!context.data || !discussions.data))))
         }
         onClick={() => {
@@ -413,7 +618,8 @@ export function AgentRequestForm({
           <strong>{current.status}</strong> <code>{current.id}</code>
           {current.error && <p>{current.error}</p>}
           {current.result && <p>{current.result.summary}</p>}
-          {['SUCCEEDED', 'FAILED', 'UNKNOWN'].includes(current.status) && (
+          <CancelQueuedRequest api={api} invocation={current} />
+          {['SUCCEEDED', 'FAILED', 'UNKNOWN', 'CANCELLED'].includes(current.status) && (
             <button
               onClick={() => {
                 if (

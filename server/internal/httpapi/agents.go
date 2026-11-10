@@ -61,6 +61,22 @@ func (h *handlers) CompleteAgentInvocation(ctx context.Context, req api.Complete
 	invocation, err := h.agents.CompleteInvocation(ctx, req.InvocationId, *req.Body, callerFrom(ctx))
 	return api.CompleteAgentInvocation200JSONResponse(invocation), err
 }
+func (h *handlers) ListAgentQueue(ctx context.Context, req api.ListAgentQueueRequestObject) (api.ListAgentQueueResponseObject, error) {
+	queue, err := h.agents.ListQueue(ctx, req.AgentSessionId)
+	return api.ListAgentQueue200JSONResponse(queue), err
+}
+func (h *handlers) ResumeAgentQueue(ctx context.Context, req api.ResumeAgentQueueRequestObject) (api.ResumeAgentQueueResponseObject, error) {
+	version, err := expectedVersion(req.Params.IfMatch)
+	if err != nil {
+		return nil, err
+	}
+	session, err := h.agents.ResumeQueue(ctx, req.AgentSessionId, version, callerFrom(ctx))
+	return api.ResumeAgentQueue200JSONResponse(session), err
+}
+func (h *handlers) CancelAgentInvocation(ctx context.Context, req api.CancelAgentInvocationRequestObject) (api.CancelAgentInvocationResponseObject, error) {
+	invocation, err := h.agents.CancelInvocation(ctx, req.InvocationId, callerFrom(ctx))
+	return api.CancelAgentInvocation200JSONResponse(invocation), err
+}
 func (h *handlers) ConnectAgentSession(ctx context.Context, req api.ConnectAgentSessionRequestObject) (api.ConnectAgentSessionResponseObject, error) {
 	connection, err := h.agents.Connect(ctx, req.AgentSessionId, callerFrom(ctx))
 	if err != nil {

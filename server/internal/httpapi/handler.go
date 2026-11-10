@@ -45,6 +45,9 @@ func NewHandler(lifetime context.Context, db *store.DB, reviews *review.Service,
 		return nil, err
 	}
 	spec.Servers = nil // validate paths regardless of the host the server is reached through
+	if err := reviews.RecoverAgentInvocations(lifetime); err != nil {
+		return nil, err
+	}
 	strict := api.NewStrictHandlerWithOptions(&handlers{lifetime: lifetime, db: db, svc: reviews, agents: agents.NewService(db, reviews), version: version}, nil, api.StrictHTTPServerOptions{
 		RequestErrorHandlerFunc:  writeRequestError,
 		ResponseErrorHandlerFunc: writeResponseError,
@@ -111,7 +114,11 @@ func (h *handlers) GetHealth(context.Context, api.GetHealthRequestObject) (api.G
 }
 
 func (h *handlers) DeleteReview(ctx context.Context, req api.DeleteReviewRequestObject) (api.DeleteReviewResponseObject, error) {
-	return api.DeleteReview204Response{}, h.svc.DeleteReview(ctx, req.ReviewId, callerFrom(ctx))
+	err := h.svc.DeleteReview(ctx, req.ReviewId, callerFrom(ctx))
+	if err == nil {
+		h.agents.DispatchReady(ctx)
+	}
+	return api.DeleteReview204Response{}, err
 }
 
 func (h *handlers) ResolveReview(ctx context.Context, req api.ResolveReviewRequestObject) (api.ResolveReviewResponseObject, error) {

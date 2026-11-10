@@ -563,6 +563,12 @@ type RegisterAgentSessionParams struct {
 	IdempotencyKey *IdempotencyKey `json:"Idempotency-Key,omitempty"`
 }
 
+// ResumeAgentQueueParams defines parameters for ResumeAgentQueue.
+type ResumeAgentQueueParams struct {
+	// IfMatch ETag of the version the change is based on. Required; omitting it returns 428.
+	IfMatch *IfMatch `json:"If-Match,omitempty"`
+}
+
 // UpdateDiscussionParams defines parameters for UpdateDiscussion.
 type UpdateDiscussionParams struct {
 	// IfMatch ETag of the version the change is based on. Required; omitting it returns 428.
@@ -834,6 +840,11 @@ type ClientInterface interface {
 	// GetAgentInvocation performs a GET /v1/agent-invocations/{invocationId} (the `GetAgentInvocation` operationId) request.
 	GetAgentInvocation(ctx context.Context, invocationId InvocationId, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// CancelAgentInvocation performs a POST /v1/agent-invocations/{invocationId}/cancel (the `CancelAgentInvocation` operationId) request.
+	//
+	// Human-only cancellation of never-dispatched QUEUED work. Already cancelled is safe to repeat; in-flight work returns conflict and is not stopped.
+	CancelAgentInvocation(ctx context.Context, invocationId InvocationId, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// CompleteAgentInvocationWithBody performs a POST /v1/agent-invocations/{invocationId}/complete (the `CompleteAgentInvocation` operationId) request,
 	// with any type of body and a specified content type.
 	//
@@ -880,6 +891,16 @@ type ClientInterface interface {
 	//
 	// Pi-only live SSE dispatch connection. Opens with ready/connection_id, then request frames containing AgentInvocation. No event IDs or execution replay; reconnect does not resend commands.
 	ConnectAgentSession(ctx context.Context, agentSessionId AgentSessionId, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListAgentQueue performs a GET /v1/agent-sessions/{agentSessionId}/queue (the `ListAgentQueue` operationId) request.
+	//
+	// Outstanding requests across reviews in server acceptance order. QUEUED comments are never dispatched twice; UNKNOWN entries are retained for inspection.
+	ListAgentQueue(ctx context.Context, agentSessionId AgentSessionId, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ResumeAgentQueue performs a POST /v1/agent-sessions/{agentSessionId}/resume-queue (the `ResumeAgentQueue` operationId) request.
+	//
+	// Human acknowledgement of inspected uncertainty. If-Match is the quoted queue_version from AgentSession. Resume only never-dispatched comments; never replay UNKNOWN work.
+	ResumeAgentQueue(ctx context.Context, agentSessionId AgentSessionId, params *ResumeAgentQueueParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// UpdateAgentSessionStateWithBody performs a PUT /v1/agent-sessions/{agentSessionId}/state (the `UpdateAgentSessionState` operationId) request,
 	// with any type of body and a specified content type.
@@ -1003,13 +1024,13 @@ type ClientInterface interface {
 	// CreateAgentInvocationWithBody performs a POST /v1/reviews/{reviewId}/agent-invocations (the `CreateAgentInvocation` operationId) request,
 	// with any type of body and a specified content type.
 	//
-	// Explicit human action only. Resolve a unique unbound candidate, reject busy/unavailable, persist and send once over the live Pi connection. Committed replay never dispatches again.
+	// Human initiation only. DISCUSS enters a durable FIFO queue for the exact selected Pi, including when busy/offline/paused. Other intents require a ready Pi and no queued comments. Committed replay never enqueues or dispatches again.
 	CreateAgentInvocationWithBody(ctx context.Context, reviewId ReviewId, params *CreateAgentInvocationParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// CreateAgentInvocation performs a POST /v1/reviews/{reviewId}/agent-invocations (the `CreateAgentInvocation` operationId) request.
 	// Takes a body of the `application/json` content type.
 	//
-	// Explicit human action only. Resolve a unique unbound candidate, reject busy/unavailable, persist and send once over the live Pi connection. Committed replay never dispatches again.
+	// Human initiation only. DISCUSS enters a durable FIFO queue for the exact selected Pi, including when busy/offline/paused. Other intents require a ready Pi and no queued comments. Committed replay never enqueues or dispatches again.
 	CreateAgentInvocation(ctx context.Context, reviewId ReviewId, params *CreateAgentInvocationParams, body CreateAgentInvocationJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetDiscussionAnchorStatuses performs a GET /v1/reviews/{reviewId}/anchor-status (the `GetDiscussionAnchorStatuses` operationId) request.
@@ -1204,6 +1225,21 @@ func (c *Client) GetAgentInvocation(ctx context.Context, invocationId Invocation
 	return c.Client.Do(req)
 }
 
+// CancelAgentInvocation performs a POST /v1/agent-invocations/{invocationId}/cancel (the `CancelAgentInvocation` operationId) request.
+//
+// Human-only cancellation of never-dispatched QUEUED work. Already cancelled is safe to repeat; in-flight work returns conflict and is not stopped.
+func (c *Client) CancelAgentInvocation(ctx context.Context, invocationId InvocationId, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCancelAgentInvocationRequest(c.Server, invocationId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 // CompleteAgentInvocationWithBody performs a POST /v1/agent-invocations/{invocationId}/complete (the `CompleteAgentInvocation` operationId) request,
 // with any type of body and a specified content type.
 //
@@ -1331,6 +1367,36 @@ func (c *Client) RegisterAgentSession(ctx context.Context, params *RegisterAgent
 // Pi-only live SSE dispatch connection. Opens with ready/connection_id, then request frames containing AgentInvocation. No event IDs or execution replay; reconnect does not resend commands.
 func (c *Client) ConnectAgentSession(ctx context.Context, agentSessionId AgentSessionId, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewConnectAgentSessionRequest(c.Server, agentSessionId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ListAgentQueue performs a GET /v1/agent-sessions/{agentSessionId}/queue (the `ListAgentQueue` operationId) request.
+//
+// Outstanding requests across reviews in server acceptance order. QUEUED comments are never dispatched twice; UNKNOWN entries are retained for inspection.
+func (c *Client) ListAgentQueue(ctx context.Context, agentSessionId AgentSessionId, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListAgentQueueRequest(c.Server, agentSessionId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ResumeAgentQueue performs a POST /v1/agent-sessions/{agentSessionId}/resume-queue (the `ResumeAgentQueue` operationId) request.
+//
+// Human acknowledgement of inspected uncertainty. If-Match is the quoted queue_version from AgentSession. Resume only never-dispatched comments; never replay UNKNOWN work.
+func (c *Client) ResumeAgentQueue(ctx context.Context, agentSessionId AgentSessionId, params *ResumeAgentQueueParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewResumeAgentQueueRequest(c.Server, agentSessionId, params)
 	if err != nil {
 		return nil, err
 	}
@@ -1703,7 +1769,7 @@ func (c *Client) ListAgentInvocations(ctx context.Context, reviewId ReviewId, re
 // CreateAgentInvocationWithBody performs a POST /v1/reviews/{reviewId}/agent-invocations (the `CreateAgentInvocation` operationId) request,
 // with any type of body and a specified content type.
 //
-// Explicit human action only. Resolve a unique unbound candidate, reject busy/unavailable, persist and send once over the live Pi connection. Committed replay never dispatches again.
+// Human initiation only. DISCUSS enters a durable FIFO queue for the exact selected Pi, including when busy/offline/paused. Other intents require a ready Pi and no queued comments. Committed replay never enqueues or dispatches again.
 func (c *Client) CreateAgentInvocationWithBody(ctx context.Context, reviewId ReviewId, params *CreateAgentInvocationParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewCreateAgentInvocationRequestWithBody(c.Server, reviewId, params, contentType, body)
 	if err != nil {
@@ -1719,7 +1785,7 @@ func (c *Client) CreateAgentInvocationWithBody(ctx context.Context, reviewId Rev
 // CreateAgentInvocation performs a POST /v1/reviews/{reviewId}/agent-invocations (the `CreateAgentInvocation` operationId) request.
 // Takes a body of the `application/json` content type.
 //
-// Explicit human action only. Resolve a unique unbound candidate, reject busy/unavailable, persist and send once over the live Pi connection. Committed replay never dispatches again.
+// Human initiation only. DISCUSS enters a durable FIFO queue for the exact selected Pi, including when busy/offline/paused. Other intents require a ready Pi and no queued comments. Committed replay never enqueues or dispatches again.
 func (c *Client) CreateAgentInvocation(ctx context.Context, reviewId ReviewId, params *CreateAgentInvocationParams, body CreateAgentInvocationJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewCreateAgentInvocationRequest(c.Server, reviewId, params, body)
 	if err != nil {
@@ -2304,6 +2370,40 @@ func NewGetAgentInvocationRequest(server string, invocationId InvocationId) (*ht
 	return req, nil
 }
 
+// NewCancelAgentInvocationRequest constructs an http.Request for the CancelAgentInvocation method
+func NewCancelAgentInvocationRequest(server string, invocationId InvocationId) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "invocationId", invocationId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/agent-invocations/%s/cancel", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewCompleteAgentInvocationRequest calls the generic CompleteAgentInvocation builder with application/json body
 func NewCompleteAgentInvocationRequest(server string, invocationId InvocationId, params *CompleteAgentInvocationParams, body CompleteAgentInvocationJSONRequestBody) (*http.Request, error) {
 	var bodyReader io.Reader
@@ -2558,6 +2658,89 @@ func NewConnectAgentSessionRequest(server string, agentSessionId AgentSessionId)
 	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
 	if err != nil {
 		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewListAgentQueueRequest constructs an http.Request for the ListAgentQueue method
+func NewListAgentQueueRequest(server string, agentSessionId AgentSessionId) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "agentSessionId", agentSessionId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/agent-sessions/%s/queue", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewResumeAgentQueueRequest constructs an http.Request for the ResumeAgentQueue method
+func NewResumeAgentQueueRequest(server string, agentSessionId AgentSessionId, params *ResumeAgentQueueParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "agentSessionId", agentSessionId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/agent-sessions/%s/resume-queue", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+
+		if params.IfMatch != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "If-Match", *params.IfMatch, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("If-Match", headerParam0)
+		}
+
 	}
 
 	return req, nil
@@ -4772,6 +4955,13 @@ type ClientWithResponsesInterface interface {
 	// Returns a wrapper object for the known response body format(s).
 	GetAgentInvocationWithResponse(ctx context.Context, invocationId InvocationId, reqEditors ...RequestEditorFn) (*GetAgentInvocationResponse, error)
 
+	// CancelAgentInvocationWithResponse performs a POST /v1/agent-invocations/{invocationId}/cancel (the `CancelAgentInvocation` operationId) request.
+	//
+	// Human-only cancellation of never-dispatched QUEUED work. Already cancelled is safe to repeat; in-flight work returns conflict and is not stopped.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	CancelAgentInvocationWithResponse(ctx context.Context, invocationId InvocationId, reqEditors ...RequestEditorFn) (*CancelAgentInvocationResponse, error)
+
 	// CompleteAgentInvocationWithBodyWithResponse performs a POST /v1/agent-invocations/{invocationId}/complete (the `CompleteAgentInvocation` operationId) request,
 	// with any type of body and a specified content type.
 	//
@@ -4830,6 +5020,20 @@ type ClientWithResponsesInterface interface {
 	//
 	// Returns a wrapper object for the known response body format(s).
 	ConnectAgentSessionWithResponse(ctx context.Context, agentSessionId AgentSessionId, reqEditors ...RequestEditorFn) (*ConnectAgentSessionResponse, error)
+
+	// ListAgentQueueWithResponse performs a GET /v1/agent-sessions/{agentSessionId}/queue (the `ListAgentQueue` operationId) request.
+	//
+	// Outstanding requests across reviews in server acceptance order. QUEUED comments are never dispatched twice; UNKNOWN entries are retained for inspection.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	ListAgentQueueWithResponse(ctx context.Context, agentSessionId AgentSessionId, reqEditors ...RequestEditorFn) (*ListAgentQueueResponse, error)
+
+	// ResumeAgentQueueWithResponse performs a POST /v1/agent-sessions/{agentSessionId}/resume-queue (the `ResumeAgentQueue` operationId) request.
+	//
+	// Human acknowledgement of inspected uncertainty. If-Match is the quoted queue_version from AgentSession. Resume only never-dispatched comments; never replay UNKNOWN work.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	ResumeAgentQueueWithResponse(ctx context.Context, agentSessionId AgentSessionId, params *ResumeAgentQueueParams, reqEditors ...RequestEditorFn) (*ResumeAgentQueueResponse, error)
 
 	// UpdateAgentSessionStateWithBodyWithResponse performs a PUT /v1/agent-sessions/{agentSessionId}/state (the `UpdateAgentSessionState` operationId) request,
 	// with any type of body and a specified content type.
@@ -4987,7 +5191,7 @@ type ClientWithResponsesInterface interface {
 	// CreateAgentInvocationWithBodyWithResponse performs a POST /v1/reviews/{reviewId}/agent-invocations (the `CreateAgentInvocation` operationId) request,
 	// with any type of body and a specified content type.
 	//
-	// Explicit human action only. Resolve a unique unbound candidate, reject busy/unavailable, persist and send once over the live Pi connection. Committed replay never dispatches again.
+	// Human initiation only. DISCUSS enters a durable FIFO queue for the exact selected Pi, including when busy/offline/paused. Other intents require a ready Pi and no queued comments. Committed replay never enqueues or dispatches again.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	CreateAgentInvocationWithBodyWithResponse(ctx context.Context, reviewId ReviewId, params *CreateAgentInvocationParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateAgentInvocationResponse, error)
@@ -4995,7 +5199,7 @@ type ClientWithResponsesInterface interface {
 	// CreateAgentInvocationWithResponse performs a POST /v1/reviews/{reviewId}/agent-invocations (the `CreateAgentInvocation` operationId) request.
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
-	// Explicit human action only. Resolve a unique unbound candidate, reject busy/unavailable, persist and send once over the live Pi connection. Committed replay never dispatches again.
+	// Human initiation only. DISCUSS enters a durable FIFO queue for the exact selected Pi, including when busy/offline/paused. Other intents require a ready Pi and no queued comments. Committed replay never enqueues or dispatches again.
 	CreateAgentInvocationWithResponse(ctx context.Context, reviewId ReviewId, params *CreateAgentInvocationParams, body CreateAgentInvocationJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateAgentInvocationResponse, error)
 
 	// GetDiscussionAnchorStatusesWithResponse performs a GET /v1/reviews/{reviewId}/anchor-status (the `GetDiscussionAnchorStatuses` operationId) request.
@@ -5279,6 +5483,54 @@ func (r GetAgentInvocationResponse) ContentType() string {
 	return ""
 }
 
+type CancelAgentInvocationResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *AgentInvocation
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *Error
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r CancelAgentInvocationResponse) GetJSON200() *AgentInvocation {
+	return r.JSON200
+}
+
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r CancelAgentInvocationResponse) GetJSONDefault() *Error {
+	return r.JSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r CancelAgentInvocationResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r CancelAgentInvocationResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CancelAgentInvocationResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r CancelAgentInvocationResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 type CompleteAgentInvocationResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -5554,6 +5806,102 @@ func (r ConnectAgentSessionResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r ConnectAgentSessionResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type ListAgentQueueResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *[]AgentInvocation
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *Error
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ListAgentQueueResponse) GetJSON200() *[]AgentInvocation {
+	return r.JSON200
+}
+
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r ListAgentQueueResponse) GetJSONDefault() *Error {
+	return r.JSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r ListAgentQueueResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ListAgentQueueResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListAgentQueueResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListAgentQueueResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type ResumeAgentQueueResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *AgentSession
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *Error
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ResumeAgentQueueResponse) GetJSON200() *AgentSession {
+	return r.JSON200
+}
+
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r ResumeAgentQueueResponse) GetJSONDefault() *Error {
+	return r.JSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r ResumeAgentQueueResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ResumeAgentQueueResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ResumeAgentQueueResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ResumeAgentQueueResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -7780,6 +8128,19 @@ func (c *ClientWithResponses) GetAgentInvocationWithResponse(ctx context.Context
 	return ParseGetAgentInvocationResponse(rsp)
 }
 
+// CancelAgentInvocationWithResponse performs a POST /v1/agent-invocations/{invocationId}/cancel (the `CancelAgentInvocation` operationId) request.
+//
+// Human-only cancellation of never-dispatched QUEUED work. Already cancelled is safe to repeat; in-flight work returns conflict and is not stopped.
+//
+// Returns a wrapper object for the known response body format(s).
+func (c *ClientWithResponses) CancelAgentInvocationWithResponse(ctx context.Context, invocationId InvocationId, reqEditors ...RequestEditorFn) (*CancelAgentInvocationResponse, error) {
+	rsp, err := c.CancelAgentInvocation(ctx, invocationId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCancelAgentInvocationResponse(rsp)
+}
+
 // CompleteAgentInvocationWithBodyWithResponse performs a POST /v1/agent-invocations/{invocationId}/complete (the `CompleteAgentInvocation` operationId) request,
 // with any type of body and a specified content type.
 //
@@ -7891,6 +8252,32 @@ func (c *ClientWithResponses) ConnectAgentSessionWithResponse(ctx context.Contex
 		return nil, err
 	}
 	return ParseConnectAgentSessionResponse(rsp)
+}
+
+// ListAgentQueueWithResponse performs a GET /v1/agent-sessions/{agentSessionId}/queue (the `ListAgentQueue` operationId) request.
+//
+// Outstanding requests across reviews in server acceptance order. QUEUED comments are never dispatched twice; UNKNOWN entries are retained for inspection.
+//
+// Returns a wrapper object for the known response body format(s).
+func (c *ClientWithResponses) ListAgentQueueWithResponse(ctx context.Context, agentSessionId AgentSessionId, reqEditors ...RequestEditorFn) (*ListAgentQueueResponse, error) {
+	rsp, err := c.ListAgentQueue(ctx, agentSessionId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListAgentQueueResponse(rsp)
+}
+
+// ResumeAgentQueueWithResponse performs a POST /v1/agent-sessions/{agentSessionId}/resume-queue (the `ResumeAgentQueue` operationId) request.
+//
+// Human acknowledgement of inspected uncertainty. If-Match is the quoted queue_version from AgentSession. Resume only never-dispatched comments; never replay UNKNOWN work.
+//
+// Returns a wrapper object for the known response body format(s).
+func (c *ClientWithResponses) ResumeAgentQueueWithResponse(ctx context.Context, agentSessionId AgentSessionId, params *ResumeAgentQueueParams, reqEditors ...RequestEditorFn) (*ResumeAgentQueueResponse, error) {
+	rsp, err := c.ResumeAgentQueue(ctx, agentSessionId, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseResumeAgentQueueResponse(rsp)
 }
 
 // UpdateAgentSessionStateWithBodyWithResponse performs a PUT /v1/agent-sessions/{agentSessionId}/state (the `UpdateAgentSessionState` operationId) request,
@@ -8193,7 +8580,7 @@ func (c *ClientWithResponses) ListAgentInvocationsWithResponse(ctx context.Conte
 // CreateAgentInvocationWithBodyWithResponse performs a POST /v1/reviews/{reviewId}/agent-invocations (the `CreateAgentInvocation` operationId) request,
 // with any type of body and a specified content type.
 //
-// Explicit human action only. Resolve a unique unbound candidate, reject busy/unavailable, persist and send once over the live Pi connection. Committed replay never dispatches again.
+// Human initiation only. DISCUSS enters a durable FIFO queue for the exact selected Pi, including when busy/offline/paused. Other intents require a ready Pi and no queued comments. Committed replay never enqueues or dispatches again.
 //
 // Returns a wrapper object for the known response body format(s).
 func (c *ClientWithResponses) CreateAgentInvocationWithBodyWithResponse(ctx context.Context, reviewId ReviewId, params *CreateAgentInvocationParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateAgentInvocationResponse, error) {
@@ -8207,7 +8594,7 @@ func (c *ClientWithResponses) CreateAgentInvocationWithBodyWithResponse(ctx cont
 // CreateAgentInvocationWithResponse performs a POST /v1/reviews/{reviewId}/agent-invocations (the `CreateAgentInvocation` operationId) request.
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //
-// Explicit human action only. Resolve a unique unbound candidate, reject busy/unavailable, persist and send once over the live Pi connection. Committed replay never dispatches again.
+// Human initiation only. DISCUSS enters a durable FIFO queue for the exact selected Pi, including when busy/offline/paused. Other intents require a ready Pi and no queued comments. Committed replay never enqueues or dispatches again.
 func (c *ClientWithResponses) CreateAgentInvocationWithResponse(ctx context.Context, reviewId ReviewId, params *CreateAgentInvocationParams, body CreateAgentInvocationJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateAgentInvocationResponse, error) {
 	rsp, err := c.CreateAgentInvocation(ctx, reviewId, params, body, reqEditors...)
 	if err != nil {
@@ -8697,6 +9084,39 @@ func ParseGetAgentInvocationResponse(rsp *http.Response) (*GetAgentInvocationRes
 	return response, nil
 }
 
+// ParseCancelAgentInvocationResponse parses an HTTP response from a CancelAgentInvocationWithResponse call
+func ParseCancelAgentInvocationResponse(rsp *http.Response) (*CancelAgentInvocationResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &CancelAgentInvocationResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AgentInvocation
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
 // ParseCompleteAgentInvocationResponse parses an HTTP response from a CompleteAgentInvocationWithResponse call
 func ParseCompleteAgentInvocationResponse(rsp *http.Response) (*CompleteAgentInvocationResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -8876,6 +9296,72 @@ func ParseConnectAgentSessionResponse(rsp *http.Response) (*ConnectAgentSessionR
 	}
 
 	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListAgentQueueResponse parses an HTTP response from a ListAgentQueueWithResponse call
+func ParseListAgentQueueResponse(rsp *http.Response) (*ListAgentQueueResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListAgentQueueResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest []AgentInvocation
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseResumeAgentQueueResponse parses an HTTP response from a ResumeAgentQueueWithResponse call
+func ParseResumeAgentQueueResponse(rsp *http.Response) (*ResumeAgentQueueResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ResumeAgentQueueResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AgentSession
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
 		var dest Error
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -10491,6 +10977,9 @@ type ServerInterface interface {
 	// (GET /v1/agent-invocations/{invocationId})
 	GetAgentInvocation(w http.ResponseWriter, r *http.Request, invocationId InvocationId)
 
+	// (POST /v1/agent-invocations/{invocationId}/cancel)
+	CancelAgentInvocation(w http.ResponseWriter, r *http.Request, invocationId InvocationId)
+
 	// (POST /v1/agent-invocations/{invocationId}/complete)
 	CompleteAgentInvocation(w http.ResponseWriter, r *http.Request, invocationId InvocationId, params CompleteAgentInvocationParams)
 
@@ -10508,6 +10997,12 @@ type ServerInterface interface {
 
 	// (GET /v1/agent-sessions/{agentSessionId}/connect)
 	ConnectAgentSession(w http.ResponseWriter, r *http.Request, agentSessionId AgentSessionId)
+
+	// (GET /v1/agent-sessions/{agentSessionId}/queue)
+	ListAgentQueue(w http.ResponseWriter, r *http.Request, agentSessionId AgentSessionId)
+
+	// (POST /v1/agent-sessions/{agentSessionId}/resume-queue)
+	ResumeAgentQueue(w http.ResponseWriter, r *http.Request, agentSessionId AgentSessionId, params ResumeAgentQueueParams)
 
 	// (PUT /v1/agent-sessions/{agentSessionId}/state)
 	UpdateAgentSessionState(w http.ResponseWriter, r *http.Request, agentSessionId AgentSessionId)
@@ -10671,6 +11166,32 @@ func (siw *ServerInterfaceWrapper) GetAgentInvocation(w http.ResponseWriter, r *
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetAgentInvocation(w, r, invocationId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CancelAgentInvocation operation middleware
+func (siw *ServerInterfaceWrapper) CancelAgentInvocation(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "invocationId" -------------
+	var invocationId InvocationId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "invocationId", r.PathValue("invocationId"), &invocationId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "invocationId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CancelAgentInvocation(w, r, invocationId)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -10854,6 +11375,82 @@ func (siw *ServerInterfaceWrapper) ConnectAgentSession(w http.ResponseWriter, r 
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ConnectAgentSession(w, r, agentSessionId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListAgentQueue operation middleware
+func (siw *ServerInterfaceWrapper) ListAgentQueue(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "agentSessionId" -------------
+	var agentSessionId AgentSessionId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "agentSessionId", r.PathValue("agentSessionId"), &agentSessionId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "agentSessionId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListAgentQueue(w, r, agentSessionId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ResumeAgentQueue operation middleware
+func (siw *ServerInterfaceWrapper) ResumeAgentQueue(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "agentSessionId" -------------
+	var agentSessionId AgentSessionId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "agentSessionId", r.PathValue("agentSessionId"), &agentSessionId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "agentSessionId", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ResumeAgentQueueParams
+
+	headers := r.Header
+
+	// ------------- Optional header parameter "If-Match" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("If-Match")]; found {
+		var IfMatch IfMatch
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "If-Match", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "If-Match", valueList[0], &IfMatch, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "If-Match", Err: err})
+			return
+		}
+
+		params.IfMatch = &IfMatch
+
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ResumeAgentQueue(w, r, agentSessionId, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -12688,12 +13285,15 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/agent-sessions", wrapper.ListAgentSessions)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/agent-sessions", wrapper.RegisterAgentSession)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/agent-sessions/{agentSessionId}/connect", wrapper.ConnectAgentSession)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/agent-sessions/{agentSessionId}/queue", wrapper.ListAgentQueue)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/agent-sessions/{agentSessionId}/resume-queue", wrapper.ResumeAgentQueue)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/v1/agent-sessions/{agentSessionId}/state", wrapper.UpdateAgentSessionState)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/reviews/{reviewId}/agent-binding", wrapper.GetAgentBinding)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/v1/reviews/{reviewId}/agent-binding", wrapper.SetAgentBinding)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/reviews/{reviewId}/agent-invocations", wrapper.ListAgentInvocations)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/reviews/{reviewId}/agent-invocations", wrapper.CreateAgentInvocation)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/agent-invocations/{invocationId}", wrapper.GetAgentInvocation)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/agent-invocations/{invocationId}/cancel", wrapper.CancelAgentInvocation)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/agent-invocations/{invocationId}/context", wrapper.GetAgentInvocationContext)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/agent-invocations/{invocationId}/state", wrapper.UpdateAgentInvocation)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/agent-invocations/{invocationId}/complete", wrapper.CompleteAgentInvocation)
@@ -12731,6 +13331,45 @@ type GetAgentInvocationdefaultJSONResponse struct {
 }
 
 func (response GetAgentInvocationdefaultJSONResponse) VisitGetAgentInvocationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CancelAgentInvocationRequestObject struct {
+	InvocationId InvocationId `json:"invocationId"`
+}
+
+type CancelAgentInvocationResponseObject interface {
+	VisitCancelAgentInvocationResponse(w http.ResponseWriter) error
+}
+
+type CancelAgentInvocation200JSONResponse AgentInvocation
+
+func (response CancelAgentInvocation200JSONResponse) VisitCancelAgentInvocationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CancelAgentInvocationdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response CancelAgentInvocationdefaultJSONResponse) VisitCancelAgentInvocationResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -12997,6 +13636,85 @@ type ConnectAgentSessiondefaultJSONResponse struct {
 }
 
 func (response ConnectAgentSessiondefaultJSONResponse) VisitConnectAgentSessionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAgentQueueRequestObject struct {
+	AgentSessionId AgentSessionId `json:"agentSessionId"`
+}
+
+type ListAgentQueueResponseObject interface {
+	VisitListAgentQueueResponse(w http.ResponseWriter) error
+}
+
+type ListAgentQueue200JSONResponse []AgentInvocation
+
+func (response ListAgentQueue200JSONResponse) VisitListAgentQueueResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAgentQueuedefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response ListAgentQueuedefaultJSONResponse) VisitListAgentQueueResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ResumeAgentQueueRequestObject struct {
+	AgentSessionId AgentSessionId `json:"agentSessionId"`
+	Params         ResumeAgentQueueParams
+}
+
+type ResumeAgentQueueResponseObject interface {
+	VisitResumeAgentQueueResponse(w http.ResponseWriter) error
+}
+
+type ResumeAgentQueue200JSONResponse AgentSession
+
+func (response ResumeAgentQueue200JSONResponse) VisitResumeAgentQueueResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ResumeAgentQueuedefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response ResumeAgentQueuedefaultJSONResponse) VisitResumeAgentQueueResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -14890,6 +15608,9 @@ type StrictServerInterface interface {
 	// (GET /v1/agent-invocations/{invocationId})
 	GetAgentInvocation(ctx context.Context, request GetAgentInvocationRequestObject) (GetAgentInvocationResponseObject, error)
 
+	// (POST /v1/agent-invocations/{invocationId}/cancel)
+	CancelAgentInvocation(ctx context.Context, request CancelAgentInvocationRequestObject) (CancelAgentInvocationResponseObject, error)
+
 	// (POST /v1/agent-invocations/{invocationId}/complete)
 	CompleteAgentInvocation(ctx context.Context, request CompleteAgentInvocationRequestObject) (CompleteAgentInvocationResponseObject, error)
 
@@ -14907,6 +15628,12 @@ type StrictServerInterface interface {
 
 	// (GET /v1/agent-sessions/{agentSessionId}/connect)
 	ConnectAgentSession(ctx context.Context, request ConnectAgentSessionRequestObject) (ConnectAgentSessionResponseObject, error)
+
+	// (GET /v1/agent-sessions/{agentSessionId}/queue)
+	ListAgentQueue(ctx context.Context, request ListAgentQueueRequestObject) (ListAgentQueueResponseObject, error)
+
+	// (POST /v1/agent-sessions/{agentSessionId}/resume-queue)
+	ResumeAgentQueue(ctx context.Context, request ResumeAgentQueueRequestObject) (ResumeAgentQueueResponseObject, error)
 
 	// (PUT /v1/agent-sessions/{agentSessionId}/state)
 	UpdateAgentSessionState(ctx context.Context, request UpdateAgentSessionStateRequestObject) (UpdateAgentSessionStateResponseObject, error)
@@ -15109,6 +15836,32 @@ func (sh *strictHandler) GetAgentInvocation(w http.ResponseWriter, r *http.Reque
 	}
 }
 
+// CancelAgentInvocation operation middleware
+func (sh *strictHandler) CancelAgentInvocation(w http.ResponseWriter, r *http.Request, invocationId InvocationId) {
+	var request CancelAgentInvocationRequestObject
+
+	request.InvocationId = invocationId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CancelAgentInvocation(ctx, request.(CancelAgentInvocationRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CancelAgentInvocation")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CancelAgentInvocationResponseObject); ok {
+		if err := validResponse.VisitCancelAgentInvocationResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // CompleteAgentInvocation operation middleware
 func (sh *strictHandler) CompleteAgentInvocation(w http.ResponseWriter, r *http.Request, invocationId InvocationId, params CompleteAgentInvocationParams) {
 	var request CompleteAgentInvocationRequestObject
@@ -15278,6 +16031,59 @@ func (sh *strictHandler) ConnectAgentSession(w http.ResponseWriter, r *http.Requ
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(ConnectAgentSessionResponseObject); ok {
 		if err := validResponse.VisitConnectAgentSessionResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListAgentQueue operation middleware
+func (sh *strictHandler) ListAgentQueue(w http.ResponseWriter, r *http.Request, agentSessionId AgentSessionId) {
+	var request ListAgentQueueRequestObject
+
+	request.AgentSessionId = agentSessionId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListAgentQueue(ctx, request.(ListAgentQueueRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListAgentQueue")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListAgentQueueResponseObject); ok {
+		if err := validResponse.VisitListAgentQueueResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ResumeAgentQueue operation middleware
+func (sh *strictHandler) ResumeAgentQueue(w http.ResponseWriter, r *http.Request, agentSessionId AgentSessionId, params ResumeAgentQueueParams) {
+	var request ResumeAgentQueueRequestObject
+
+	request.AgentSessionId = agentSessionId
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ResumeAgentQueue(ctx, request.(ResumeAgentQueueRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ResumeAgentQueue")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ResumeAgentQueueResponseObject); ok {
+		if err := validResponse.VisitResumeAgentQueueResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -16598,203 +17404,211 @@ func (sh *strictHandler) CreateRepresentation(w http.ResponseWriter, r *http.Req
 // const string: with thousands of chunks the chained `+` fold is several
 // times slower for the Go compiler than parsing a slice literal.
 var swaggerSpec = []string{
-	"3L3rcts6tiD8Kih9X9VOqmg52b3P6XPsmh+KpCSqbUtuSU6fPe2UDZOQhA4FqgHIjk7Kf+cB5hHnSaYW",
-	"LiRIkeJFpuM9vyxLJC4Lay2s+/rR8aP1JmKESdE5+9FZERwQrj4O53gJfwMifE43kkasc9aZrwjiRERb",
-	"7hP0QLigEfPQv7aRJEG343U4+deWchJ0ziTfEq8j/BVZYxhH7jakc9YRklO27Dw9PXmdDeZ4TaSZsLck",
-	"TM6IgCFHAXxDYcYNlquO12F4Da/j9EN1JvQ6Ayr87eHxA/eReqOPArLeRJIwf/c72e2Drh9SwuSJv4oE",
-	"YWjL6L+2BH0jOyRXWKI1/kYEwogTySkJEMxMhEQCLwgAVq1VH0+yWmfKE5jTXeAaf78gbClXnbNf/+3f",
-	"vM6aMvv/ey9v+YtLLP3V/roBEVC0QHIVn7j67K8wWxJEBbrHggQoYl00NfA6R9GaSknZElEJe9pyJtBv",
-	"v/5H8VYWJ3r+EiCzh8jH8tARUveRekc4JQ+UPBaOzO3P9Uc9iHQ8eaDeyPNoQ/3CYaX5tSZVciI2ERNE",
-	"cwHOIw4f/IhJwiR8xJtNSDWET/8pAEd+OCP+/5wsOmed/+804Syn+ldxqkdTs2RwDH7oqj2ZZ2OO8IGy",
-	"ANYGEwcBhRdweMWjDeGSwiIXOBTE62ycr35oPnErNKO4pUGy13/YzXodtg3Dztcnr+NjFtAASyLKdjAa",
-	"XFAhO09eZx0FBJ4mbLuGUXvX80nH61z2xte9i47XGYxm/cl4POzPh4PO1z2K8ww2pdbm/GooTVEyZXS9",
-	"Xbt0S5kkS8I7T0/u4f7DGdPbB4FZczJ2auPJEqP7fxJfdrzO95NldGK+VKOJrj0N58cTut5EXGGGwr+z",
-	"zpLK1fa+60frUxxsHwhfEn664VtGwpCcCsIfCD+FLXCGw1M9stqKe+BTzQBLzz1iZLLonP3jRwYDsudj",
-	"DuZrFmR7YPr65P2ojE0ah4rRIY0FT09PX6tjqoMNRyJbZstqtFrnbQ+jxWNPOPuzkboDQLyVq4iXUXdP",
-	"PwUcIWKM+DIZMc2vJpwuKcMhCqjYwLWFkhcQDQiTVO7OEYskwgzB5PCV3h7yOVFP4BBuw72lKk77XRbt",
-	"xOcESxLcYgX6RcTX8KkDRHwi6ZrkDRkQn1ZihIn4U/oosTdD8SMFO6Bss5W3C8qWhG84ZbLgKXvfWKQH",
-	"JL+ezTpe52o6vOpNh7fT4ZfR8O8drzO6vLoYXg7H81xOuyZC4CUp3RLQRZi7mA2P1pv8dXIitqH6KeFE",
-	"ad5QgnNp5J/q4Z6+lt4QVmoo+l1ILLfCBeDVcDwYjT91vM70ejzWn2bX/f5wOBgOOl7nY290oT5cj38f",
-	"T/4+zgXmdhPUxL8M96FBx91aeiO511aaGGPUiLeYxdvUiaexPz7KmCXYY08RXh6SxkdtcT9FiynAlPBW",
-	"vflulu09I3PVM+Qx177eZE0eS0K6pPchuV3QUH9DJVmXSkszpSd+pCGZkgUgj71cOMc7TeR2XYVyEOyj",
-	"ZBorYH+xe06hW2oKM6CX3VGjE7OwfJGDm8Z8psa5VeV8YrteY77LPQGlRtzSQBTPnfdWCpp7EohLn8kE",
-	"yUIancfU0mdrx2EsDzVPocmV7T/m0wP5rpeWK5ZcREvq4xBdUZBHQMzXEsdoYGQRJAlfK8El4ohvGcyO",
-	"RoNcOaSAIMPIx+4leR9FIcGsc/D+BEadEmCnw97gj47X+XA9+0NdOL0vvdFF78PF8JkunZQGVeFCcuGq",
-	"oe/qSXrTdh/OldHsAjDCtcWmFqVqM8UM1l1Vo8ogb1YSPmhIKhVfi3GEExzs8hArc1xZaUC/l3uNVzwG",
-	"FzgtnQXzjfpRC/IBueWYLUlz6bIfBWSqhlASJQnJmjB7OGnmMaB4yfEasSgAnoAWEUeDUe/TtHd5O9TS",
-	"dcInisX9fXsxVptXNk0/4sG5sh4GZjZONpwIwqTmVDmTniOYQf2i5X2EWYD6k8HwdtobfxoeXpT+pUQE",
-	"Vwucw5NZZFOve4ZFJMDz3MPZw7L4wOe7TYbrGX1lPrka9UFvGc9BafE6/c+wFZDBR1ZGH34ZDYbjPnyZ",
-	"bFbp+inw5PLLnpSEAUBndMlwWBPx6irL5IEGhPnECgmxbFgkFSTyX4GGqAivVGrZcBpxKncuiD+PPn0G",
-	"y8hwMLq+7Hidi8nfSxSaDY8eCMPML8WTq+RJQBOswUkaaWcS8yWpy4uLxsqgmcWuBJcMepVahhJ0z0Pq",
-	"LfMJl5gyuat4q6ZVO7Nn5+BcKKbHT52Lo6wlqJHBu4oSY4YwWpIVYwKqfbhp9vmRE3IC4g7SAIhtSx4i",
-	"3WUXYRRGS8pAmtvQs5vtu3d/8Y3qrP5RrqOSC/sbZUGKgq4ve+OO1+l9yucumXNWr+ejTP4J2JNsA/B9",
-	"vJFb3lDSATfWrSL/UiGHk00kqIz47ta+VV0rnsYvf8AiXzN+qgTKzG5bAmksQdSEZhjd366wyPEozj73",
-	"Tn79t3+3TkUhlXQAijgybqZchYSw4DakjJT5RDyz5x8Hz63IakZC4oMUb60k+0/QtC3+Q28G1/LnYS/f",
-	"zyMk5rLSwvecOe5iPevdU/OnhnVA4zlwz26mGn0m590WPq03IZFkT3dvRLJRsKtArgVmbeeJJWGEx96H",
-	"Q9T7ST9JgqnZU7kVqyI1HwZMW6eh6G2yplKSnAvo76udolFFnFSgkApJAvRI5SraSkuuoqtw0NDDaNyb",
-	"/qGE3MntRW+qhNbZ9YfLyeD6Aj6PJ/Pb3u10+On6oje9/TiCL0Gm+3pIju8rTbsh0hT5CHP9IrFLr9gD",
-	"sedEPGB/znEnFqFj8cSOf6PAn2Fezq7L2WDeQg7uv/4yM36ZsrVWc4ZmIgW+Y1+CgUsLk0isokeGqA5J",
-	"sUEzG43h5+heuy9NrIpAnAD9IY7linAIvGGIEz1SBUkpH1x12EzLTq1i/aMs+idtMTfulRLHTMX75BDh",
-	"tsTU1JQDc1rH3SyFSFB2T9jpf6cs2EOOGnEmC43C9V7KnH5eDJ9+AGmwQcRWQBZ4G0qBZKTju7acEyZR",
-	"xEi31KkXQ6UOUmRPqFVsiMHfDB9wNQteGtLGXiVVbB+L5Ap4EQkFOUdKR/eQNgB5SCvoHjIqu4es9Ue9",
-	"jO5ocHd+wzKmHzPwAXMavKfMZVib9e4SGxaMl9iVzFB3iVnrDkUMYcM5jXRuBHaLPN0b1jlstKwB4JeR",
-	"7l+z7J5nckkbbKv6aJ7D6Jm3mori9kHuM8iwGU2pv4iY38TYVcp0DE2addXiPHvcoE3ec6mv6hZVnAxg",
-	"asMjs8I2gZFYP5rBgzI/3Abkdsskx/43EuT7IkN8T8JSuCXMpA549djm3Tpg3t97y5B27oKm3r+A3AZ0",
-	"sSgN7TW2WJBA+hFb0OWIbbZSSz7qbioVmPRjmZdjGy9onkcswppzDr0+J9/3XqMyJOVMDM7vF4G2YotD",
-	"pN7JtWDtGeqH/zVPPDrW0TMYffzo+H9uL0azeUXTfU1kzEGPdhESvjhWaa9EsY4wkI5QyVWTNSHv68eU",
-	"LQi/9ZOQKXNwaoVf90URqxln565kFi5iEU9KLx3pId7nWIpz5Q6Y+eu+gp1C41wFNbPjjEBLRBQ+EOQ/",
-	"BkiueLRdrkA/QOQ7FSrbA97ElMFHffzIjIXuySLiBD3gkAZYPauziLpo+B3yCahEAE2hMkeQXFGBFiFe",
-	"OnTkcHcL9/TqevciCreSII2JJ4IGxMxizAXnKsPGQhjcJmbBhINwS9drElAsCXLhWGQZyDNTvcDJ/8Mc",
-	"vTNrRS5lQLGIwgD2y11QqDtNlBpBnmoxGJfc22QsKg+m4QWn9Jt62nXW392iIq9tMfXe2WB+QGU4GOpn",
-	"8aiONKRfqhu6l3Nw7WDIwLHXtBgDUWgvOiZe/3gbU4ZBqrApfB8SlDwq0Jvp8G/Xw9n8VlshZm9Vll7l",
-	"II4MYhdOaZ47er4DFs/K0fIHLGImzzGgvkQq1Q1MLFH32Lj2+EwNrqThtnd2TsiDg0HVaGuQTNUmRf2e",
-	"CRzoTy4vdTRT7+pqOvky7HidzEnnGllyBP96tEqCZY3b1kw3DJYkD7tYFGQGq7OSRjdDpbjKb/vQvpqM",
-	"Nbxnw+mXkYoUG/Tmvdl8MoXPf7seXsPfXn8+mcJT8+GV+tObw9eT+efhNPdAqurOJlbioEamolVUjEMe",
-	"uVhNWm0uz+JUXfLV55Y3hnvg9Y5zwaN1fhC0hdDeLzIqD41Sw6pH7UgV6drZSEukHTOhxubxcptjo3y8",
-	"BrdoUQSytnVVZxjGOJbHLJ7zztEgRI9YoDUOCMJLTJnID4XZz+2aXA3Hit/OJhdfCjKOU5kcmdXAT8Jd",
-	"BychlurqO3O+JgFSo5zrPxAQwL6BMpd6REut3g3T0rUHuoa57eIXOcH+au9Ny0BTQcK/CDspBAFjBEap",
-	"G8b10Op1X9IHYkeOHpkdV4ctMF1iIe22qC5vHJl8UMNrUJYaZ+3dqYwZmwMXywtJ2kKM6semqjl8oW3G",
-	"o3nELEbwGkyo3P/OCRYFlo/DxKqDDba6zkW4U4ioTBlU7hDwDMypUNBh5IFwbWYIsa+8Nwa9u50z0Nir",
-	"kfN09Gk0Vrnd12MtPA3gzr6eD3rz4aA0ZaYkPiWNVzEKGfDUxYnUkbWDH1qO6CeAbqLlpzLoB4PhIANd",
-	"B84fZpOL4VxLsL3+fPTFQD3mryrn/nI0m5mvgf8WsF09eXC7oCR8pgB5bcm53ceb8WQ8LNxVLZTRWQ4r",
-	"EwmY2UN2BdUwZu8Q28SVKVnURJKa0fWVcjeOibg/AEPYXEvAs2n9NQBHGrzjZypaQFDgx8n1eKAg+6V3",
-	"MRrc9qafro1G2Z+MP16M+upj72p+PR3extnqV9NhfzIejOajybjgW1BDR1NLBNfzz8PxfNQ3NH01nAIh",
-	"w3OD4Xg0HJjDnQL//ZprnpGYhjUp2dzF5dqBr4u02OeT6b6WZdXqc8hTgaxjrGUjWAsZa07dofqFJqql",
-	"Ee1r1k621RysF9Ph7PpCKdpXw/7oI2DOaKJyJMa9iz9mo9nt5Hp+da1MH9P56GOvP3/eVKOyUg+KGRek",
-	"jyjvS6QKlpisERXdFa3XEBikJOMNj4KtD4K77KJLvEP3BJH1Ru7yvZjWSlw7AcjkiliLsT3beANVkn4O",
-	"Jd7lc0yL+y0xzD2f85E2o6osJUv89ZOhcpb+UjBqZOZrYFx7ymGGUI+in7CVuhlCthZTMUNRj0U0qPBU",
-	"vpt1bBNecRCY2DuhwvgiHae/nyaTOwFlaUeP40A1A9xGSeD/YaacShN48lT9vgqgUI+VgkI9VQKKgIRE",
-	"NgdGFAa3aW993lNHhBZWL8dzCNCAm0aRyqvt5mpwuQGG8TYdrS7BWvfYHDR1jinGmn0UcTHWPbJqvMYl",
-	"unaYjAO6HD3vcjIYfdSy3WAIqp1W28a9S/Vp/sfV8NbVlObTXv/3AoXuY7OShC+WVb2gXMhbQQi7LcPK",
-	"55acptNhfz4eqoSGwXA2+jRW7on+9XQ0/0PL2h8n08veuB8LV596Vwe9Ee3lZxdbbgV5INUyy0fjj5Oi",
-	"0OF8E23abnDIXFsgZz2bdbEAT2I5LYaCw0ys7ObmbdfM1E7WX5V1PHvNSYdtxPl8wD+0GbwmYR9xaaQs",
-	"8tWchfqVb2RX+s7vZBcLQRVi052B3YVVO6M8KLZ8Xib/sqZHr1b9srxdHXZKGsg1mEINXyrlSwvaOmXL",
-	"siBr+WD0TuqdC/m+CTGLE3DTMuCILQgH79Al5t8CyPdzHj9H2uK+wPec+jA/WhMstq43qUoVBFIls8EJ",
-	"nip5slEoFSzC2wuo8lLQqXnk+jDaOfHPBIea9aUPc//qi77l3nCVS3TF10/hzQG1wTWPrCUqjWJgtCjJ",
-	"HRSyajoWj6kJWtPbmL7I67gLDVTbwTo9eLNozzVmdEHKEwku7XMvmM0Ur60OjNuNnbRzNKg8WVIvsmkd",
-	"yb3C8codgkBgRW902IHwYr7v2cRvLw4+9EyUgIewLQX0Fv2f//W/kQW/askAX2Ah6JKRIF0fMVlIjo7U",
-	"mBIdUTlNhNUlsNRZtYQOTWxm2PfJRoJycOtzKgmn+LBS+WepPpZVfj8MP/e+jFSkXX8yns2nvdH4+d0A",
-	"B3TW2AmQq4uqSIQGl4LVBeMhHGt93tm2VLhr1KbpyGpKtbDn0rlL6uSEO2kxTKJHTqUkDN3vbKX4iKM3",
-	"creBQq6hLr5C1xudBgxhTaoMw9suUpyPqpoWC8IBmjcMQqpQpGpb3O+AkQnbZ2ZDOCIJr+yi4QPhO1OR",
-	"EQq7YCk5vd9KFeClZtVrOb9hyXnCg6ZaExYoIH6I4fMbU14PPa4Is2ZZD00+QFzqUFeSBLcNUm4b8bab",
-	"yjy3yIDWWyjdEVEImJElqefn6Mqcq2pHFD4QgagUNzrXCAIs1eOC4Y1YRTIvUz3m/8cG+1bWw2MtI4cj",
-	"vN5Kho0qFRZttCiYYi+GomrgBEx0dK3COoUJ8ybLsobafnMtpTRFRLyQhOeCWyfd5f6UbvxVne09I9Yf",
-	"uEFV/MXHXhzTDn+G0L9gOO7/YeJBRp+up9YRfz1qxYZ8KFnqgXC6MD09ciKxrsdfhlPrcphdX11Nptrp",
-	"0J+Ac2EwqtarRZsE7CUcWwTMwXrm7KsgpXtwTbDsdVT2yMtJTScx5gdMv3zhjyOqfuwFvewbqirkh7y2",
-	"KJYDAmrFkJIUMeh3qmC+1f1ewUX/J/aYPYNPrMkxO06ofd9TldM3VoHGl+sh/dXZ28vciy1pls+jO6bP",
-	"bV9hrHJaifskk0eKdFqz1hLuia1EacoKUCmQv6JhwAlLZZPWDhIXNQ6wwZm7vKjiKw4CH6tmKBAW3bBO",
-	"NRBxlJBg68W0yWJzTYNJoZk/dfZoHdwIKl4z7SeLNkkPtTaU5gmiDXNC98oKvTSuNmjCJXTXk8boVVii",
-	"oAHeQfiXCYE6fCfYB4uKtJUdYbzp3DcLI2RevtJSDjOoVGqjiUe4NhSNQaKaqdUSZUvGVpfm2zUqPWuG",
-	"Tq6h6SD82kvSuUxySV6gpElaELMxGOeIExYQ7lQD5/gRfZ5fXuS3NW1SB6W8oHJVP3c2AzL2S5hiHLWL",
-	"bFzG+TmtnHD0cExVo1QJoJyA6nX0YArHKnk79l5HUUkYtTJuZEMP35VaRZL1OENUhHMWEu0AfHKvfgz6",
-	"qwYWrmIDbG2aa89g+4r8o6/Eulsasv/Trb/FOVSFpuAUouSvsyUXbYaE2qHTq9RZp1nb5+jR8Vyibyx6",
-	"FGfoctibXU+HA/RGRlGIoq3cbCUSW38FTkyMJBESemG+dTyWbwQhDAWUE1+GO6ggofyXkJHDJV1gX4q3",
-	"ULz743CqRtaJ8+CejTj65zZYrsFJ6yHjreuiWew1dRZoHKjguXQbaNgF6zx0tSBtVFOTlfgAp2RJhSTc",
-	"7f7YsDLeY5WyRJl+pGv8PX76P/9aGnWZDmSvHCd5qFlntZ6PFkzttn0E18TMuKCPaEa179aDH8UK75PA",
-	"GhZ3Ar+/Ad+Gh+w4b/Pkq3sOlSn2RxlC7qf25sMo4PYPiMT+igS5sh146G/9aJuyLTl+HZUsZNbbKLUq",
-	"fqLY2iAkhgIFB1axz6XBmjqaGSVhNHb+zW1Cy8rniKtSH3roEXO254+ol+2ZjeHfA5GXYJCDL85RxKef",
-	"Ad3ePvc3lTpwJzck3le1+yJFHe3cFtOU3/D4WhB1i4/XDd+NInmbX9u2j1nEVHNnU8UVHkOmdJSGQIMS",
-	"hRZXkonz9lj9OGPPZ7uHafvmvUR/v/r9c7K0Gc9bF452m62B07H4N7YlNKvyYDUeFfD5gGkIFUKLUpUb",
-	"l6Dv7IULm0fQaCBsSJkTmQZ6MDSU6v6/5E14Nr3vNTkVmmGdU43ya7m7QU9WpgpV80F4BjEq+SJqInlB",
-	"620nc57TB1A+WIC2LKY2RJi05c0P5M2rwiHusV/2xteqMNnoMtZqPw3Hw6kppzMYTkdaZVHFqL56FYPj",
-	"82Y3VabirL2iOzGO1VdPql27Bn59pYF6pn9P2hcG5ESRvpMqZoq0VaLfmVofZAfmtnH9qW6ew2bbakbb",
-	"5jykqYPoWHJr6i8y+a7tO5O8jkODt9mChHlE4CjJx1O4VUPi8fPYoJ3RgYtn/SDWF2UYg3t9526tIK2s",
-	"sizkyihtCUINEolNW4sKNUWaOD5M9thtZUZZ2tejRLOu067CEfTznJ5FdQ/6F5NZ7UoH9Wuv5pYxdA8r",
-	"s+sEo10YOlpt3lkcW0+11URsPfgnjjerulJ9bkrEQTk+008/ByHygtsPDZkxI1eNZK4iNFUODj1coke9",
-	"UDXU8NBQJqkpZ6RD4VgltOm8l0ufWqRyTqWZLK1Fn74ZRilyNUsf1K54YA4qgXOCXA5SeA4a7wNyDwB1",
-	"CFbTVHtU26Dwuo83cstrXi8LypaEbzhlss5tEfGAApGXxvGXJCoam1+9Gye2FB68czKFIxyTrjZnp9o/",
-	"fSMbqbPMQDUItrBAZAB6HueOQTn2HVrT7wimIale53UMyGW2OAtdL3Wm6cNyrqUEitUxWLQrRMHwjUs0",
-	"1+bDe9WE85g7j9alNbBkVOGRWpytytLqaQE5HSQyAklmFwWy+D43rYc9rRdvthN9qS+Sk4DKYjPi0spD",
-	"za479wJ4+lrHhpF/0BlNLmIn8IJmUoKsMZPURysqFKOCnhAskiZdlwRdpG9fpCu4coIDgThZY8pQPNkh",
-	"u87B0oIxHC3QcvdQD2++tCfupgWRmgKvshut4aRvU2boTB1deFdp2iFZYn8XpyFrUxLaMog12D+4cxRE",
-	"6uDUujecQGNDQrkurmtirwSRAgIDtsxasfJ7Hhbqaq2Vv0qsWwUi6vF+2/puzYLCVwXNWQ4x9QTgxc7a",
-	"ajU4tR65N55XgF/VSCeN123SjjrhpoQTF4G1MlFi/x3+19XFqD/Kt4I5I1QsZ9hyRdsjK8TWr+/aqPxf",
-	"gmQ5Nl6CGWXLxTbUTUq0xJuHghDRIfmW5HGavN64BYVli0vFJjtLLdnbQ5xcRKhDIAp526aO+s7m1ioJ",
-	"168KXBea7bmcsw22X6NjpGo8e7NWf8+ZN1O9N95Bp0iTco3NClzU9yI1sZ1nDyZTsM3GdELjMqdEpOKY",
-	"R/U9fam46nRL4Oqz1vXk5kZa77cWLssSSIN/wsH3iNcR9P+m9yGooA55VbchSSzT/ZygSdPQbd301WvY",
-	"/PgZnBDPVqLZTZzYrwsa++A0OBzAF0R1O7iTIspsM9qCes3Huj3aLEZ6rRajwp5H7CHSEe/NIp/jfkYV",
-	"inpPr8djnVEWdx4qDs/Or2paDXYH99cmSJM+b82g2aRX5fGA2l91mzAyPqGG6NZIkshIiWWFi0sPwS1M",
-	"/9WrIXXWOZUMnNo8krQnrGEKRPPQQy3gpsMIK0QCZl4+MjQsHseGIR10x5Hve69VLWJdGQHyT6VNPNB6",
-	"jS7e3rBocDMDh9UAnzXUuIHNoFr1f6OM1637XwzjNs/0iMzYtCZSjdU2Y9AZ9aDaS2nhvto7bcrCz0b4",
-	"rafwPinoLaK8AnHwiEmSQL2rURf1whDxaCuJQOS7D27gu9OH96crVdD+Dhl6gRqkOAwJR3D+ksrd2Q3D",
-	"6G6OaSh8HJKTa0H4yUW0pOwOgcZOOJjzofhq/AyawbyqBTZGYRRt7rH/Tc1AhLSmhhuWPK/HEegNBKev",
-	"VZNsAj2tCX/bRdA13K4plUsYLRBRJV01giMq0Rp/I6J7w3pMF41VbbJVY2webZcr3fovhMUjhte6gCoJ",
-	"F9qlgdGdrbB6ooTOeINvoIfgDbvb0LOb7bt3f/GFzjI8oYH6n9y9PTP1mHRQPeZ2lVCvaafn7X0ajuee",
-	"cmCRB0Bs9I2QjdqRWlL3hsFe9cJheToJTVec9ZRTRae2gjdsAtbO1XaNmUBie7+mEh7VHpruDVM9TQV0",
-	"b1bj36n/7xBhDySMNqR7w27Y5Vb5vFQ1WWBmAvmY8x3AwWg/d+dIULYMyYl9Bh7eREyoIrxyyxlAHQt0",
-	"N5zj5Rm66Wj4mPfVP+Smc+fdMNi21p5EjGx3o8XJJZb+6k6fgALTAw63BL357df/iK1SVHrot/e/Gleh",
-	"xCGBgrqGtIR+TatpSERrIlWTdV3FDEoM340Cst5EkjB/d/I72d2dIU42BEvbMx3qn5sFECTwGlqtG2zV",
-	"u9R4Z+oAWxCgN8nA8mRKNiHekeBMWZnv3irf2a+/oVW0hYNgIREK3Wyvdk3FcMTQ6oL6FCw0puObrt0b",
-	"Up8woUO+FDEuKOFgvhvNO14HEMT8k3CvTlwi2HCA3tXIUWbPOu+677vv4IVoQxje0M5Z5y/qK30rKhYM",
-	"bEEh4QmNtS5x+iP5ZxQ8wXOmRC5cNebrzlnnE5EZhU2p9wZp4Plf372Lo0lNafUNAEA9fPpP4yzWPL/U",
-	"3JaZSrHETMR83JVAH6i6OjyUxMdb8COn5C2iC31WytqAQ6hdzbRFEU5sGTGiE2Z0L4SiZcb7PlX0p68P",
-	"vBSqPo3OmdUOFo7XRBIulI8+b6TkkdORcw7aL1/lwNRggFz62jliQmVykYUN468o2mzvQypWRKCIAdXw",
-	"rS+3hnK2oURYRmtd67uLBpFy4Qck2MZIgHAoIujQKokvBaIsIBvCgASAUoUH40jMpealnPiEbiScI+W7",
-	"LgKBPqSa7+sJgeHAZQ1WtzS29g1Q9lG2JogSBvM72SkgGXz7YCzwz4LuBcu1MsZTWvAFPvT0k4kvWpuO",
-	"lZxswp2HlrpJDxxyxJMq7/obI549G2VVJw1mtcWKPK1v3ng56NoZ84BsYufiEA1kNqRFjZAuKVzzKorg",
-	"3D0BTRUirjofx3JQ0IbFn43DxUpBy+wN3CbnKqiSqyoacJ17KCALyqgkaIFpuOWqcoZ7o1hZJnog/JFT",
-	"3dgA+Q6BAKvaZ1G5RtBOO/zloMH19XEXvdzAXu3t8A0j6otC7gA6qVt6RBzLFaplITgz5gSUP+334NDV",
-	"P0iglA3IILyiwChANtT0pNiFbeLkCDxc+WWJeFaGkEtjVxSBOnbC1WK5aXaHfRnxuAhurIM5FVHUF6SL",
-	"tKfTVTmTcXRM8wZzSX26AVUBStzE6ZT+Y4DWoIpQtjwH2eM7JcEpJ+tI6sIDwgS27VNoXv2Z1ypBHKqV",
-	"8zMIPMbggxh7RWNzhNaDMfRDJP5WS4tK0ab/rRbRLhM4/YGdVRvZAejE4Q5ZlD5RgUkhfSBoNhuigIoN",
-	"4JlDYV002RAbWAnUtjtNfrylgQfaJ4s1mAVXpgs4BEyVLpnhlV00jrSJQSf9cwdYXKmp5yquVk2BgojY",
-	"UFtBgANE6zVmgciTltUbGTwvQRAQRE7VYk6E5ES7BRIMydrXcqQb5pNQh3ApIJr1IT2axgfQzoMtVw8Z",
-	"xVrvP4yWP02M6aVQJSvIFKNUQzlmbzqvYwKOMoKMKgChTlKTlpZkBPDZLQ4Tdn8KBvLw1F8R/5vuUQQm",
-	"DWXm2r8kRoN9fHHECbOumXHat8Ha9uZ5pXzNGiTgsoNlPjfHSsp+itMfyT8lRpvEedymUuPMkgMZwMxk",
-	"wV1Tukmh/48OGBiLhjePnapnnp6Og6cDvwZEP3AArmkQmH2ehV618ALmzEm00SX888gndTA1ZYqFMq62",
-	"JkwUhR28MMEdRiqrJLw2xCql1tO1Lrcr6l8F+0iYK26DyXqnHSzJzGipkjMQI4/I2I1zJAFlbE/qAb9O",
-	"a5m7yFq4+f7Z1mBBlHcPcGJad6tHjr0GcrFL+5kKhVPlp+MnAq4j/ainTLYbwo1RCAzlSADsVMAoDwjv",
-	"oiH0XARZ1iwdrcADRIM79D/iZ70bdqeGhC/VBwSinjbZ3gVYYvgBnDND9ZRGQy3TKVsIiLiqvCu6u8BC",
-	"nqjHTkaDOw+RUJAbZn5Uf8yXugsiix67aCRRlAjVGN0pufrOLOVxFQmCYBVgzr/7cdOx677pnKHx090N",
-	"e6OrzJmdUxkvCuZ4e4YWBIR4xb71R3WZK0kdbNDrddrD54hKGMRY7eJJU9VM7X74YBK9M0RF4cT+tSV8",
-	"l3h/bP3bBBnjUE3K5L//1vGSUMzcktVmWM3nknFTEE+Nn5XXv7auAKhlGMw4lkgMPTj0ocMcTn/YTyVi",
-	"0jBJuW/tPovnKBCRkrpNxwHDLjZHyFFIYcJkDEokAOpkGehB/DCQtsm3pz/MJwPo8onj5+vNWyh5Da2/",
-	"TwcIxjiASAC+7CWmTGiNcq+hORo4urIS30wmKrikwKgLVnYuQLkjLH4NmIRx0ePYSV8k7tlSG69T1ssE",
-	"M76woGdhc0DKM8jys0S8hKQM2uvwmkMc5bN+okWwmRlyoKbvf7gCjRujm9qN2AlJ1slmMoVFTn+kv6hM",
-	"0dnXnomwdd6oolwVDmHdw5sQ+8Rewgu6ND2bmYqvWdIHuLCBr8JMYBEG+tbSTxGR7tXoeo20mh93+sIk",
-	"m4HUQSeO++SrIWBtTTzs/ZmaZ17C7zM1wX9VPD5qVXFgE+UqpC5wy8EYR/GxkoQFkuvZyVMY4xpgr1hf",
-	"1Gv8SeriNA7tLNIWTYTpsx1YGs1PjVxTqDFasxU2saUnggbEdI0AhJIRIt+xyjYEBmts8VsBXgqwHJso",
-	"QhugEHEXG9dkfU+4WNFNF/1PwiOk3H6hpJuQaOecEzsYh20JEho3So5nTq22CO3yNKq4Xl7RfXQ4PPhr",
-	"q7y0CDmU6hxZICXRha2hyQ/9wdz4OmoxpzkJ5sGJ/hHJFUgZGh3gWjaRkOCBsCGLBkinJqBLeIgREE82",
-	"PII4FR3A4qFPVMZVYgB/tkzSNRFdNFthcBYaFDMOQ0rE6X0Y3WvvdiRXhJtl6ChddenwBwipncYxoZgh",
-	"fC+0/wzapviE5PnDBmprMXZlDv63wrBsDZIAVo9DZZcw0z0nHy6SN4uW+1J4+tyYWfcymRrMTfxx+0ht",
-	"XHT3Rt8oiwv7EOts7TqVPhTrPzrvnEoswUUas0Q3pCPcJezBxyygKha7i75oIy96r+ViFiF/FVHQh79T",
-	"IcXPksQau12dAy7wgM4UeBBGVxTitkJ6D6dKIP6aCmOo87TbPI7M5gQ4jorqj9YYguQsMJW33frmqYgd",
-	"/LqoUcbCt4cxr0tzcBf3M92nH8o1/dS1/1MRtIyNOCGL5UFkI+fhF4sjc8PsqioWJ1aZ0EkYpybU2kNR",
-	"GKgoFcqfMSTvOCaQ6/2K7YAqi0ZlCkVM18RAiZi7ZfRfW4K27D7asiBhnJ6JnkX3W7E7dYrFeeA9EVTo",
-	"6FsVURMp3wmIMirXBzi0jr2L43/ScdJ4ZySfmJUIbZcscsT9WcLX8xZbi838+pLhpVf6HBMkPzc5RRjO",
-	"k2pD8IZH0UKlotkQK5tp0UIwWh6LYf4q4idJsnt5gEdPvaJLcpGKjqZszaUa1rr2eVj+1qqwsj4sjD9o",
-	"qckm+5xomEIiGg2o3MU+AYykDgK30DgHaYmT0MbddX5m5Ek1wdYtd158E6WqSbd+BZUVVM8Rd+0rSKh3",
-	"RBf10IbTiMN5UaGKHmMRMTBIhFH0zYSNQpQ+MO0Nj+7xPQ2p3LXoRXuOA3OKlhceV1IwsTYl/2TKLSt8",
-	"v3/y9g2bavvajy9VGzr3BHV9YWLLxlY8xpxyyNW5spc/powaj9i23StTiDnPl6WSmU9GgySNyaDIeWx1",
-	"dLKzBQEgS11PWEtbsWqHQ63wKRHQB+mNM/EcFotWWXuc/n2QVwzip17kZjazVaHseGXPq0I826VaHEXn",
-	"RzxAGKLlAupL6FCJE+f/G7P2VERBxMjbLupPLi+hTD8jJIArC8oeQl778G/Xw9n8tv+5N/40nBlNVyAo",
-	"XUCwUG9bRzdYKZId2v5+GinOjbnTrEuYgRCLGIQfxfBW9KBJYB0Fur5ATnSSlt7tW69bx7Cr/ElunATt",
-	"ix05SSBIC3F/eezBee4gg3Cee1nhvRKTSFbnOjZtqOyfjHVA2g8IpQ4BM+V80AqI2iCVQu8mDhS10YVA",
-	"/pps7cVmO7ar7HiBHiP+rchkcExY+YtScrPo8vcvFF0eU7MTXf4y9Ox2hCok5ucKVzyy5VReUGfrMYzP",
-	"IVO5HVoKgfzRPvQSQC5sxbUPY7suHbatCxEJ4BevX+vVFbIOg31knnkJqOu5qgD9EjO6UJ4gvTz3ltKJ",
-	"qq9DZS26knqbDdFFVSIeCKdUS0lk7Gy7IVyQwClDYcuuqFQSA47zVMUDySkRSEgahtbwvWWmGkUX/U52",
-	"WjbV756AmS304q4wzKchxbokT+zr37/u9NHZY3mtl51e5U+64uzk4MDJw2n9u63eYxFa5RbHXYhlhNYW",
-	"9aFIz/Mh+QEukfQeLOYS5pkX4RIFvQ1zIKpX9cq5sCXkE9ssNjckbMII8qMVUQwhtr3AK110gWVcc0uV",
-	"OjN9lqDCAgmIT4SIOKTUEPLfRMcfmE5wCAcPmPkQoHChGxC5XX5t/A8VSLWuNnKwjAK8+0Ug1cNpnxWY",
-	"6BenOdMrspdWsYB9KYir0QENbgUfIa1tKylxYaxgTpTdazdpJROUhd++nL5qZ6vqKdc3oSOCmaaHrwT4",
-	"RXKAKSqlKyuYGpQ2fs8J2RREmujODeEnzg/RA+GcBqCSS92F0hD2ySMNCLrHgiBOFuZXuSImoDTuQYkM",
-	"bFR4TZxsd89BN0bikUp/BU6fRJyg9qaWSrLYxaUbU4X8YrsceSAMyvyZaURhyL+BhNNM8nWqy3aZsQjR",
-	"dqByoU6crUf2nKhezCyShpW515Qu1RwTIo8ia1gxOOivaBhwwoBGdQ8KxT9tf4ku+rClYaBQVXJick3j",
-	"ZhX7eAOsaW57T7bPl4paC+8HYao1vWolRFtVEEa6XYvuGuihEAtpGqkATbvNVPJMXLb1xiu2bqVKRL+w",
-	"1G8QptimpaDeihwvbPqY/liSc+tw3tYlrENRy8IG1ALyuXegubF+uoswW2goH9SnC9P7MJdN9uJqkPCY",
-	"61BS249N0qYWsrrHASYQWol0LlGO2G061lUSt7PtMI90apcmdLykIA9wMG0YizANwP4nQSStUJzsh6js",
-	"JfDzXQW0gm/0JY4olPoLIzBeyqiLAGzCfKNqdkeIRfpZZSBahHgJY6f7ye5hYba9aGvHnJ4oj8U6wBCq",
-	"3EaC93+uw0+kriNmKkzpnRFT68+E6sbtg9Ebp4A3dBZ+6+lkMvhNRsg0LDF18vNMlmA7gJR9bY6gjEqK",
-	"Q6d1qC1+A8+9L0oEdruAvNI04LxGJS8c0u82VS4O6E8MFYpFJCfxanKBNa6f/lB/S4QWK3y2BtRC8W1u",
-	"2WgsqwSmLCpl38TPB2ZdMplraHeqZf4vKAkDgUwuOVgIYNsopELaUgAiuWl+EepnoS8kLNE3yqC5hmki",
-	"Y68jBkGkbEk48kNM16m7TBTxhobqx4swhfp6xwsgrmUERu94pUR/uo4eGlTnTGFxfvHjuEyFpt4tU31D",
-	"rS3iDRi6VQVOeIRHkXyLsITfjYEiRzP2AF/XG+2egdcIYPfM/GqqYMXv2yiSJVy6h+u/XUYPrxS/45W9",
-	"NuyGhb163M5UeCkuHGc74aQeR5twq3t+EAYG2A3haE2FMg9ffrlSBVa66NJ8o4KVdDMkU4BJmfRuGOYE",
-	"BYRTgJcysml60Iz6jbbkWgHv7Xk8Q9zxwLQfREmSt65wS4Ib5jqR7FDjyXj4Ni/iMbbgTTNgeRk/Q7py",
-	"ShVvQ2qVP8/CV87rekGQWPfSWJT0zXIDDrSZ9xeRE3nwiT6kqvvESc7S1PQ5VyX6OGE+seigInZHA3Pv",
-	"J0npXkHZkuPK/bxs+ZLGVX/ev2DVn6ScSbrqz7MxuCevox1K+oi2POycdVZSbs5OT9//+tfuu+677vuz",
-	"v/7lP9+pAzEj/LBWI1P66smLv7EVBzJfaU3b+dKuwfnKDelzvjbFCJ1vTL7f09en/zsA",
+	"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",
+	"+r8DAA==",
 }
 
 // decodeSpec returns the embedded OpenAPI spec as raw JSON bytes,

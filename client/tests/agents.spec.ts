@@ -75,7 +75,7 @@ test('attachment is visible, ambiguity requires selection and deliberate disconn
   expect(second.requests).toHaveLength(0);
 });
 
-test('Ask Pi previews a saved question and an unchanged lost-response retry survives capture and independent drafts', async ({
+test('posting asks Pi once and an unchanged lost-response retry survives capture and independent drafts', async ({
   page,
 }) => {
   const peer = await pi();
@@ -85,8 +85,18 @@ test('Ask Pi previews a saved question and an unchanged lost-response retry surv
   await page
     .getByRole('textbox', { name: 'New discussion', exact: true })
     .fill('Explain the captured retry, without changing code.');
+  let firstKey = '';
+  await page.route('**/agent-invocations', async (route) => {
+    if (route.request().method() !== 'POST') return route.continue();
+    firstKey = route.request().headers()['idempotency-key'];
+    expect((await route.fetch()).status()).toBe(202);
+    await route.abort('failed');
+  });
   await page.getByRole('button', { name: 'Post discussion', exact: true }).click();
   const thread = page.locator('.thread');
+  await expect(thread).toContainText('Pi delivery unknown');
+  await expect.poll(() => peer.requests.length).toBe(1);
+  await expect(page.getByRole('dialog', { name: 'Pi request', exact: true })).not.toBeVisible();
   await expect(thread).toContainText('Explain the captured retry');
   const saved = (
     await fixture.get<Model['Discussion'][]>(`/v1/reviews/${fixture.review.id}/discussions`)
@@ -97,26 +107,10 @@ test('Ask Pi previews a saved question and an unchanged lost-response retry surv
     .getByRole('textbox', { name: 'Decision notes', exact: true })
     .fill('Keep this independent verdict draft.');
   await page.getByRole('button', { name: 'Close Review decision', exact: true }).click();
-  await thread.getByRole('button', { name: 'Ask Pi', exact: true }).click();
-  const preview = page.getByRole('dialog', { name: 'Pi request', exact: true });
-  await expect(preview).toContainText(saved.id);
-  await expect(preview).toContainText(fixture.revision.id);
-  expect(peer.requests).toHaveLength(0);
-  let firstKey = '';
-  await page.route('**/agent-invocations', async (route) => {
-    if (route.request().method() !== 'POST') return route.continue();
-    firstKey = route.request().headers()['idempotency-key'];
-    expect((await route.fetch()).status()).toBe(202);
-    await route.abort('failed');
-  });
-  await preview.getByRole('button', { name: 'Ask Pi', exact: true }).click();
-  await expect(preview.getByRole('alert')).toBeVisible();
-  await expect.poll(() => peer.requests.length).toBe(1);
   await expect(
-    preview.getByRole('button', { name: 'Retry original request', exact: true }),
+    thread.getByRole('button', { name: 'Retry original request', exact: true }),
   ).toBeEnabled();
   const later = await mutate<Model['Revision']>(`/v1/reviews/${fixture.review.id}/revisions`, {});
-  await page.getByRole('button', { name: 'Close Pi request', exact: true }).click();
   await expect(page.getByLabel('Revision', { exact: true })).toHaveValue(later.id);
   await page.getByRole('button', { name: /Configuration and tests/ }).click();
   await page.getByRole('button', { name: 'Review decision', exact: true }).click();
@@ -124,8 +118,8 @@ test('Ask Pi previews a saved question and an unchanged lost-response retry surv
     'Keep this independent verdict draft.',
   );
   await page.getByRole('button', { name: 'Close Review decision', exact: true }).click();
-  await page.getByRole('button', { name: 'Resume Pi request', exact: true }).click();
-  await expect(preview).toContainText(fixture.revision.id);
+  await page.getByRole('button', { name: /Asynchronous upload/ }).click();
+  await expect(thread).toContainText('Pi delivery unknown');
   await page.unroute('**/agent-invocations');
   const retry = page.waitForRequest(
     (request) => request.method() === 'POST' && request.url().endsWith('/agent-invocations'),
@@ -134,7 +128,7 @@ test('Ask Pi previews a saved question and an unchanged lost-response retry surv
     (response) =>
       response.request().method() === 'POST' && response.url().endsWith('/agent-invocations'),
   );
-  await preview.getByRole('button', { name: 'Retry original request', exact: true }).click();
+  await thread.getByRole('button', { name: 'Retry original request', exact: true }).click();
   const retried = await retry;
   expect(retried.headers()['idempotency-key']).toBe(firstKey);
   expect(retried.headers()['prunelle-agent']).toBeUndefined();
@@ -151,11 +145,7 @@ test('Ask Pi previews a saved question and an unchanged lost-response retry surv
     discussion_id: saved.id,
     body: 'An attributed explanation of the original captured retry.',
   });
-  await expect(preview.getByRole('article', { name: 'Pi request status' })).toContainText(
-    'SUCCEEDED',
-  );
-  await page.getByRole('button', { name: 'Close Pi request', exact: true }).click();
-  await page.getByRole('button', { name: /Asynchronous upload/ }).click();
+  await expect(thread).toContainText('Pi · SUCCEEDED');
   await expect(thread).toContainText('An attributed explanation of the original captured retry.');
   await expect(thread).toContainText(`pi:${peer.externalID}`);
   await expect(thread.locator('textarea')).toHaveValue('Keep this independent manual reply draft.');
@@ -163,6 +153,131 @@ test('Ask Pi previews a saved question and an unchanged lost-response retry surv
   const persisted = await fixture.get<Model['Discussion']>(`/v1/discussions/${saved.id}`);
   expect(persisted.messages).toHaveLength(2);
   expect(persisted.revision_id).toBe(fixture.revision.id);
+});
+
+test('busy comments queue on the server, survive closing the page and can be cancelled without losing comments', async ({
+  page,
+}) => {
+  await page.goto('/');
+  await expect(page.getByText('Pi · Unattached', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Discuss topic', exact: true }).click();
+  await page
+    .getByRole('textbox', { name: 'New discussion', exact: true })
+    .fill('A saved question without Pi.');
+  await page.getByRole('button', { name: 'Post discussion', exact: true }).click();
+  const thread = page.locator('.thread');
+  await expect(thread).toContainText('Not sent to Pi');
+  await expect(
+    page.getByRole('textbox', { name: 'New discussion', exact: true }),
+  ).not.toBeVisible();
+  const peer = await pi();
+  await expect(page.getByTitle(peer.externalID, { exact: true })).toContainText('READY');
+  expect(peer.requests).toHaveLength(0);
+  await thread.locator('textarea').fill('Now explain this follow-up.');
+  await thread.getByRole('button', { name: 'Reply', exact: true }).click();
+  await expect.poll(() => peer.requests.length).toBe(1);
+  await expect(thread.locator('textarea')).toHaveValue('');
+  await expect(thread).toContainText('Pi · PENDING');
+  expect(peer.requests[0].prompt).toContain('A saved question without Pi.');
+  expect(peer.requests[0].prompt).toContain('Now explain this follow-up.');
+  await thread.locator('textarea').fill('A second follow-up while Pi is busy.');
+  await thread.getByRole('button', { name: 'Reply', exact: true }).click();
+  const busyMessage = thread
+    .locator('.message')
+    .filter({ hasText: 'A second follow-up while Pi is busy.' });
+  await expect(busyMessage).toContainText('Pi · QUEUED');
+  await expect(thread.locator('textarea')).toHaveValue('');
+  await thread.locator('textarea').fill('Keep this comment but cancel its queued request.');
+  await thread.getByRole('button', { name: 'Reply', exact: true }).click();
+  const cancelledMessage = thread
+    .locator('.message')
+    .filter({ hasText: 'Keep this comment but cancel its queued request.' });
+  await cancelledMessage
+    .getByRole('button', { name: 'Cancel queued request', exact: true })
+    .click();
+  await expect(cancelledMessage).toContainText('CANCELLED');
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  const queue = page.getByRole('region', { name: 'Pi queue', exact: true });
+  await expect(queue).toContainText('all reviews');
+  await expect(queue).toContainText('A second follow-up while Pi is busy.');
+  await page.goto('about:blank');
+  await peer.complete(peer.requests[0], {
+    discussion_id: peer.requests[0].discussion_id!,
+    body: 'A reply to the dispatched follow-up.',
+  });
+  await expect.poll(() => peer.requests.length).toBe(2);
+  expect(peer.requests[1].prompt).toContain('A second follow-up while Pi is busy.');
+  await peer.complete(peer.requests[1], {
+    discussion_id: peer.requests[1].discussion_id!,
+    body: 'The server delivered this without the desktop.',
+  });
+  await page.goto('/');
+  await expect(thread).toContainText('The server delivered this without the desktop.');
+  await expect(cancelledMessage).toContainText('CANCELLED');
+  await expect(page.getByTitle(peer.externalID, { exact: true })).toContainText('READY');
+  expect(peer.requests).toHaveLength(2);
+  const persisted = await fixture.get<Model['Discussion']>(
+    `/v1/discussions/${peer.requests[0].discussion_id}`,
+  );
+  expect(persisted.messages.map((message) => message.body)).toEqual([
+    'A saved question without Pi.',
+    'Now explain this follow-up.',
+    'A second follow-up while Pi is busy.',
+    'Keep this comment but cancel its queued request.',
+    'A reply to the dispatched follow-up.',
+    'The server delivered this without the desktop.',
+  ]);
+  await page.route('**/agent-invocations', async (route) => {
+    if (route.request().method() !== 'GET') return route.continue();
+    await route.fulfill({
+      status: 503,
+      contentType: 'application/json',
+      body: JSON.stringify({ error: { message: 'Request history unavailable' } }),
+    });
+  });
+  await page.reload();
+  await expect(thread).toContainText('Pi delivery status unavailable');
+  await expect(thread.getByRole('button', { name: 'Send to Pi', exact: true })).toHaveCount(0);
+  expect(peer.requests).toHaveLength(2);
+});
+
+test('uncertain work pauses the Pi queue until a deliberate human resume without replay', async ({
+  page,
+}) => {
+  const peer = await pi();
+  await page.goto('/');
+  await expect(page.getByTitle(peer.externalID, { exact: true })).toContainText('READY');
+  await page.getByRole('button', { name: 'Discuss topic', exact: true }).click();
+  await page
+    .getByRole('textbox', { name: 'New discussion', exact: true })
+    .fill('This request will be uncertain.');
+  await page.getByRole('button', { name: 'Post discussion', exact: true }).click();
+  await expect.poll(() => peer.requests.length).toBe(1);
+  const thread = page.locator('.thread');
+  await thread.locator('textarea').fill('Wait for explicit resume.');
+  await thread.getByRole('button', { name: 'Reply', exact: true }).click();
+  await expect(thread).toContainText('Pi · QUEUED');
+  await peer.uncertain(peer.requests[0]);
+  await expect(page.getByTitle(peer.externalID, { exact: true })).toContainText('Queue paused');
+  await expect(thread).toContainText('queue paused');
+  await page.reload();
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  const settings = page.getByRole('dialog', { name: 'Settings · Integrations', exact: true });
+  await expect(settings).toContainText('Queue paused after an uncertain outcome');
+  expect(peer.requests).toHaveLength(1);
+  page.once('dialog', (dialog) => dialog.accept());
+  await settings.getByRole('button', { name: 'Resume queued comments', exact: true }).click();
+  await expect.poll(() => peer.requests.length).toBe(2);
+  expect(peer.requests[1].id).not.toBe(peer.requests[0].id);
+  expect(peer.requests[1].prompt).toContain('Wait for explicit resume.');
+  await peer.complete(peer.requests[1], {
+    discussion_id: peer.requests[1].discussion_id!,
+    body: 'Only the queued request continued.',
+  });
+  await page.getByRole('button', { name: 'Close Settings · Integrations', exact: true }).click();
+  await expect(thread).toContainText('Only the queued request continued.');
+  await expect(thread).toContainText('Pi · UNKNOWN');
+  expect(peer.requests).toHaveLength(2);
 });
 
 test('Prepare review directly publishes navigable generated explanations and canonical captured code', async ({

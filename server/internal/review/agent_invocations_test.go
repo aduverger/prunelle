@@ -30,6 +30,50 @@ func generationAgent(t *testing.T, e *env) (*agents.Service, agents.Session, *ag
 	return service, session, connection, actor
 }
 
+func TestQueueRecoveryDoesNotRedispatchAcceptedWorkAfterProcessLoss(t *testing.T) {
+	e := newEnv(t)
+	service, session, connection, agent := generationAgent(t, e)
+	question := must[review.Discussion](t)(e.svc.CreateDiscussion(e.ctx, e.review.ID, review.CreateDiscussionRequest{Body: "Question before process loss", Anchor: review.AnchorInput{Type: "REVIEW"}}, reviewer))
+	request := review.CreateAgentInvocationRequest{AgentSessionID: session.ID, RevisionID: e.revision.ID, Intent: "DISCUSS", DiscussionID: &question.ID, MessageID: &question.Messages[0].ID}
+	first := must[review.AgentInvocation](t)(service.CreateInvocation(e.ctx, e.review.ID, request, reviewer))
+	if sent := <-connection.Requests; sent.ID != first.ID {
+		t.Fatal("wrong initial dispatch")
+	}
+	second := must[review.AgentInvocation](t)(service.CreateInvocation(e.ctx, e.review.ID, request, reviewer))
+	// Discard the live-service state without a graceful disconnect, as in a process crash.
+	if err := e.svc.RecoverAgentInvocations(e.ctx); err != nil {
+		t.Fatal(err)
+	}
+	fresh := agents.NewService(e.db, e.svc)
+	resumed := must[*agents.Connection](t)(fresh.Connect(e.ctx, session.ID, agent))
+	t.Cleanup(func() { fresh.Disconnect(resumed) })
+	state := must[agents.Session](t)(fresh.UpdateState(e.ctx, session.ID, agents.StateRequest{ConnectionID: resumed.ID, Ready: true, Model: "fixture/reviewer", ContextID: "after-restart"}, agent))
+	if !state.QueuePaused {
+		t.Fatal("restart failed to persist queue uncertainty")
+	}
+	select {
+	case <-resumed.Requests:
+		t.Fatal("reconnect replayed or dispatched work before human acknowledgement")
+	default:
+	}
+	unknown := must[review.AgentInvocation](t)(fresh.GetInvocation(e.ctx, first.ID))
+	waiting := must[review.AgentInvocation](t)(fresh.GetInvocation(e.ctx, second.ID))
+	if unknown.Status != "UNKNOWN" || waiting.Status != "QUEUED" {
+		t.Fatal("recovery confused dispatched and never-dispatched work")
+	}
+	must[agents.Session](t)(fresh.ResumeQueue(e.ctx, session.ID, state.QueueVersion, reviewer))
+	if sent := <-resumed.Requests; sent.ID != second.ID || sent.ContextID != "after-restart" {
+		t.Fatal("resume did not use the new context for the queued request")
+	}
+	must[review.AgentInvocation](t)(fresh.CompleteInvocation(e.ctx, second.ID, review.CompleteAgentInvocationRequest{DiscussionID: &question.ID, Body: "Answer after resume"}, agent))
+	if err := e.svc.RecoverAgentInvocations(e.ctx); err != nil {
+		t.Fatal(err)
+	}
+	if current := must[agents.Session](t)(fresh.GetSession(e.ctx, session.ID)); current.QueuePaused {
+		t.Fatal("restart forgot the human acknowledgement of older UNKNOWN history")
+	}
+}
+
 func TestGeneratedReviewPublicationIsAtomicCanonicalAndReplayable(t *testing.T) {
 	e := newEnv(t)
 	imported := e.importFixture(t)

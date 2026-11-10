@@ -17,15 +17,17 @@ import (
 )
 
 type Session struct {
-	ID         string    `json:"id"`
-	ExternalID string    `json:"external_id"`
-	Cwd        string    `json:"cwd"`
-	Version    string    `json:"version"`
-	Local      bool      `json:"local"`
-	State      string    `json:"state"`
-	Model      string    `json:"model"`
-	CreatedAt  time.Time `json:"created_at"`
-	UpdatedAt  time.Time `json:"updated_at"`
+	ID           string    `json:"id"`
+	ExternalID   string    `json:"external_id"`
+	Cwd          string    `json:"cwd"`
+	Version      string    `json:"version"`
+	Local        bool      `json:"local"`
+	State        string    `json:"state"`
+	QueuePaused  bool      `json:"queue_paused"`
+	QueueVersion int       `json:"queue_version"`
+	Model        string    `json:"model"`
+	CreatedAt    time.Time `json:"created_at"`
+	UpdatedAt    time.Time `json:"updated_at"`
 }
 
 type RegisterRequest struct {
@@ -55,23 +57,41 @@ type BindingRequest struct {
 }
 
 type Connection struct {
-	ID        string
-	SessionID string
-	Requests  <-chan review.AgentInvocation
-	Done      <-chan struct{}
-	requests  chan review.AgentInvocation
-	done      chan struct{}
-	actor     review.Actor
-	ready     bool
-	model     string
-	contextID string
-	activeID  string
-	reserved  bool
+	ID              string
+	SessionID       string
+	Requests        <-chan review.AgentInvocation
+	Done            <-chan struct{}
+	requests        chan review.AgentInvocation
+	done            chan struct{}
+	actor           review.Actor
+	ready           bool
+	model           string
+	contextID       string
+	activeID        string
+	reserved        bool
+	dispatchPending bool
+}
+
+func (c *Connection) readyForDispatch() bool {
+	return c != nil && c.ready && c.activeID == "" && !c.reserved
+}
+
+type reviewService interface {
+	GetReview(context.Context, string) (review.Review, error)
+	ListReviews(context.Context) ([]review.Review, error)
+	CreateAgentInvocation(context.Context, string, review.CreateAgentInvocationRequest, review.AgentInvocationTarget, review.Actor) (review.AgentInvocation, error)
+	GetAgentInvocation(context.Context, string) (review.AgentInvocation, error)
+	ListAgentInvocations(context.Context, string) ([]review.AgentInvocation, error)
+	UpdateAgentInvocation(context.Context, string, string, review.UpdateAgentInvocationRequest, review.Actor) (review.AgentInvocation, error)
+	CompleteAgentInvocation(context.Context, string, string, review.CompleteAgentInvocationRequest, review.Actor) (review.AgentInvocation, error)
+	ClaimQueuedDiscussion(context.Context, review.AgentInvocationTarget, review.Actor) (*review.AgentInvocation, error)
+	ListAgentQueue(context.Context, string) ([]review.AgentInvocation, error)
+	CancelQueuedInvocation(context.Context, string, review.Actor) (review.AgentInvocation, error)
 }
 
 type Service struct {
 	db          *store.DB
-	reviews     *review.Service
+	reviews     reviewService
 	mu          sync.Mutex
 	connections map[string]*Connection
 }
@@ -117,12 +137,12 @@ func (s *Service) Register(ctx context.Context, req RegisterRequest, local bool,
 	return s.GetSession(ctx, id)
 }
 
-const sessionColumns = `id,external_id,cwd,version,local,created_at,updated_at`
+const sessionColumns = `id,external_id,cwd,version,local,created_at,updated_at,queue_paused,queue_version`
 
 func scanSession(scan func(...any) error) (Session, error) {
 	var session Session
 	var created, updated string
-	err := scan(&session.ID, &session.ExternalID, &session.Cwd, &session.Version, &session.Local, &created, &updated)
+	err := scan(&session.ID, &session.ExternalID, &session.Cwd, &session.Version, &session.Local, &created, &updated, &session.QueuePaused, &session.QueueVersion)
 	if err != nil {
 		return session, err
 	}
@@ -136,7 +156,7 @@ func (s *Service) state(session Session) Session {
 	if connection := s.connections[session.ID]; connection != nil {
 		session.State = "BUSY"
 		session.Model = connection.model
-		if connection.ready && !connection.reserved && connection.activeID == "" {
+		if connection.readyForDispatch() {
 			session.State = "READY"
 		}
 	}
@@ -253,6 +273,9 @@ func (s *Service) UpdateState(ctx context.Context, id string, req StateRequest, 
 	if err := s.recordSessionEvent(ctx, id, actor); err != nil {
 		return Session{}, err
 	}
+	if err := s.dispatchNext(ctx, id); err != nil {
+		return Session{}, err
+	}
 	return s.GetSession(ctx, id)
 }
 
@@ -318,11 +341,35 @@ func (s *Service) SetBinding(ctx context.Context, reviewID string, version int, 
 		if err != nil {
 			return err
 		}
+		rows, err := tx.QueryContext(ctx, `UPDATE agent_invocations SET status='CANCELLED',error='Pi selection changed before dispatch; no work was sent',updated_at=? WHERE review_id=? AND status='QUEUED' AND ( ? IS NULL OR agent_session_id != ? ) RETURNING id`, store.FormatTime(time.Now().UTC()), reviewID, target, target)
+		if err != nil {
+			return err
+		}
+		var cancelled []string
+		for rows.Next() {
+			var id string
+			if err := rows.Scan(&id); err != nil {
+				rows.Close()
+				return err
+			}
+			cancelled = append(cancelled, id)
+		}
+		err = rows.Err()
+		rows.Close()
+		if err != nil {
+			return err
+		}
+		for _, id := range cancelled {
+			if err := events.Append(ctx, tx, "agent.invocation.updated", id, &reviewID, events.Actor(actor.Author), actor.Login, time.Now().UTC()); err != nil {
+				return err
+			}
+		}
 		return events.Append(ctx, tx, "agent.binding.updated", reviewID, &reviewID, events.Actor(actor.Author), actor.Login, time.Now().UTC())
 	})
 	if err != nil {
 		return Binding{}, err
 	}
+	s.DispatchReady(ctx)
 	return s.GetBinding(ctx, reviewID)
 }
 func (s *Service) ResolveReview(ctx context.Context, reviewID string, actor review.Actor) error {
@@ -367,20 +414,50 @@ func (s *Service) CreateInvocation(ctx context.Context, reviewID string, req rev
 	if req.AgentSessionID != *binding.AgentSessionID {
 		return review.AgentInvocation{}, failure(review.CodePreconditionFailed, "the attached Pi changed; reload and review the target before sending")
 	}
+	if req.Intent == "DISCUSS" {
+		invocation, err := s.reviews.CreateAgentInvocation(ctx, reviewID, req, review.AgentInvocationTarget{SessionID: *binding.AgentSessionID}, actor)
+		if dispatchErr := s.dispatchNext(ctx, *binding.AgentSessionID); dispatchErr != nil {
+			slog.Warn("queued Pi comment awaits dispatch", "agent_session_id", *binding.AgentSessionID, "err", dispatchErr)
+		}
+		return invocation, err
+	}
+	queue, err := s.reviews.ListAgentQueue(ctx, *binding.AgentSessionID)
+	if err != nil {
+		return review.AgentInvocation{}, err
+	}
+	session, err := s.GetSession(ctx, *binding.AgentSessionID)
+	if err != nil {
+		return review.AgentInvocation{}, err
+	}
+	if session.QueuePaused {
+		return review.AgentInvocation{}, failure(review.CodeConflict, "Pi queue is paused; inspect uncertainty before resuming")
+	}
+	for _, pending := range queue {
+		if pending.Status == "QUEUED" {
+			return review.AgentInvocation{}, failure(review.CodeConflict, "Pi has queued comments; wait for the queue to drain")
+		}
+	}
 	s.mu.Lock()
 	connection := s.connections[*binding.AgentSessionID]
-	if connection == nil || !connection.ready || connection.activeID != "" || connection.reserved {
+	if !connection.readyForDispatch() {
 		s.mu.Unlock()
 		return review.AgentInvocation{}, failure(review.CodeConflict, "Pi is unavailable or busy; no work was queued")
 	}
 	connection.reserved = true
+	connection.dispatchPending = false
 	target := review.AgentInvocationTarget{SessionID: connection.SessionID, ConnectionID: connection.ID, Model: connection.model, ContextID: connection.contextID}
 	s.mu.Unlock()
 	invocation, err := s.reviews.CreateAgentInvocation(ctx, reviewID, req, target, actor)
 	s.mu.Lock()
-	connection.reserved = false
+	pending := connection.dispatchPending
+	connection.reserved, connection.dispatchPending = false, false
 	if err != nil {
 		s.mu.Unlock()
+		if pending {
+			if dispatchErr := s.dispatchNext(ctx, connection.SessionID); dispatchErr != nil {
+				slog.Warn("queued Pi comment awaits dispatch after rejected request", "agent_session_id", connection.SessionID, "err", dispatchErr)
+			}
+		}
 		return review.AgentInvocation{}, err
 	}
 	if s.connections[connection.SessionID] != connection {

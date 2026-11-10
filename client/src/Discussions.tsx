@@ -6,7 +6,7 @@ import { result, type API, type Model } from './api/client';
 import { useSubmit } from './hooks';
 import type { DiscussionTarget } from './model';
 import { Attribution, Notice } from './Views';
-import type { AgentAction } from './Agents';
+import { CancelQueuedRequest, type AgentAction, type CommentDeliveryController } from './Agents';
 
 export function anchorLabel(anchor: DiscussionTarget['anchor'] | Model['Anchor']) {
   const range = anchor.code_range;
@@ -15,7 +15,11 @@ export function anchorLabel(anchor: DiscussionTarget['anchor'] | Model['Anchor']
     : `${anchor.type.replaceAll('_', ' ')} ${anchor.element_id || ''}`;
 }
 
-export function useDiscussionComposer(api: API, reviewID: string) {
+export function useDiscussionComposer(
+  api: API,
+  reviewID: string,
+  onPosted: (discussion: Model['Discussion'], message: Model['Message']) => void,
+) {
   const [target, setTarget] = useState<DiscussionTarget | null>(null);
   const [draftTarget, setDraftTarget] = useState<DiscussionTarget | null>(null);
   const [body, setBody] = useState('');
@@ -35,14 +39,15 @@ export function useDiscussionComposer(api: API, reviewID: string) {
     if (!currentTarget || !body.trim()) return;
     const request = { revision_id: currentTarget.revisionID, anchor: currentTarget.anchor, body };
     if (
-      await action.submit([reviewID, request], (key) =>
-        result(
+      await action.submit([reviewID, request], async (key) => {
+        const discussion = await result(
           api.POST('/v1/reviews/{reviewId}/discussions', {
             params: { path: { reviewId: reviewID }, header: { 'Idempotency-Key': key } },
             body: request,
           }),
-        ),
-      )
+        );
+        onPosted(discussion, discussion.messages[0]);
+      })
     )
       discard();
   }
@@ -77,6 +82,7 @@ const DiscussionContext = createContext<{
   revisions: Model['Revision'][];
   anchorStatuses: Model['DiscussionAnchorStatus'][];
   requestAgent: (action: AgentAction) => void;
+  delivery: CommentDeliveryController;
   register: (key: string, id: string, node: HTMLElement | null, reveal?: number) => void;
 } | null>(null);
 
@@ -105,6 +111,7 @@ export function DiscussionProvider({
   onDraftChange,
   anchorStatuses,
   requestAgent,
+  delivery,
   children,
 }: {
   api: API;
@@ -115,6 +122,7 @@ export function DiscussionProvider({
   onDraftChange: (dirty: boolean) => void;
   anchorStatuses: Model['DiscussionAnchorStatus'][];
   requestAgent: (action: AgentAction) => void;
+  delivery: CommentDeliveryController;
   children: React.ReactNode;
 }) {
   const [hosts, setHosts] = useState<Record<string, Host>>({});
@@ -150,7 +158,7 @@ export function DiscussionProvider({
   useEffect(() => () => onDraftChange(false), [onDraftChange]);
   return (
     <DiscussionContext.Provider
-      value={{ composer, discussions, revisions, anchorStatuses, requestAgent, register }}
+      value={{ composer, discussions, revisions, anchorStatuses, requestAgent, delivery, register }}
     >
       {children}
       {Object.entries(hosts)
@@ -183,7 +191,7 @@ function ComposerForm({ composer: c }: { composer: Composer }) {
       }}
     >
       <strong>New discussion · {c.target.label}</strong>
-      <small>Against {c.target.revisionID}</small>
+      <small>Against {c.target.revisionID} · Posting also asks the attached Pi.</small>
       {c.moved && (
         <Notice>
           Your draft stays on its original anchor. Post or discard it before starting another.
@@ -340,7 +348,7 @@ function ThreadController({
   open: () => void;
   reportDraft: (id: string, dirty: boolean) => void;
 }) {
-  const { requestAgent } = useDiscussions();
+  const { requestAgent, delivery } = useDiscussions();
   const [reply, setReply] = useState('');
   const revealed = useRef<number>(undefined);
   const reveal = hosts.find(([, host]) => host.reveal !== undefined)?.[1].reveal;
@@ -354,14 +362,15 @@ function ThreadController({
   async function post() {
     if (!reply.trim()) return;
     if (
-      await replyAction.submit([d.id, reply], (key) =>
-        result(
+      await replyAction.submit([d.id, reply], async (key) => {
+        const message = await result(
           api.POST('/v1/discussions/{discussionId}/messages', {
             params: { path: { discussionId: d.id }, header: { 'Idempotency-Key': key } },
             body: { body: reply },
           }),
-        ),
-      )
+        );
+        delivery.post(d, message);
+      })
     )
       setReply('');
   }
@@ -408,13 +417,12 @@ function ThreadController({
             <Attribution author={m.author} />
             <time>{new Date(m.created_at).toLocaleString()}</time>
             {m.author.kind === 'HUMAN' && (
-              <button
-                className="link"
-                type="button"
-                onClick={() => requestAgent({ intent: 'DISCUSS', discussion: d, message: m })}
-              >
-                Ask Pi
-              </button>
+              <CommentDeliveryStatus
+                api={api}
+                messageID={m.id}
+                delivery={delivery}
+                preview={() => requestAgent({ intent: 'DISCUSS', discussion: d, message: m })}
+              />
             )}
           </div>
           <Markdown>{m.body}</Markdown>
@@ -429,7 +437,7 @@ function ThreadController({
         <textarea
           aria-label={'Reply to ' + anchorLabel(d.anchor)}
           disabled={busy}
-          placeholder="Reply…"
+          placeholder="Reply… (also asks Pi)"
           value={reply}
           onChange={(event) => setReply(event.target.value)}
         />
@@ -456,6 +464,73 @@ function ThreadController({
     </article>
   );
   return hosts.map(([key, host]) => createPortal(content, host.node, key));
+}
+
+function CommentDeliveryStatus({
+  api,
+  messageID,
+  delivery,
+  preview,
+}: {
+  api: API;
+  messageID: string;
+  delivery: CommentDeliveryController;
+  preview: () => void;
+}) {
+  const { delivery: attempt, invocation, paused, error, loading } = delivery.status(messageID);
+  if (attempt?.busy) return <small>Sending to Pi…</small>;
+  if (attempt?.uncertain)
+    return (
+      <>
+        <small title={attempt.error}>Pi delivery unknown. Inspect Pi before retrying.</small>
+        <button className="link" type="button" onClick={() => delivery.retry(messageID)}>
+          Retry original request
+        </button>
+      </>
+    );
+  if (error)
+    return (
+      <small title={error.message}>Pi delivery status unavailable · refresh to inspect.</small>
+    );
+  if (!attempt && loading) return <small>Loading Pi delivery…</small>;
+  if (invocation)
+    return (
+      <>
+        <small title={invocation.error || undefined}>
+          Pi · {invocation.status}
+          {paused && invocation.status === 'QUEUED' ? ' · queue paused' : ''}
+        </small>
+        <CancelQueuedRequest api={api} invocation={invocation} />
+        {['FAILED', 'UNKNOWN', 'CANCELLED'].includes(invocation.status) && (
+          <button
+            className="link"
+            type="button"
+            onClick={() => {
+              if (
+                invocation.status === 'UNKNOWN' &&
+                !window.confirm(
+                  'Pi may already have answered or acted. Inspect the original request in Settings and the Pi conversation before asking again. Continue?',
+                )
+              )
+                return;
+              preview();
+            }}
+          >
+            Request another answer
+          </button>
+        )}
+      </>
+    );
+  return (
+    <>
+      <small title={attempt?.error}>
+        Not sent to Pi{attempt?.error ? ` · ${attempt.error}` : ''}
+      </small>
+      <button className="link" type="button" onClick={preview}>
+        Send to Pi
+      </button>
+    </>
+  );
 }
 
 export function Decisions({

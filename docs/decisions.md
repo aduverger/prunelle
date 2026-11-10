@@ -74,7 +74,7 @@ Rex documents its API methods but not a wire protocol. The Rex backend runs `rex
 
 ## D12. M4 connects directly to existing Pi and retires runtime backends
 
-**Status:** implemented on the M4 branch; validation and implementation ledger are in [the M4 plan](plans/m4.md). Merge, deployment and live-provider qualification remain separate.
+**Status:** M4 merged in PR #11 (`c1b0c78`); validation and implementation ledger are in [the M4 plan](plans/m4.md). Deployment and live-provider qualification remain separate. D13 supersedes the comment-dispatch/history/reply interaction below.
 
 **Decision:** a companion extension in the existing Pi conversation connects outward to Prunelle's existing authenticated API. Reuse canonical `discussion_id` for continuing threads and an explicit invocation ID for each request/result. Pi retrieves discussion history by ID when needed instead of receiving every earlier message again. No RPC child, new listener, terminal scraping or second credential is required. A fork-per-review option is future work, not a current setting or per-discussion fork mechanism.
 
@@ -83,3 +83,23 @@ Rex documents its API methods but not a wire protocol. The Rex backend runs `rex
 **Content/actions:** first generate topics and explanations, not attention-only analysis or automatic findings. Explicit Prepare review publishes validated generated content directly; a topic-acceptance queue is not required. Preserve existing human content/grouping and canonical IDs under D11. Questions, generation and implementation are distinct explicit actions; merely saving a comment or decision invokes nothing. Use normal Pi permissions in the same conversation, not an asserted read-only sandbox. Only a deliberate human action sends a saved REQUEST_CHANGES decision as implementation work; replies/completion do not approve, resolve, capture or publish automatically.
 
 **Retirement/tradeoff:** remove Rex and the otherwise-unused runtime-backend layer, including configuration, CLI/API/UI, observers and runtime records. This supersedes the original specification's Rex-first infrastructure requirement and D6. We lose independent terminal/process visibility when Pi disconnects; report unavailable/unknown rather than infer process death. Pi may still be hosted by Rex; Prunelle neither requires nor controls that host. Retire old runtime links through a new migration, never guess Pi identities from Rex IDs or rewrite released migrations. Stop/back up and coordinate upgrades as before; no user's actual Rex process or installation is removed.
+
+## D13. Posting a desktop comment asks Pi; the extension owns reply routing
+
+**User decision:** remove the routine second **Ask Pi** click. Posting a new discussion or reply saves it and requests an explanation from the attached Pi. Include exactly the selected captured line/range, never surrounding code. Pi answers normally in its existing conversation; the extension returns the final answer rather than asking the model to construct a reply API/tool call. Prepare review still requires structured generated content; implementation remains a separate explicit saved-decision action.
+
+**Supersession:** D14 replaces the no-queue delivery behavior below with a durable server-side comment queue; the selected-line and automatic-answer decisions remain.
+
+**Mechanism/tradeoff:** the desktop calls the existing save and invocation APIs separately. Failed/busy/unavailable dispatch cannot undo or repost the saved comment, and is visibly unsent or uncertain. Review-owned in-memory request identities permit deliberate unchanged retry; no persistent outbox, automatic retry or reconnect execution. Direct API writes and imported/agent messages do not implicitly dispatch, avoiding feedback loops and preserving the existing API contract. CLI `agent ask` remains explicit.
+
+**Context/correlation:** the server assembles the prompt from the stored anchor and earlier messages through the chosen input, not live source or the full semantic graph. The extension retains canonical routing IDs and only publishes final assistant text after the correlated run settles successfully. Thinking, intermediate/tool output, aborted/incomplete/error answers and unrelated input are not replies. Publication uncertainty is visible, never silently retried. See the [implementation ledger](plans/pi-comments.md).
+
+## D14. Prunelle owns a durable FIFO comment queue per Pi conversation
+
+**User decision:** queue multiple comments at the Prunelle server boundary, not inside the Pi extension. Preserve ordering across reviews and continue while the desktop is closed. Pending comments are cancellable; uncertainty pauses delivery and already-dispatched work is never automatically replayed.
+
+**Behavior:** DISCUSS requests enter the selected Pi’s durable queue, including when busy/offline/paused. The server dispatches one at a time after completion and actual readiness. Never-dispatched requests survive reconnect/restart; restart/disconnect uncertainty requires explicit human resume with the inspected queue version. Cancelling retains the comment. Changing the review’s selected Pi cancels its queued entries instead of redirecting them. Deleting a review removes its queue entries and preserves other reviews’ work.
+
+**Boundaries:** attachment alone creates no work. No target still means saved/unsent, not a guessed agent. PREPARE_REVIEW and IMPLEMENT remain deliberate, immediate-only actions requiring a ready Pi and an empty/unpaused comment queue. Model/context identity is captured at dispatch, not when a comment waits in line. The extension continues receiving only one request and reporting settled readiness. No model-facing queue tools, retry leases, terminal scraping or second transport were added.
+
+**Storage/operations:** migration 0008 extends invocation states and stores queue pause/version on the logical Pi identity. Ordering follows server transaction acceptance across reviews. Stop/back up the complete data directory, coordinate versions, and restore the backup for rollback. See the [queue implementation ledger](plans/pi-comment-queue.md).

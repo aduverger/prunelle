@@ -10,6 +10,8 @@ import {
   fauxAssistantMessage,
   fauxProvider,
   fauxToolCall,
+  fauxText,
+  fauxThinking,
   type FauxResponseStep,
 } from "@earendil-works/pi-ai";
 import {
@@ -42,6 +44,7 @@ async function fixture(responses: FauxResponseStep[]) {
   }[] = [];
   let stream: ServerResponse | undefined;
   const missingInvocations = new Set<string>();
+  const rejectedCompletions = new Set<string>();
   const server = createServer(async (request, response) => {
     const chunks: Buffer[] = [];
     for await (const chunk of request) chunks.push(Buffer.from(chunk));
@@ -69,6 +72,17 @@ async function fixture(responses: FauxResponseStep[]) {
       response.statusCode = 404;
       response.end(
         JSON.stringify({ error: { message: "The review was deleted" } }),
+      );
+      return;
+    }
+    if (
+      invocationID &&
+      rejectedCompletions.has(invocationID) &&
+      request.url?.endsWith("/complete")
+    ) {
+      response.statusCode = 500;
+      response.end(
+        JSON.stringify({ error: { message: "Publication response failed" } }),
       );
       return;
     }
@@ -152,6 +166,7 @@ async function fixture(responses: FauxResponseStep[]) {
     requests,
     errors,
     missingInvocations,
+    rejectedCompletions,
     send(
       id: string,
       discussionID = "dis_original",
@@ -181,29 +196,21 @@ async function fixture(responses: FauxResponseStep[]) {
   };
 }
 
-test("the existing Pi conversation looks up history and returns a structured correlated reply", async () => {
+test("the existing Pi conversation returns normal answers to the correct discussions", async () => {
   const f = await fixture([
     fauxAssistantMessage("Original coding context is retained."),
     fauxAssistantMessage(
-      fauxToolCall("prunelle_discussion", { discussion_id: "dis_original" }),
+      [
+        fauxText("Looking up the earlier thread."),
+        fauxToolCall("prunelle_discussion", { discussion_id: "dis_original" }),
+      ],
       { stopReason: "toolUse" },
     ),
-    fauxAssistantMessage(
-      fauxToolCall("prunelle_reply", {
-        invocation_id: "ain_first",
-        discussion_id: "dis_original",
-        body: "The original snapshot retries without deduplication.",
-      }),
-      { stopReason: "toolUse" },
-    ),
-    fauxAssistantMessage(
-      fauxToolCall("prunelle_reply", {
-        invocation_id: "ain_second",
-        discussion_id: "dis_second",
-        body: "This answer belongs to the other discussion.",
-      }),
-      { stopReason: "toolUse" },
-    ),
+    fauxAssistantMessage([
+      fauxThinking("Private reasoning is not a discussion reply."),
+      fauxText("The original snapshot retries without deduplication."),
+    ]),
+    fauxAssistantMessage("This answer belongs to the other discussion."),
   ]);
   try {
     const id = f.session.sessionId;
@@ -241,7 +248,80 @@ test("the existing Pi conversation looks up history and returns a structured cor
         ["ain_second", "dis_second"],
       ],
     );
+    assert.deepEqual(
+      replies.map((r) => r.body.body),
+      [
+        "The original snapshot retries without deduplication.",
+        "This answer belongs to the other discussion.",
+      ],
+    );
+    assert.ok(
+      !f.session.getAllTools().some((tool) => tool.name === "prunelle_reply"),
+    );
     assert.ok(replies.every((r) => r.author === `pi:${id}`));
+    assert.deepEqual(f.errors, []);
+  } finally {
+    await f.close();
+  }
+});
+
+test("incomplete or aborted answers never become discussion replies", async () => {
+  for (const response of [
+    fauxAssistantMessage(""),
+    fauxAssistantMessage("Incomplete answer", { stopReason: "length" }),
+    fauxAssistantMessage("Failed answer", {
+      stopReason: "error",
+      errorMessage: "Controlled provider failure",
+    }),
+    fauxAssistantMessage("Aborted answer", { stopReason: "aborted" }),
+  ]) {
+    const f = await fixture([response]);
+    try {
+      f.send("ain_incomplete");
+      await eventually(() =>
+        f.requests.some(
+          (request) =>
+            request.path === "/v1/agent-invocations/ain_incomplete/state" &&
+            request.body.status === "FAILED",
+        ),
+      );
+      await eventually(
+        () => !f.session.isStreaming && f.requests.at(-1)?.body?.ready === true,
+      );
+      assert.equal(
+        f.requests.filter((request) => request.path.endsWith("/complete"))
+          .length,
+        0,
+      );
+      assert.deepEqual(f.errors, []);
+    } finally {
+      await f.close();
+    }
+  }
+});
+
+test("an unconfirmed answer publication stays unknown and is not retried automatically", async () => {
+  const f = await fixture([fauxAssistantMessage("The answer remains in Pi.")]);
+  try {
+    f.rejectedCompletions.add("ain_unconfirmed");
+    f.send("ain_unconfirmed");
+    await eventually(() =>
+      f.requests.some(
+        (request) =>
+          request.path === "/v1/agent-invocations/ain_unconfirmed/state" &&
+          request.body.status === "UNKNOWN",
+      ),
+    );
+    await eventually(
+      () => !f.session.isStreaming && f.requests.at(-1)?.body?.ready === true,
+    );
+    assert.equal(
+      f.requests.filter((request) => request.path.endsWith("/complete")).length,
+      1,
+    );
+    assert.ok(
+      JSON.stringify(f.session.messages).includes("The answer remains in Pi."),
+    );
     assert.deepEqual(f.errors, []);
   } finally {
     await f.close();
@@ -293,14 +373,7 @@ test("settling after review deletion releases the conversation for a later reque
         "The removed review cannot receive a result.",
       );
     },
-    fauxAssistantMessage(
-      fauxToolCall("prunelle_reply", {
-        invocation_id: "ain_after_deletion",
-        discussion_id: "dis_original",
-        body: "This belongs to the surviving request.",
-      }),
-      { stopReason: "toolUse" },
-    ),
+    fauxAssistantMessage("This belongs to the surviving request."),
   ]);
   try {
     f.send("ain_deleted");
@@ -428,14 +501,7 @@ test("unrelated local input invalidates correlation rather than attributing its 
   const f = await fixture([
     async () => {
       await waiting;
-      return fauxAssistantMessage(
-        fauxToolCall("prunelle_reply", {
-          invocation_id: "ain_interrupted",
-          discussion_id: "dis_original",
-          body: "Must not be attributed.",
-        }),
-        { stopReason: "toolUse" },
-      );
+      return fauxAssistantMessage("Must not be attributed.");
     },
     fauxAssistantMessage("Answering the local question instead."),
   ]);
