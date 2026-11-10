@@ -57,27 +57,41 @@ type BindingRequest struct {
 }
 
 type Connection struct {
-	ID        string
-	SessionID string
-	Requests  <-chan review.AgentInvocation
-	Done      <-chan struct{}
-	requests  chan review.AgentInvocation
-	done      chan struct{}
-	actor     review.Actor
-	ready     bool
-	model     string
-	contextID string
-	activeID  string
-	reserved  bool
+	ID              string
+	SessionID       string
+	Requests        <-chan review.AgentInvocation
+	Done            <-chan struct{}
+	requests        chan review.AgentInvocation
+	done            chan struct{}
+	actor           review.Actor
+	ready           bool
+	model           string
+	contextID       string
+	activeID        string
+	reserved        bool
+	dispatchPending bool
 }
 
 func (c *Connection) readyForDispatch() bool {
 	return c != nil && c.ready && c.activeID == "" && !c.reserved
 }
 
+type reviewService interface {
+	GetReview(context.Context, string) (review.Review, error)
+	ListReviews(context.Context) ([]review.Review, error)
+	CreateAgentInvocation(context.Context, string, review.CreateAgentInvocationRequest, review.AgentInvocationTarget, review.Actor) (review.AgentInvocation, error)
+	GetAgentInvocation(context.Context, string) (review.AgentInvocation, error)
+	ListAgentInvocations(context.Context, string) ([]review.AgentInvocation, error)
+	UpdateAgentInvocation(context.Context, string, string, review.UpdateAgentInvocationRequest, review.Actor) (review.AgentInvocation, error)
+	CompleteAgentInvocation(context.Context, string, string, review.CompleteAgentInvocationRequest, review.Actor) (review.AgentInvocation, error)
+	ClaimQueuedDiscussion(context.Context, review.AgentInvocationTarget, review.Actor) (*review.AgentInvocation, error)
+	ListAgentQueue(context.Context, string) ([]review.AgentInvocation, error)
+	CancelQueuedInvocation(context.Context, string, review.Actor) (review.AgentInvocation, error)
+}
+
 type Service struct {
 	db          *store.DB
-	reviews     *review.Service
+	reviews     reviewService
 	mu          sync.Mutex
 	connections map[string]*Connection
 }
@@ -430,13 +444,20 @@ func (s *Service) CreateInvocation(ctx context.Context, reviewID string, req rev
 		return review.AgentInvocation{}, failure(review.CodeConflict, "Pi is unavailable or busy; no work was queued")
 	}
 	connection.reserved = true
+	connection.dispatchPending = false
 	target := review.AgentInvocationTarget{SessionID: connection.SessionID, ConnectionID: connection.ID, Model: connection.model, ContextID: connection.contextID}
 	s.mu.Unlock()
 	invocation, err := s.reviews.CreateAgentInvocation(ctx, reviewID, req, target, actor)
 	s.mu.Lock()
-	connection.reserved = false
+	pending := connection.dispatchPending
+	connection.reserved, connection.dispatchPending = false, false
 	if err != nil {
 		s.mu.Unlock()
+		if pending {
+			if dispatchErr := s.dispatchNext(ctx, connection.SessionID); dispatchErr != nil {
+				slog.Warn("queued Pi comment awaits dispatch after rejected request", "agent_session_id", connection.SessionID, "err", dispatchErr)
+			}
+		}
 		return review.AgentInvocation{}, err
 	}
 	if s.connections[connection.SessionID] != connection {

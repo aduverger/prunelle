@@ -17,18 +17,28 @@ func (s *Service) dispatchNext(ctx context.Context, sessionID string) error {
 	for {
 		s.mu.Lock()
 		connection := s.connections[sessionID]
+		if connection != nil && connection.reserved {
+			connection.dispatchPending = true
+			s.mu.Unlock()
+			return nil
+		}
 		if !connection.readyForDispatch() {
 			s.mu.Unlock()
 			return nil
 		}
 		connection.reserved = true
+		connection.dispatchPending = false
 		target := review.AgentInvocationTarget{SessionID: sessionID, ConnectionID: connection.ID, Model: connection.model, ContextID: connection.contextID}
 		s.mu.Unlock()
 		invocation, err := s.reviews.ClaimQueuedDiscussion(ctx, target, connection.actor)
 		s.mu.Lock()
-		connection.reserved = false
+		pending := connection.dispatchPending
+		connection.reserved, connection.dispatchPending = false, false
 		if err != nil || invocation == nil {
 			s.mu.Unlock()
+			if err == nil && pending {
+				continue
+			}
 			return err
 		}
 		if invocation.Status == "CANCELLED" {
