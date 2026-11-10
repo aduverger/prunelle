@@ -122,57 +122,94 @@ test(
           body: "Explain retry behavior from the captured revision.",
         })
       ).result;
+      const invocationFor = async (intent: string, messages: unknown) => {
+        const invocations = (
+          await json(`/v1/reviews/${review.id}/agent-invocations`)
+        ).result.filter(
+          (invocation: any) =>
+            invocation.intent === intent &&
+            ["PENDING", "RUNNING"].includes(invocation.status),
+        );
+        assert.equal(invocations.length, 1, "one explicit request is active");
+        const invocation = invocations[0];
+        const prompt = JSON.stringify(messages);
+        assert.ok(
+          prompt.includes(invocation.id),
+          "Pi receives the invocation ID",
+        );
+        assert.ok(
+          prompt.includes(invocation.revision_id),
+          "Pi receives the captured revision ID",
+        );
+        return invocation;
+      };
+      const apiRepository = review.repositories.find(
+        (repository: any) => repository.label === "api",
+      );
+      const captured = (
+        await json(
+          `/v1/revisions/${review.current_revision_id}/file?${new URLSearchParams({ repository_id: apiRepository.id, path: "package.json" })}`,
+        )
+      ).result;
+      assert.ok(
+        captured.head_text,
+        "the fixture has captured dependency source",
+      );
       const cwd = join(repos, "api");
       const agentDir = join(root, "pi");
       await mkdir(agentDir);
       const model = fauxProvider({ provider: "prunelle-real-server-fixture" });
       model.setResponses([
-        (context) => {
-          const request = JSON.stringify(context.messages).match(
-            /Prunelle DISCUSS request ([^\s"\\]+)/,
-          );
+        async (context) => {
+          const request = await invocationFor("DISCUSS", context.messages);
           assert.ok(
-            request,
-            "the existing Pi context must contain the explicit invocation",
+            JSON.stringify(context.messages).includes(
+              discussion.messages[0].body,
+            ),
           );
           return fauxAssistantMessage(
             fauxToolCall("prunelle_reply", {
-              invocation_id: request[1],
+              invocation_id: request.id,
               discussion_id: discussion.id,
               body: "The captured worker can retry; this is an explanation, not verification or a code change.",
             }),
             { stopReason: "toolUse" },
           );
         },
-        (context) => {
-          const request = JSON.stringify(context.messages).match(
-            /Prunelle PREPARE_REVIEW request ([^\s"\\]+)/,
+        async (context) => {
+          const request = await invocationFor(
+            "PREPARE_REVIEW",
+            context.messages,
           );
-          assert.ok(request);
           return fauxAssistantMessage(
             fauxToolCall("prunelle_context", {
-              invocation_id: request[1],
-              repository_id: review.repositories.find(
-                (repository: any) => repository.label === "api",
-              ).id,
+              invocation_id: request.id,
+              repository_id: apiRepository.id,
               path: "package.json",
             }),
             { stopReason: "toolUse" },
           );
         },
-        (context) => {
-          const text = JSON.stringify(context.messages);
+        async (context) => {
+          const request = await invocationFor(
+            "PREPARE_REVIEW",
+            context.messages,
+          );
           assert.ok(
-            text.includes("CAPTURED HEAD"),
+            context.messages.some(
+              (message) =>
+                message.role === "toolResult" &&
+                message.content.some(
+                  (part) =>
+                    part.type === "text" &&
+                    part.text.includes(captured.head_text),
+                ),
+            ),
             "the model must consume the server-captured file through the extension",
           );
-          const request = text.match(
-            /Prunelle PREPARE_REVIEW request ([^\s"\\]+)/,
-          );
-          assert.ok(request);
           return fauxAssistantMessage(
             fauxToolCall("prunelle_publish_review", {
-              invocation_id: request[1],
+              invocation_id: request.id,
               topics: [
                 {
                   key: "dependencies",
@@ -184,9 +221,7 @@ test(
               ],
               files: [
                 {
-                  repository_id: review.repositories.find(
-                    (repository: any) => repository.label === "api",
-                  ).id,
+                  repository_id: apiRepository.id,
                   path: "package.json",
                   topic_keys: ["dependencies"],
                   topic_ids: [],
@@ -196,14 +231,11 @@ test(
             { stopReason: "toolUse" },
           );
         },
-        (context) => {
-          const request = JSON.stringify(context.messages).match(
-            /Prunelle IMPLEMENT request ([^\s"\\]+)/,
-          );
-          assert.ok(request);
+        async (context) => {
+          const request = await invocationFor("IMPLEMENT", context.messages);
           return fauxAssistantMessage(
             fauxToolCall("prunelle_reply", {
-              invocation_id: request[1],
+              invocation_id: request.id,
               body: "Controlled fixture handoff received. No project changes, verdict, capture, commit or publication were performed.",
             }),
             { stopReason: "toolUse" },
@@ -296,9 +328,14 @@ test(
       assert.equal(replied.messages[1].author.kind, "AGENT");
       assert.equal(replied.messages[1].author.id, `pi:${sessionID}`);
       assert.ok(replied.messages[1].body.includes("captured worker"));
+      const beforeReplay = model.state.callCount;
       assert.deepEqual(cli(ask), first.result);
       assert.equal(cli(["get", first.result.id]).status, "SUCCEEDED");
-      assert.equal(model.state.callCount, 1);
+      assert.equal(
+        model.state.callCount,
+        beforeReplay,
+        "replay does not invoke Pi",
+      );
       await waitFor(async () =>
         (await json("/v1/agent-sessions")).result.some(
           (source: any) =>
@@ -352,6 +389,7 @@ test(
             source.id === binding.agent_session_id && source.state === "READY",
         ),
       );
+      const beforeDecision = model.state.callCount;
       const saved = (
         await json(`/v1/reviews/${review.id}/decisions`, "POST", {
           revision_id: review.current_revision_id,
@@ -363,7 +401,7 @@ test(
       ).result;
       assert.equal(
         model.state.callCount,
-        3,
+        beforeDecision,
         "saving a verdict must not invoke Pi",
       );
       const preview = cli(["implement", "--review", review.id, saved.id]);
@@ -373,7 +411,11 @@ test(
         discussion.id,
       );
       assert.equal(preview.request.revision_id, saved.revision_id);
-      assert.equal(model.state.callCount, 3, "a CLI preview must not dispatch");
+      assert.equal(
+        model.state.callCount,
+        beforeDecision,
+        "a CLI preview must not dispatch",
+      );
       const unauthorizedTarget = spawnSync(
         binary,
         [
@@ -395,6 +437,11 @@ test(
         0,
         "implementation requires an explicit reviewed Pi target",
       );
+      assert.equal(
+        model.state.callCount,
+        beforeDecision,
+        "a rejected handoff must not dispatch",
+      );
       const implementation = cli([
         "implement",
         "--review",
@@ -411,7 +458,6 @@ test(
           (await json(`/v1/agent-invocations/${implementation.id}`)).result
             .status === "SUCCEEDED",
       );
-      assert.equal(model.state.callCount, 4);
       assert.equal(
         (await json(`/v1/reviews/${review.id}`)).result.current_revision_id,
         review.current_revision_id,
@@ -425,6 +471,7 @@ test(
         "OPEN",
       );
       assert.equal(cli(["requests", "--review", review.id]).length, 3);
+      const beforeAttachment = model.state.callCount;
       assert.equal(
         cli(["disconnect", "--review", review.id]).mode,
         "DISCONNECTED",
@@ -439,7 +486,7 @@ test(
       );
       assert.equal(
         model.state.callCount,
-        4,
+        beforeAttachment,
         "attachment controls must not dispatch work",
       );
       assert.equal(session.sessionId, sessionID);

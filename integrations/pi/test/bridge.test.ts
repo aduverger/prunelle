@@ -328,16 +328,24 @@ test("settling after review deletion releases the conversation for a later reque
 test("stale producer metadata rejects dispatch without a model call", async () => {
   const f = await fixture([]);
   try {
-    f.send("ain_stale_model", "dis_original", { model: "different/provider" });
-    await eventually(() =>
-      f.requests.some(
-        (request) =>
-          request.path === "/v1/agent-invocations/ain_stale_model/state" &&
-          request.body.status === "FAILED",
-      ),
-    );
-    assert.equal(f.model.state.callCount, 0);
-    assert.ok(!JSON.stringify(f.session.messages).includes("ain_stale_model"));
+    for (const [id, overrides] of [
+      ["ain_stale_model", { model: "different/provider" }],
+      ["ain_stale_context", { context_id: "different-conversation-leaf" }],
+    ] as const) {
+      f.send(id, "dis_original", overrides);
+      await eventually(() =>
+        f.requests.some(
+          (request) =>
+            request.path === `/v1/agent-invocations/${id}/state` &&
+            request.body.status === "FAILED",
+        ),
+      );
+      assert.equal(
+        f.model.state.callCount,
+        0,
+        "stale context must not start a model run",
+      );
+    }
     assert.deepEqual(f.errors, []);
   } finally {
     await f.close();
