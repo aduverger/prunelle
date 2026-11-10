@@ -74,9 +74,10 @@ type RepoSnapshot struct {
 }
 
 type SourceChanges struct {
-	RevisionID      string             `json:"revision_id"`
-	Repositories    []RepositoryChange `json:"repositories"`
-	UnassignedCount int                `json:"unassigned_count"`
+	RevisionID           string             `json:"revision_id"`
+	Repositories         []RepositoryChange `json:"repositories"`
+	UnassignedCount      int                `json:"unassigned_count"`
+	AssignmentsAvailable bool               `json:"assignments_available"`
 }
 
 type RepositoryChange struct {
@@ -86,13 +87,15 @@ type RepositoryChange struct {
 }
 
 type SourceFile struct {
-	Path           string   `json:"path"`
-	OldPath        *string  `json:"old_path"`
-	Status         string   `json:"status"`
-	Binary         bool     `json:"binary"`
-	ContentOmitted *string  `json:"content_omitted"`
-	TopicIDs       []string `json:"topic_ids"`
-	Unassigned     bool     `json:"unassigned"`
+	Path              string   `json:"path"`
+	OldPath           *string  `json:"old_path"`
+	Status            string   `json:"status"`
+	Binary            bool     `json:"binary"`
+	ContentOmitted    *string  `json:"content_omitted"`
+	TopicIDs          []string `json:"topic_ids"`
+	Unassigned        bool     `json:"unassigned"`
+	AssignmentMode    string   `json:"assignment_mode"`
+	AssignmentVersion int      `json:"assignment_version"`
 }
 
 type FileContent struct {
@@ -207,6 +210,7 @@ type ObservedChange struct {
 }
 
 type Finding struct {
+	Version             int      `json:"version"`
 	ID                  string   `json:"id"`
 	ReviewID            string   `json:"review_id"`
 	FirstSeenRevisionID string   `json:"first_seen_revision_id"`
@@ -285,6 +289,13 @@ type Representation struct {
 	RevisionID        *string `json:"revision_id"`
 	Author            *Author `json:"author"`
 	RepresentationConfig
+	SourceFiles *[]SourceFileRef `json:"source_files,omitempty"`
+}
+
+type SourceFileRef struct {
+	RevisionID   string `json:"revision_id"`
+	RepositoryID string `json:"repository_id"`
+	Path         string `json:"path"`
 }
 
 // RepresentationConfig holds the configuration of one representation: only the field matching its
@@ -431,4 +442,58 @@ type ImportResult struct {
 	ImportID   string                       `json:"import_id"`
 	RevisionID string                       `json:"revision_id"`
 	IDs        map[string]map[string]string `json:"ids"`
+}
+
+type RevisionView struct {
+	RevisionID        *string      `json:"revision_id"`
+	Editable          bool         `json:"editable"`
+	Graph             *ReviewGraph `json:"graph"`
+	UnavailableReason *string      `json:"unavailable_reason"`
+}
+
+type ReviewGraph struct {
+	storedRepresentations []Representation
+	Topics                []Topic           `json:"topics"`
+	Findings              []Finding         `json:"findings"`
+	Intents               []Intent          `json:"intents"`
+	Changes               []ObservedChange  `json:"changes"`
+	Evidence              []Evidence        `json:"evidence"`
+	Attention             []AttentionSignal `json:"attention"`
+	Representations       []Representation  `json:"representations"`
+	SourceChanges         *SourceChanges    `json:"source_changes"`
+}
+
+type UpdateFindingRequest struct {
+	RevisionID  string    `json:"revision_id"`
+	Status      *string   `json:"status,omitempty"`
+	EvidenceIDs *[]string `json:"evidence_ids,omitempty"`
+}
+
+type UpdateSourceTopicsRequest struct {
+	RepositoryID string   `json:"repository_id"`
+	Path         string   `json:"path"`
+	Mode         string   `json:"mode"`
+	TopicIDs     []string `json:"topic_ids"`
+}
+
+type RevisionComparison struct {
+	FromRevisionID    string             `json:"from_revision_id"`
+	ToRevisionID      string             `json:"to_revision_id"`
+	UnavailableReason *string            `json:"unavailable_reason"`
+	Topics            []EntityComparison `json:"topics"`
+	Findings          []EntityComparison `json:"findings"`
+}
+
+type EntityComparison struct {
+	ID            string   `json:"id"`
+	Change        string   `json:"change"`
+	ChangedFields []string `json:"changed_fields"`
+	SourceStatus  string   `json:"source_status"`
+}
+
+type DiscussionAnchorStatus struct {
+	DiscussionID string `json:"discussion_id"`
+	RevisionID   string `json:"revision_id"`
+	Status       string `json:"status"`
+	Reason       string `json:"reason"`
 }

@@ -259,6 +259,9 @@ func (s *Service) Import(ctx context.Context, reviewID string, req ImportRequest
 	var result ImportResult
 	now := s.now()
 	err = s.db.Write(ctx, func(tx *sql.Tx) error {
+		if err := requireCurrentRevision(ctx, tx, reviewID, &revision.ID); err != nil {
+			return err
+		}
 		w := &importWriter{ctx: ctx, tx: tx, plan: plan, now: store.FormatTime(now)}
 		w.exec(`INSERT INTO imports (id, review_id, revision_id, author_kind, author_id, imported_at) VALUES (?, ?, ?, ?, ?, ?)`,
 			plan.importID, reviewID, revision.ID, m.Author.Kind, m.Author.ID, w.now)
@@ -349,7 +352,7 @@ func (s *Service) snapshotContent(ctx context.Context, revisionID, repositoryID,
 		column = "f.base_blob"
 	}
 	var blobHash sql.NullString
-	err := scanOne(s.db.Reader().QueryRowContext(ctx, `SELECT `+column+` FROM snapshot_files f
+	err := scanOne(s.reader().QueryRowContext(ctx, `SELECT `+column+` FROM snapshot_files f
 		JOIN repo_snapshots s ON s.id = f.snapshot_id
 		WHERE s.revision_id = ? AND s.repository_id = ? AND f.path = ?`, revisionID, repositoryID, path),
 		"changed file", path, &blobHash)
@@ -360,7 +363,7 @@ func (s *Service) snapshotContent(ctx context.Context, revisionID, repositoryID,
 		return "", "", notFound("stored content for side "+side+" of", path)
 	}
 	var content []byte
-	if err := s.db.Reader().QueryRowContext(ctx, `SELECT content FROM blobs WHERE hash = ?`, blobHash.String).Scan(&content); err != nil {
+	if err := s.reader().QueryRowContext(ctx, `SELECT content FROM blobs WHERE hash = ?`, blobHash.String).Scan(&content); err != nil {
 		return "", "", err
 	}
 	return string(content), blobHash.String, nil

@@ -123,6 +123,9 @@ func (s *Service) CreateRepresentation(ctx context.Context, topicID string, req 
 	id := store.NewID("rep")
 	now := s.now()
 	err = s.db.Write(ctx, func(tx *sql.Tx) error {
+		if err := requireCurrentRevision(ctx, tx, topic.ReviewID, &revision.ID); err != nil {
+			return err
+		}
 		records, err := loadReviewRecords(ctx, tx, topic.ReviewID)
 		if err != nil {
 			return err
@@ -155,12 +158,23 @@ func (s *Service) CreateRepresentation(ctx context.Context, topicID string, req 
 
 // UpdateRepresentation edits a representation last read at version. A config replaces the stored one.
 func (s *Service) UpdateRepresentation(ctx context.Context, id string, version int, req UpdateRepresentationRequest, actor Actor) (Representation, error) {
+	var owner string
+	if err := scanOne(s.reader().QueryRowContext(ctx, `SELECT t.review_id FROM representations r JOIN topics t ON t.id=r.topic_id WHERE r.id=?`, id), "representation", id, &owner); err != nil {
+		return Representation{}, err
+	}
+	review, err := s.GetReview(ctx, owner)
+	if err != nil {
+		return Representation{}, err
+	}
 	var p problems
 	if req.Title != nil {
 		p.required("title", *req.Title)
 	}
 	now := s.now()
-	err := s.db.Write(ctx, func(tx *sql.Tx) error {
+	err = s.db.Write(ctx, func(tx *sql.Tx) error {
+		if err := requireCurrentRevision(ctx, tx, owner, review.CurrentRevisionID); err != nil {
+			return err
+		}
 		var reviewID, typ, title, config string
 		var stored int
 		err := scanOne(tx.QueryRowContext(ctx, `SELECT t.review_id, r.type, r.title, r.config, r.version
@@ -207,7 +221,7 @@ func (s *Service) UpdateRepresentation(ctx context.Context, id string, version i
 
 func (s *Service) getRepresentation(ctx context.Context, id string) (Representation, error) {
 	var topicID string
-	if err := scanOne(s.db.Reader().QueryRowContext(ctx, `SELECT topic_id FROM representations WHERE id = ?`, id),
+	if err := scanOne(s.reader().QueryRowContext(ctx, `SELECT topic_id FROM representations WHERE id = ?`, id),
 		"representation", id, &topicID); err != nil {
 		return Representation{}, err
 	}

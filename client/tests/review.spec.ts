@@ -415,7 +415,12 @@ test('evidence-loaded and reopened ranges keep their original revision when disc
         .filter({ hasText: 'Comment from linked evidence' })
         .click();
       await page.getByRole('button', { name: 'Files', exact: true }).click();
-      await expect(source.getByRole('treeitem', { selected: true })).toHaveCount(0);
+      await expect(page.getByLabel('Revision', { exact: true })).toHaveValue(evidence.revision_id);
+      await expect(
+        source
+          .getByRole('region', { name: 'api', exact: true })
+          .getByRole('treeitem', { name: 'upload.ts', exact: true }),
+      ).toHaveAttribute('aria-selected', 'true');
     }
     await page.getByRole('button', { name: 'Comment on selected lines', exact: true }).click();
     await page
@@ -441,6 +446,56 @@ test('evidence-loaded and reopened ranges keep their original revision when disc
       anchor: { type: 'CODE_RANGE', code_range: evidence.code_range },
     });
   }
+
+  const revisions = await fixture.get<Model['Revision'][]>(
+    `/v1/reviews/${fixture.review.id}/revisions`,
+  );
+  const latest = revisions.at(-1)!;
+  const imported = await fetch(`${server}/v1/reviews/${fixture.review.id}/imports`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      manifest: {
+        author: evidence.author,
+        evidence: [
+          {
+            key: 'later',
+            kind: 'TEST_RESULT',
+            title: 'Later revision evidence',
+            content: 'An artifact unavailable in the earlier revision',
+            source: 'Browser fixture',
+          },
+        ],
+      },
+    }),
+  });
+  expect(imported.status).toBe(201);
+  const result = (await imported.json()) as Model['ImportResult'];
+  const created = await fetch(`${server}/v1/reviews/${fixture.review.id}/discussions`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      revision_id: latest.id,
+      anchor: { type: 'EVIDENCE', id: result.ids.evidence.later },
+      body: 'Discuss the later evidence',
+    }),
+  });
+  expect(created.status).toBe(201);
+  await expect(page.getByLabel('Revision', { exact: true })).toHaveValue(evidence.revision_id);
+  await page.getByRole('button', { name: 'Comments', exact: true }).click();
+  await page.getByLabel('Discussion scope').selectOption('all');
+  await page
+    .getByRole('region', { name: 'Comments', exact: true })
+    .getByRole('button')
+    .filter({ hasText: 'Discuss the later evidence' })
+    .click();
+  await expect(page.getByLabel('Revision', { exact: true })).toHaveValue(latest.id);
+  await expect(page.getByRole('region', { name: 'Selected evidence or finding' })).toContainText(
+    'Later revision evidence',
+  );
+  await expect(page.getByRole('region', { name: 'Selected evidence or finding' })).toContainText(
+    'An artifact unavailable in the earlier revision',
+  );
 });
 
 test('decisions name a revision and source history survives working-tree edits', async ({

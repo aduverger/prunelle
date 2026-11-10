@@ -22,6 +22,33 @@ type Service struct {
 	db             *store.DB
 	defaultBaseRef string
 	now            func() time.Time
+	readConn       queryer
+}
+
+type queryer interface {
+	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
+	QueryRowContext(context.Context, string, ...any) *sql.Row
+}
+
+func (s *Service) reader() queryer {
+	if s.readConn != nil {
+		return s.readConn
+	}
+	return s.db.Reader()
+}
+
+func (s *Service) readSnapshot(ctx context.Context, read func(*Service) error) error {
+	if s.readConn != nil {
+		return read(s)
+	}
+	tx, err := s.db.Reader().BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	view := *s
+	view.readConn = tx
+	return read(&view)
 }
 
 func NewService(db *store.DB, defaultBaseRef string) *Service {
@@ -117,7 +144,7 @@ func scanOne(row *sql.Row, kind, id string, dest ...any) error {
 }
 
 // queryStrings returns the first column of every row.
-func queryStrings(ctx context.Context, db *sql.DB, query string, args ...any) ([]string, error) {
+func queryStrings(ctx context.Context, db queryer, query string, args ...any) ([]string, error) {
 	rows, err := db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err

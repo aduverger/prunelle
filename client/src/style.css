@@ -242,6 +242,13 @@ summary {
   color: var(--muted);
   overflow-wrap: anywhere;
 }
+.revision-change,
+.anchor-status {
+  display: block;
+  color: var(--muted);
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
 .app {
   height: 100dvh;
   display: flex;

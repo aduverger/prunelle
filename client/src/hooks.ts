@@ -8,41 +8,13 @@ export function useReview(api: API, reviewID: string) {
     queryKey: ['review', reviewID],
     queryFn: async ({ signal }) => {
       const params = { path: { reviewId: reviewID } };
-      const [
-        review,
-        topics,
-        revisions,
-        findings,
-        intents,
-        changes,
-        evidence,
-        attention,
-        discussions,
-        decisions,
-      ] = await Promise.all([
+      const [review, revisions, discussions, decisions] = await Promise.all([
         result(api.GET('/v1/reviews/{reviewId}', { params, signal })),
-        result(api.GET('/v1/reviews/{reviewId}/topics', { params, signal })),
         result(api.GET('/v1/reviews/{reviewId}/revisions', { params, signal })),
-        result(api.GET('/v1/reviews/{reviewId}/findings', { params, signal })),
-        result(api.GET('/v1/reviews/{reviewId}/intents', { params, signal })),
-        result(api.GET('/v1/reviews/{reviewId}/changes', { params, signal })),
-        result(api.GET('/v1/reviews/{reviewId}/evidence', { params, signal })),
-        result(api.GET('/v1/reviews/{reviewId}/attention', { params, signal })),
         result(api.GET('/v1/reviews/{reviewId}/discussions', { params, signal })),
         result(api.GET('/v1/reviews/{reviewId}/decisions', { params, signal })),
       ]);
-      return {
-        review,
-        topics,
-        revisions,
-        findings,
-        intents,
-        changes,
-        evidence,
-        attention,
-        discussions,
-        decisions,
-      };
+      return { review, revisions, discussions, decisions };
     },
   });
 }

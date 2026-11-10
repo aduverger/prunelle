@@ -39,8 +39,31 @@ func (s *Service) CreateDecision(ctx context.Context, reviewID string, req Creat
 		if err != nil {
 			return err
 		}
-		records.check(&p, "finding_ids", "FINDING", req.FindingIDs)
+		if len(req.FindingIDs) > 0 {
+			reader := *s
+			reader.readConn = tx
+			view, err := reader.revisionView(ctx, reviewID, &revision.ID)
+			if err != nil {
+				return err
+			}
+			if view.Graph == nil {
+				return invalid("semantic history is unavailable for finding selection in this revision")
+			}
+			view.Graph.records().check(&p, "finding_ids", "FINDING", req.FindingIDs)
+		}
 		records.check(&p, "discussion_ids", "DISCUSSION", req.DiscussionIDs)
+		for _, id := range uniqueIDs(req.DiscussionIDs) {
+			if records[id].entityType != "DISCUSSION" {
+				continue
+			}
+			var ordinal int
+			if err := tx.QueryRowContext(ctx, "SELECT r.ordinal FROM discussions d JOIN revisions r ON r.id = d.revision_id WHERE d.id=?", id).Scan(&ordinal); err != nil {
+				return err
+			}
+			if ordinal > revision.Ordinal {
+				p.add("discussion_ids", "discussion %s belongs to a later revision", id)
+			}
+		}
 		if err := p.err("decision is invalid"); err != nil {
 			return err
 		}
@@ -79,7 +102,7 @@ func (s *Service) ListDecisions(ctx context.Context, reviewID string) ([]Decisio
 }
 
 func (s *Service) queryDecisions(ctx context.Context, where string, args ...any) ([]Decision, error) {
-	rows, err := s.db.Reader().QueryContext(ctx, `SELECT id, review_id, revision_id, decision, body, author_kind, author_id, created_at
+	rows, err := s.reader().QueryContext(ctx, `SELECT id, review_id, revision_id, decision, body, author_kind, author_id, created_at
 		FROM decisions `+where, args...)
 	if err != nil {
 		return nil, err
@@ -98,13 +121,14 @@ func (s *Service) queryDecisions(ctx context.Context, where string, args ...any)
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
+	rows.Close()
 	for i := range decisions {
 		d := &decisions[i]
-		if d.FindingIDs, err = queryStrings(ctx, s.db.Reader(),
+		if d.FindingIDs, err = queryStrings(ctx, s.reader(),
 			`SELECT finding_id FROM decision_findings WHERE decision_id = ? ORDER BY finding_id`, d.ID); err != nil {
 			return nil, err
 		}
-		if d.DiscussionIDs, err = queryStrings(ctx, s.db.Reader(),
+		if d.DiscussionIDs, err = queryStrings(ctx, s.reader(),
 			`SELECT discussion_id FROM decision_discussions WHERE decision_id = ? ORDER BY discussion_id`, d.ID); err != nil {
 			return nil, err
 		}

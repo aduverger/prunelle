@@ -42,6 +42,31 @@ func loadReviewRecords(ctx context.Context, tx *sql.Tx, reviewID string) (review
 	return records, rows.Err()
 }
 
+func (g *ReviewGraph) records() reviewRecords {
+	records := reviewRecords{}
+	for _, v := range g.Topics {
+		records[v.ID] = recordRef{entityType: "TOPIC"}
+	}
+	for _, v := range g.Findings {
+		records[v.ID] = recordRef{entityType: "FINDING"}
+	}
+	for _, v := range g.Intents {
+		records[v.ID] = recordRef{entityType: "INTENT"}
+	}
+	for _, v := range g.Changes {
+		records[v.ID] = recordRef{entityType: "CHANGE"}
+	}
+	for _, v := range g.Evidence {
+		records[v.ID] = recordRef{entityType: "EVIDENCE", kind: v.Kind}
+	}
+	for _, v := range g.Representations {
+		if v.ID != nil {
+			records[*v.ID] = recordRef{entityType: "REPRESENTATION", kind: v.Type}
+		}
+	}
+	return records
+}
+
 // check reports every ID that is not a record of entityType in the review.
 func (r reviewRecords) check(p *problems, path, entityType string, ids []string) {
 	for i, id := range ids {

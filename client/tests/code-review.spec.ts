@@ -325,13 +325,12 @@ test('an inline draft retains its snapshot after capture and explicit return', a
   await page.getByRole('button', { name: 'Capture', exact: true }).click();
   const revision = page.getByLabel('Revision', { exact: true });
   await expect(revision).not.toHaveValue(fixture.revision.id);
-  const currentRevisionID = await revision.inputValue();
   await page.getByRole('button', { name: 'Return to draft', exact: true }).click();
   await expect(page.getByRole('textbox', { name: 'New discussion', exact: true })).toHaveValue(
     body,
   );
   await expect(line(page, 'HEAD', 453)).toBeInViewport();
-  await expect(revision).toHaveValue(currentRevisionID);
+  await expect(revision).toHaveValue(fixture.revision.id);
   await page.getByRole('button', { name: 'Post discussion', exact: true }).click();
   await expect(page.getByRole('article').filter({ hasText: body })).toBeVisible();
   expect(await discussions()).toMatchObject([

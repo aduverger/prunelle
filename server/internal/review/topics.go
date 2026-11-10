@@ -20,7 +20,8 @@ var topicLinkKinds = []struct{ field, entityType, table, column string }{
 
 // CreateTopic adds a manual topic as the last child of its parent (or last root topic).
 func (s *Service) CreateTopic(ctx context.Context, reviewID string, req CreateTopicRequest, actor Actor) (Topic, error) {
-	if _, err := s.GetReview(ctx, reviewID); err != nil {
+	review, err := s.GetReview(ctx, reviewID)
+	if err != nil {
 		return Topic{}, err
 	}
 	var p problems
@@ -28,7 +29,10 @@ func (s *Service) CreateTopic(ctx context.Context, reviewID string, req CreateTo
 	links := map[string][]string{"intent_ids": req.IntentIDs, "change_ids": req.ChangeIDs, "finding_ids": req.FindingIDs, "evidence_ids": req.EvidenceIDs}
 	id := store.NewID("top")
 	now := s.now()
-	err := s.db.Write(ctx, func(tx *sql.Tx) error {
+	err = s.db.Write(ctx, func(tx *sql.Tx) error {
+		if err := requireCurrentRevision(ctx, tx, reviewID, review.CurrentRevisionID); err != nil {
+			return err
+		}
 		records, err := loadReviewRecords(ctx, tx, reviewID)
 		if err != nil {
 			return err
@@ -64,6 +68,14 @@ func (s *Service) CreateTopic(ctx context.Context, reviewID string, req CreateTo
 
 // UpdateTopic edits a topic last read at version. Imported topics are editable; their origin and author stay.
 func (s *Service) UpdateTopic(ctx context.Context, id string, version int, req UpdateTopicRequest, actor Actor) (Topic, error) {
+	topic, err := s.GetTopic(ctx, id)
+	if err != nil {
+		return Topic{}, err
+	}
+	review, err := s.GetReview(ctx, topic.ReviewID)
+	if err != nil {
+		return Topic{}, err
+	}
 	var p problems
 	if req.Title != nil {
 		p.required("title", *req.Title)
@@ -78,7 +90,10 @@ func (s *Service) UpdateTopic(ctx context.Context, id string, version int, req U
 		}
 	}
 	now := s.now()
-	err := s.db.Write(ctx, func(tx *sql.Tx) error {
+	err = s.db.Write(ctx, func(tx *sql.Tx) error {
+		if err := requireCurrentRevision(ctx, tx, review.ID, review.CurrentRevisionID); err != nil {
+			return err
+		}
 		t, err := lockTopic(ctx, tx, id, version)
 		if err != nil {
 			return err
@@ -119,11 +134,22 @@ func (s *Service) UpdateTopic(ctx context.Context, id string, version int, req U
 // among its new siblings, clamped to the end. Sibling positions stay dense; every topic whose
 // position changes gets a new version.
 func (s *Service) MoveTopic(ctx context.Context, id string, version int, req MoveTopicRequest, actor Actor) (Topic, error) {
+	topic, err := s.GetTopic(ctx, id)
+	if err != nil {
+		return Topic{}, err
+	}
+	review, err := s.GetReview(ctx, topic.ReviewID)
+	if err != nil {
+		return Topic{}, err
+	}
 	if req.Position < 0 {
 		return Topic{}, invalid("position must be 0 or more")
 	}
 	now := s.now()
-	err := s.db.Write(ctx, func(tx *sql.Tx) error {
+	err = s.db.Write(ctx, func(tx *sql.Tx) error {
+		if err := requireCurrentRevision(ctx, tx, review.ID, review.CurrentRevisionID); err != nil {
+			return err
+		}
 		t, err := lockTopic(ctx, tx, id, version)
 		if err != nil {
 			return err
